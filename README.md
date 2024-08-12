@@ -22,7 +22,6 @@ Patchwork is an innovative app launching this summer that connects local service
 
 ## Quick Links
 
-- [Download Patchwork](https://app-store-link) (Coming Soon!)
 - [Official Website](https://www.thepatchworkapp.ca/)
 - [Privacy Policy](https://www.thepatchworkapp.ca/privacypolicy)
 - [Terms of Service](https://www.thepatchworkapp.ca/termsofservice)
