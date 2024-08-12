@@ -3,6 +3,8 @@
 
 ## Welcome to the Patchwork Public Repository
 
+[![Download on the App Store](https://static.wixstatic.com/media/589a79_4b31bb282acd4d9fa70d3d8af65ef650~mv2.png/v1/fill/w_165,h_55,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/589a79_4b31bb282acd4d9fa70d3d8af65ef650~mv2.png)](https://apps.apple.com/ca/app/patchwork-local-freelancers/id1478768303)
+
 This repository is dedicated to **public bug tracking and feature requests** for the Patchwork app. We appreciate your input in making our app better!
 
 ### What is Patchwork?
