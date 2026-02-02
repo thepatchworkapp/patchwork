@@ -72,3 +72,39 @@ export const getCurrentUser = query({
       .first();
   },
 });
+
+export const updateLocation = mutation({
+  args: {
+    lat: v.number(),
+    lng: v.number(),
+    source: v.union(v.literal("gps"), v.literal("manual")),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+    
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(user._id, {
+      location: {
+        ...user.location,
+        coordinates: {
+          lat: args.lat,
+          lng: args.lng,
+        },
+      },
+      settings: {
+        ...user.settings,
+        locationEnabled: true,
+      },
+      updatedAt: Date.now(),
+    });
+
+    return user._id;
+  },
+});
