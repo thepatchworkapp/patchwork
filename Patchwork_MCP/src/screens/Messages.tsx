@@ -5,24 +5,38 @@ import { Avatar } from "../components/patchwork/Avatar";
 import { Badge } from "../components/patchwork/Badge";
 import { Button } from "../components/patchwork/Button";
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 
-export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavigate: (screen: string) => void; onOpenChat: () => void; isTasker?: boolean }) {
+function formatTimeAgo(timestamp: number) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavigate: (screen: string) => void; onOpenChat: (conversationId: Id<"conversations">) => void; isTasker?: boolean }) {
   const [activeTab, setActiveTab] = useState<"seeker" | "tasker">("seeker");
   const [showTaskerSignupModal, setShowTaskerSignupModal] = useState(false);
+  
+  const currentUser = useQuery(api.users.getCurrentUser);
+  const allConversations = useQuery(api.conversations.listConversations);
 
-  const seekerConversations = [
-    { name: "Alex Chen", lastMessage: "I can come by tomorrow at 2pm", time: "10m ago", unread: 2 },
-    { name: "Maria Garcia", lastMessage: "Thanks for choosing me! See you on...", time: "2h ago", unread: 0 },
-    { name: "David Kim", lastMessage: "What time works best for you?", time: "1d ago", unread: 1 },
-    { name: "Sarah Johnson", lastMessage: "Job completed successfully!", time: "3d ago", unread: 0 }
-  ];
+  const filteredConversations = allConversations?.filter(conv => {
+    if (!currentUser) return false;
+    if (activeTab === "seeker") {
+      return conv.seekerId === currentUser._id;
+    } else {
+      return conv.taskerId === currentUser._id;
+    }
+  }) || [];
 
-  const taskerConversations = [
-    { name: "Emily Brown", lastMessage: "When can you start the project?", time: "5m ago", unread: 1 },
-    { name: "James Wilson", lastMessage: "Great work! Thanks!", time: "1h ago", unread: 0 }
-  ];
-
-  const conversations = activeTab === "seeker" ? seekerConversations : taskerConversations;
+  const isLoading = allConversations === undefined || currentUser === undefined;
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
@@ -102,34 +116,50 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
             </div>
           </div>
 
-          <div className="divide-y divide-neutral-200">
-            {conversations.map((conv, i) => (
-              <button
-                key={i}
-                onClick={onOpenChat}
-                className="w-full px-4 py-4 bg-white active:bg-neutral-50 flex items-start gap-3 text-left"
-              >
-                <div className="relative">
-                  <Avatar src="" alt={conv.name} size="md" />
-                  {conv.unread > 0 && (
-                    <div className="absolute -top-1 -right-1 size-5 rounded-full bg-[#DC2626] text-white text-xs flex items-center justify-center">
-                      {conv.unread}
+          {isLoading ? (
+            <div className="p-8 flex justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4F46E5]"></div>
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="p-8 text-center text-[#6B7280]">
+              <p>No conversations yet.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-neutral-200">
+              {filteredConversations.map((conv) => {
+                const unreadCount = activeTab === "seeker" ? conv.seekerUnreadCount : conv.taskerUnreadCount;
+                const isUnread = unreadCount > 0;
+                const name = activeTab === "seeker" ? "Tasker" : "Seeker"; 
+                
+                return (
+                  <button
+                    key={conv._id}
+                    onClick={() => onOpenChat(conv._id)}
+                    className="w-full px-4 py-4 bg-white active:bg-neutral-50 flex items-start gap-3 text-left"
+                  >
+                    <div className="relative">
+                      <Avatar src="" alt={name} size="md" />
+                      {isUnread && (
+                        <div className="absolute -top-1 -right-1 size-5 rounded-full bg-[#DC2626] text-white text-xs flex items-center justify-center">
+                          {unreadCount}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between mb-1">
-                    <p className="text-neutral-900">{conv.name}</p>
-                    <span className="text-[#6B7280] text-sm">{conv.time}</span>
-                  </div>
-                  <p className={`text-sm truncate ${conv.unread > 0 ? "text-neutral-900" : "text-[#6B7280]"}`}>
-                    {conv.lastMessage}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between mb-1">
+                        <p className={`text-neutral-900 ${isUnread ? "font-semibold" : ""}`}>{name}</p>
+                        <span className="text-[#6B7280] text-sm">{formatTimeAgo(conv.lastMessageAt)}</span>
+                      </div>
+                      <p className={`text-sm truncate ${isUnread ? "text-neutral-900 font-medium" : "text-[#6B7280]"}`}>
+                        {conv.lastMessagePreview || "No messages"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

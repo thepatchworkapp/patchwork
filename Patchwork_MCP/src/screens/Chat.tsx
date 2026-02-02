@@ -19,7 +19,9 @@ interface Message {
   };
 }
 
-export function Chat({ onBack }: { onBack: () => void }) {
+import { Id } from "../../convex/_generated/dataModel";
+
+export function Chat({ onBack, conversationId }: { onBack: () => void; conversationId?: Id<"conversations"> }) {
   // For demo purposes, let's say "me" is the Tasker (Alex Chen) and "them" is the Seeker
   const isTasker = true; // In real app, this would come from user context
   

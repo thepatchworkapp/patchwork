@@ -76,10 +76,13 @@ type Screen =
   | "email-verify"
   | "premium-upgrade";
 
+import { Id } from "../convex/_generated/dataModel";
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("home");
   const [history, setHistory] = useState<Screen[]>(["home"]);
   const [isTasker, setIsTasker] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<Id<"conversations"> | null>(null);
   // Mock user photo - in real app, would come from CreateProfile
   const [userPhoto] = useState<string>("");
   const [displayName, setDisplayName] = useState("");
@@ -287,13 +290,16 @@ export default function App() {
         return (
           <Messages
             onNavigate={navigate}
-            onOpenChat={() => navigate("chat")}
+            onOpenChat={(id) => {
+              setActiveConversationId(id);
+              navigate("chat");
+            }}
             isTasker={isTasker}
           />
         );
       
       case "chat":
-        return <Chat onBack={goBack} />;
+        return <Chat onBack={goBack} conversationId={activeConversationId || undefined} />;
       
       case "profile":
         return (
@@ -404,14 +410,6 @@ export default function App() {
       
       case "jobs":
         return <Jobs onNavigate={navigate} />;
-      
-      case "post-job":
-        return (
-          <RequestStep1
-            onBack={goBack}
-            onNext={() => navigate("request-step2")}
-          />
-        );
       
       case "category-selection":
         return (
