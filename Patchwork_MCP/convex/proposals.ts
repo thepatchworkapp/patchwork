@@ -44,9 +44,11 @@ export const sendProposal = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation(internal.messages.sendSystemMessage, {
+    await ctx.runMutation(internal.messages.sendProposalMessage, {
       conversationId: args.conversationId,
-      systemType: "proposal_sent",
+      senderId: user._id,
+      proposalId,
+      content: "Proposal sent",
     });
 
     return proposalId;
@@ -186,9 +188,11 @@ export const counterProposal = mutation({
       updatedAt: now,
     });
 
-    await ctx.runMutation(internal.messages.sendSystemMessage, {
+    await ctx.runMutation(internal.messages.sendProposalMessage, {
       conversationId: originalProposal.conversationId,
-      systemType: "proposal_countered",
+      senderId: user._id,
+      proposalId: counterProposalId,
+      content: "Counter proposal sent",
     });
 
     return counterProposalId;

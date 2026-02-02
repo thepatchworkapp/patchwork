@@ -10,8 +10,12 @@
 
 import type * as auth from "../auth.js";
 import type * as categories from "../categories.js";
+import type * as conversations from "../conversations.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
+import type * as jobs from "../jobs.js";
+import type * as messages from "../messages.js";
+import type * as proposals from "../proposals.js";
 import type * as taskers from "../taskers.js";
 import type * as users from "../users.js";
 
@@ -24,8 +28,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   categories: typeof categories;
+  conversations: typeof conversations;
   files: typeof files;
   http: typeof http;
+  jobs: typeof jobs;
+  messages: typeof messages;
+  proposals: typeof proposals;
   taskers: typeof taskers;
   users: typeof users;
 }>;

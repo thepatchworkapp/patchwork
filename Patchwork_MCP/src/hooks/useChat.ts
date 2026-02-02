@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Id } from "../../convex/_generated/dataModel";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
-/**
- * Message type matching Convex schema
- */
 export interface Message {
   _id: Id<"messages">;
   conversationId: Id<"conversations">;
@@ -11,24 +10,22 @@ export interface Message {
   type: "text" | "proposal" | "system";
   content: string;
   proposalId?: Id<"proposals">;
+  proposal?: Proposal | null;
   attachments?: Id<"_storage">[];
   readAt?: number;
   createdAt: number;
   updatedAt: number;
 }
 
-/**
- * Proposal type matching Convex schema
- */
 export interface Proposal {
   _id: Id<"proposals">;
   conversationId: Id<"conversations">;
   senderId: Id<"users">;
   receiverId: Id<"users">;
   jobRequestId?: Id<"jobRequests">;
-  rate: number; // in cents
+  rate: number;
   rateType: "hourly" | "flat";
-  startDateTime: string; // ISO datetime
+  startDateTime: string;
   notes?: string;
   status: "pending" | "accepted" | "declined" | "countered" | "expired";
   previousProposalId?: Id<"proposals">;
@@ -82,90 +79,87 @@ export interface UseChatReturn {
     startDateTime: string,
     notes?: string
   ) => Promise<void>;
-  loadMoreMessages: () => Promise<void>;
+  loadMoreMessages: () => void;
+  currentUser: any | null;
 }
 
-/**
- * useChat hook - manages conversation state and messaging
- * 
- * Placeholder implementation - will be wired to Convex in Task 8
- * 
- * @param conversationId - The ID of the conversation
- * @returns UseChatReturn object with messages and action methods
- */
 export function useChat(conversationId: Id<"conversations">): UseChatReturn {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const currentUser = useQuery(api.users.getCurrentUser);
+  
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.messages.listMessages,
+    { conversationId },
+    { initialNumItems: 25 }
+  );
 
-  const sendMessage = async (
+  const sendMessageMutation = useMutation(api.messages.sendMessage);
+  const sendProposalMutation = useMutation(api.proposals.sendProposal);
+  const acceptProposalMutation = useMutation(api.proposals.acceptProposal);
+  const declineProposalMutation = useMutation(api.proposals.declineProposal);
+  const counterProposalMutation = useMutation(api.proposals.counterProposal);
+
+  const messages = useMemo(() => {
+    return [...(results || [])].reverse() as Message[];
+  }, [results]);
+
+  const isLoading = status === "LoadingFirstPage";
+  const hasMoreMessages = status === "CanLoadMore";
+
+  const sendMessage = useCallback(async (
     content: string,
     attachments?: Id<"_storage">[]
-  ): Promise<void> => {
-    console.log("sendMessage placeholder:", {
+  ) => {
+    await sendMessageMutation({
       conversationId,
       content,
       attachments,
     });
-    // TODO: Wire to Convex mutation in Task 8
-  };
+  }, [conversationId, sendMessageMutation]);
 
-  const sendProposal = async (
+  const sendProposal = useCallback(async (
     rate: number,
     rateType: "hourly" | "flat",
     startDateTime: string,
     notes?: string
-  ): Promise<void> => {
-    console.log("sendProposal placeholder:", {
+  ) => {
+    await sendProposalMutation({
       conversationId,
       rate,
       rateType,
       startDateTime,
       notes,
     });
-    // TODO: Wire to Convex mutation in Task 8
-  };
+  }, [conversationId, sendProposalMutation]);
 
-  const acceptProposal = async (proposalId: Id<"proposals">): Promise<void> => {
-    console.log("acceptProposal placeholder:", {
-      conversationId,
-      proposalId,
-    });
-    // TODO: Wire to Convex mutation in Task 8
-  };
+  const acceptProposal = useCallback(async (proposalId: Id<"proposals">) => {
+    await acceptProposalMutation({ proposalId });
+  }, [acceptProposalMutation]);
 
-  const declineProposal = async (proposalId: Id<"proposals">): Promise<void> => {
-    console.log("declineProposal placeholder:", {
-      conversationId,
-      proposalId,
-    });
-    // TODO: Wire to Convex mutation in Task 8
-  };
+  const declineProposal = useCallback(async (proposalId: Id<"proposals">) => {
+    await declineProposalMutation({ proposalId });
+  }, [declineProposalMutation]);
 
-  const counterProposal = async (
+  const counterProposal = useCallback(async (
     proposalId: Id<"proposals">,
     rate: number,
     rateType: "hourly" | "flat",
     startDateTime: string,
     notes?: string
-  ): Promise<void> => {
-    console.log("counterProposal placeholder:", {
-      conversationId,
+  ) => {
+    await counterProposalMutation({
       proposalId,
       rate,
       rateType,
       startDateTime,
       notes,
     });
-    // TODO: Wire to Convex mutation in Task 8
-  };
+  }, [counterProposalMutation]);
 
-  const loadMoreMessages = async (): Promise<void> => {
-    console.log("loadMoreMessages placeholder:", {
-      conversationId,
-    });
-    // TODO: Wire to Convex query in Task 8
-  };
+  const loadMoreMessages = useCallback(() => {
+    if (status === "CanLoadMore") {
+      loadMore(25);
+    }
+  }, [status, loadMore]);
 
   return {
     messages,
@@ -177,5 +171,6 @@ export function useChat(conversationId: Id<"conversations">): UseChatReturn {
     declineProposal,
     counterProposal,
     loadMoreMessages,
+    currentUser,
   };
 }

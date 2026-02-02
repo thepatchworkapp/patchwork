@@ -62,6 +62,47 @@ export const sendMessage = mutation({
   },
 });
 
+export const sendProposalMessage = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    senderId: v.id("users"),
+    proposalId: v.id("proposals"),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    
+    const messageId = await ctx.db.insert("messages", {
+      conversationId: args.conversationId,
+      senderId: args.senderId,
+      type: "proposal",
+      content: args.content,
+      proposalId: args.proposalId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+
+    const isSeeker = conversation.seekerId === args.senderId;
+    const currentUnreadCount = isSeeker
+      ? conversation.taskerUnreadCount || 0
+      : conversation.seekerUnreadCount || 0;
+
+    await ctx.db.patch(args.conversationId, {
+      lastMessageAt: now,
+      lastMessageId: messageId,
+      lastMessagePreview: "New Proposal",
+      lastMessageSenderId: args.senderId,
+      [isSeeker ? "taskerUnreadCount" : "seekerUnreadCount"]: currentUnreadCount + 1,
+      updatedAt: now,
+    });
+
+    return messageId;
+  },
+});
+
 export const listMessages = query({
   args: {
     conversationId: v.id("conversations"),
@@ -90,8 +131,18 @@ export const listMessages = query({
     const isDone = startIndex + numItems >= messages.length;
     const continueCursor = isDone ? undefined : page[page.length - 1]?._id;
     
+    const pageWithProposals = await Promise.all(
+      page.map(async (msg) => {
+        if (msg.proposalId) {
+          const proposal = await ctx.db.get(msg.proposalId);
+          return { ...msg, proposal };
+        }
+        return { ...msg, proposal: null };
+      })
+    );
+
     return {
-      page,
+      page: pageWithProposals,
       isDone,
       continueCursor,
     };

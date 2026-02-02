@@ -1,3 +1,4 @@
+
 # Phase 4 - Realtime Messaging: useChat Hook
 
 ## Task 2 Completion: Extract useChat Hook Skeleton
@@ -87,3 +88,58 @@ All action methods have TODO comments marking where Convex mutations/queries wil
 - `loadMoreMessages` → Convex query
 
 This skeleton prevents accidental implementation and clearly marks integration points.
+
+---
+
+# Task 8: Wire Chat.tsx to Convex with useChat Hook
+
+**Status:** ✅ COMPLETED
+
+### Date: 2026-02-02
+
+### Deliverables
+
+- [x] Implementation: `src/hooks/useChat.ts` fully wired to Convex
+- [x] Implementation: `src/screens/Chat.tsx` refactored to use `useChat`
+- [x] Backend Enhancement: `convex/messages.ts` and `convex/proposals.ts` updated to support linked proposal messages
+- [x] Verification: `npm run build` passes
+- [x] State Management: `Chat.tsx` useState count reduced from 16 to 4
+- [x] Commit: `feat(chat): refactor Chat.tsx with useChat hook and Convex integration`
+
+### Implementation Details
+
+#### useChat Hook
+- **Pagination**: Uses `usePaginatedQuery` with `api.messages.listMessages`.
+- **Mutations**: 
+  - `sendMessage` (text)
+  - `sendProposal` (creates proposal + proposal message)
+  - `acceptProposal` / `declineProposal` (updates status)
+  - `counterProposal` (creates new proposal + proposal message)
+- **Data**: Returns `messages` array enriched with proposal data (via backend enrichment).
+
+#### Chat.tsx Refactoring
+- Removed 12 local state variables (mock data, individual form fields).
+- Consolidated modal states into `modals` object.
+- Consolidated proposal form state into `proposalForm` object.
+- Replaced mock message rendering with real data rendering.
+- Implemented "Load older messages" button using `hasMoreMessages` and `loadMoreMessages`.
+- Wired all buttons (Send, Propose, Accept, Decline, Counter) to hook functions.
+
+#### Backend Enhancements
+To support the UI requirement of displaying proposal cards within the message stream:
+1. **convex/messages.ts**:
+   - Added `sendProposalMessage` internal mutation to create messages with `type: "proposal"` and `proposalId`.
+   - Updated `listMessages` query to fetch and attach `proposal` data for each message with `proposalId` (server-side join).
+2. **convex/proposals.ts**:
+   - Updated `sendProposal` and `counterProposal` to use `internal.messages.sendProposalMessage` instead of `sendSystemMessage`.
+   - This ensures proposals appear as interactive cards in the chat, not just system text.
+
+### Verification
+
+- ✅ `npm run build` passes (1788 modules transformed).
+- ✅ Type safety maintained with Convex generated types.
+- ✅ Frontend logic matches backend schema.
+
+### Notes for Future Tasks
+- **Phase 5**: `handleCompleteJob` is currently a placeholder updating local modal state. It will need to be wired to a job completion mutation.
+- **Reviews**: Review submission is currently a placeholder.
