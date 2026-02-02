@@ -23,6 +23,10 @@ export function Chat({ onBack, conversationId }: ChatProps) {
     counterProposal,
     loadMoreMessages,
     currentUser,
+    completeJob,
+    createReview,
+    conversation,
+    job,
   } = useChat(conversationId);
 
   const [messageText, setMessageText] = useState("");
@@ -109,16 +113,35 @@ export function Chat({ onBack, conversationId }: ChatProps) {
     m.proposal?.status === "accepted"
   );
   
-  const handleCompleteJob = () => {
-    setModals(prev => ({ ...prev, complete: false, review: true }));
+  const handleCompleteJob = async () => {
+    if (!job?._id) return;
+    try {
+      await completeJob(job._id);
+      setModals(prev => ({ ...prev, complete: false, review: true }));
+    } catch (error) {
+      console.error("Failed to complete job:", error);
+    }
   };
 
-  const handleSendReview = () => {
-    setModals(prev => ({ ...prev, review: false }));
-    setReviewForm({ rating: 0, text: "" });
+  const handleSendReview = async () => {
+    if (!job?._id) return;
+    if (reviewForm.text.length < 10) {
+      alert("Review text must be at least 10 characters.");
+      return;
+    }
+    
+    try {
+      await createReview(job._id, reviewForm.rating, reviewForm.text);
+      setModals(prev => ({ ...prev, review: false }));
+      setReviewForm({ rating: 0, text: "" });
+    } catch (error) {
+      console.error("Failed to submit review:", error);
+    }
   };
 
   const isMe = (senderId: Id<"users">) => currentUser && senderId === currentUser._id;
+  const isSeeker = currentUser && conversation && conversation.seekerId === currentUser._id;
+  const canComplete = isSeeker && job?.status === "in_progress";
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
@@ -229,13 +252,15 @@ export function Chat({ onBack, conversationId }: ChatProps) {
       <div className="border-t border-neutral-200 bg-white p-4">
         {activeProposal ? (
           <div className="mb-3">
-            <button 
-              onClick={() => setModals(prev => ({ ...prev, complete: true }))}
-              className="px-4 py-2 bg-green-100 text-[#16A34A] rounded-lg flex items-center gap-2 text-sm border border-green-200 w-full justify-center"
-            >
-              <CheckCircle size={16} />
-              <span>Complete Job</span>
-            </button>
+            {canComplete && (
+              <button 
+                onClick={() => setModals(prev => ({ ...prev, complete: true }))}
+                className="px-4 py-2 bg-green-100 text-[#16A34A] rounded-lg flex items-center gap-2 text-sm border border-green-200 w-full justify-center"
+              >
+                <CheckCircle size={16} />
+                <span>Complete Job</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex gap-2 mb-3">

@@ -2,6 +2,8 @@ import { Check } from "lucide-react";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 interface SubscriptionsProps {
   onBack: () => void;
@@ -12,6 +14,10 @@ interface SubscriptionsProps {
 export function Subscriptions({ onBack, onSubscribe, onSkip }: SubscriptionsProps) {
   const [selectedPlan, setSelectedPlan] = useState<"basic" | "premium" | null>(null);
   const [showGhostModeModal, setShowGhostModeModal] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [error, setError] = useState("");
+
+  const updateSubscription = useMutation(api.taskers.updateSubscriptionPlan);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -135,22 +141,44 @@ export function Subscriptions({ onBack, onSubscribe, onSkip }: SubscriptionsProp
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 max-w-[390px] mx-auto p-4 bg-white border-t border-neutral-200">
-        <button
-          onClick={() => setShowGhostModeModal(true)}
-          className="text-[#4F46E5] text-center w-full mb-3 underline"
-        >
-          Skip for now
-        </button>
-        <Button
-          variant="primary"
-          fullWidth
-          disabled={!selectedPlan}
-          onClick={() => selectedPlan && onSubscribe(selectedPlan)}
-        >
-          {selectedPlan ? `Subscribe to ${selectedPlan === "basic" ? "Basic" : "Premium"}` : "Select a plan"}
-        </Button>
-      </div>
+       <div className="fixed bottom-0 left-0 right-0 max-w-[390px] mx-auto p-4 bg-white border-t border-neutral-200">
+         {error && (
+           <div className="mb-3 text-center text-red-500 text-sm">
+             {error}
+           </div>
+         )}
+         <button
+           onClick={() => setShowGhostModeModal(true)}
+           className="text-[#4F46E5] text-center w-full mb-3 underline"
+           disabled={isSubscribing}
+         >
+           Skip for now
+         </button>
+         <Button
+           variant="primary"
+           fullWidth
+           disabled={!selectedPlan || isSubscribing}
+           onClick={async () => {
+             if (!selectedPlan) return;
+             
+             setIsSubscribing(true);
+             setError("");
+             
+             try {
+               await updateSubscription({
+                 plan: selectedPlan,
+               });
+               onSubscribe(selectedPlan);
+             } catch (err) {
+               console.error("Subscription failed:", err);
+               setError(err instanceof Error ? err.message : "Failed to subscribe. Please try again.");
+               setIsSubscribing(false);
+             }
+           }}
+         >
+           {isSubscribing ? "Processing..." : selectedPlan ? `Subscribe to ${selectedPlan === "basic" ? "Basic" : "Premium"}` : "Select a plan"}
+         </Button>
+       </div>
 
       {/* Ghost Mode Modal */}
       {showGhostModeModal && (

@@ -1,8 +1,85 @@
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { Card } from "../components/patchwork/Card";
 
-export function RequestStep4({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => void }) {
+interface FormData {
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  address: string;
+  city: string;
+  province: string;
+  searchRadius: number;
+  timingType: "asap" | "specific_date" | "flexible";
+  specificDate: string;
+  specificTime: string;
+  budgetMin: string;
+  budgetMax: string;
+}
+
+interface RequestStep4Props {
+  onBack: () => void;
+  onSubmit: () => void;
+  formData: FormData;
+  onFormChange: (data: FormData) => void;
+}
+
+export function RequestStep4({ onBack, onSubmit, formData, onFormChange }: RequestStep4Props) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const createJobRequest = useMutation(api.jobRequests.createJobRequest);
+
+  const handleSubmit = async () => {
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      const timingData = {
+        type: formData.timingType,
+        specificDate: formData.timingType === "specific_date" ? formData.specificDate : undefined,
+        specificTime: formData.timingType === "specific_date" ? formData.specificTime : undefined,
+      };
+
+      const budgetData = formData.budgetMin || formData.budgetMax ? {
+        min: formData.budgetMin ? Math.round(parseFloat(formData.budgetMin) * 100) : 0,
+        max: formData.budgetMax ? Math.round(parseFloat(formData.budgetMax) * 100) : 0,
+      } : undefined;
+
+      await createJobRequest({
+        categoryId: formData.categoryId as any,
+        categoryName: formData.categoryName,
+        description: formData.description,
+        location: {
+          address: formData.address,
+          city: formData.city,
+          province: formData.province,
+          searchRadius: formData.searchRadius,
+        },
+        timing: timingData,
+        budget: budgetData,
+      });
+
+      onSubmit();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create request";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const timingDisplay = formData.timingType === "asap" 
+    ? "ASAP"
+    : formData.timingType === "specific_date"
+    ? `${formData.specificDate}${formData.specificTime ? ` at ${formData.specificTime}` : ""}`
+    : "Flexible";
+
+  const budgetDisplay = formData.budgetMin || formData.budgetMax
+    ? `$${formData.budgetMin || "0"}-$${formData.budgetMax || "∞"}`
+    : "Not specified";
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <AppBar title="New Request" onBack={onBack} />
@@ -27,41 +104,45 @@ export function RequestStep4({ onBack, onSubmit }: { onBack: () => void; onSubmi
           <Card>
             <div className="mb-2">
               <p className="text-[#6B7280] text-sm mb-1">Category</p>
-              <p className="text-neutral-900">Plumbing</p>
+              <p className="text-neutral-900">{formData.categoryName}</p>
             </div>
           </Card>
 
           <Card>
             <div className="mb-2">
               <p className="text-[#6B7280] text-sm mb-1">Task description</p>
-              <p className="text-neutral-900">
-                Kitchen sink is leaking under the counter. Water drips constantly even when taps are off. Need someone to diagnose and fix ASAP.
-              </p>
+              <p className="text-neutral-900">{formData.description}</p>
             </div>
           </Card>
 
           <Card>
             <div className="mb-2">
               <p className="text-[#6B7280] text-sm mb-1">Location</p>
-              <p className="text-neutral-900">Toronto, ON</p>
-              <p className="text-[#6B7280] text-sm">Search radius: 25 km</p>
+              <p className="text-neutral-900">{formData.address}, {formData.city}, {formData.province}</p>
+              <p className="text-[#6B7280] text-sm">Search radius: {formData.searchRadius} km</p>
             </div>
           </Card>
 
           <Card>
             <div className="mb-2">
               <p className="text-[#6B7280] text-sm mb-1">Timing</p>
-              <p className="text-neutral-900">Within 48 hours</p>
+              <p className="text-neutral-900">{timingDisplay}</p>
             </div>
           </Card>
 
           <Card>
             <div className="mb-2">
               <p className="text-[#6B7280] text-sm mb-1">Budget</p>
-              <p className="text-neutral-900">$100-150</p>
+              <p className="text-neutral-900">{budgetDisplay}</p>
             </div>
           </Card>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-6">
+            <p className="text-red-700 text-sm">{error}</p>
+          </div>
+        )}
 
         <div className="bg-neutral-50 rounded-lg p-4 mt-6">
           <p className="text-neutral-900 mb-2">What happens next?</p>
@@ -75,8 +156,13 @@ export function RequestStep4({ onBack, onSubmit }: { onBack: () => void; onSubmi
       </div>
 
       <div className="p-4 border-t border-neutral-200">
-        <Button variant="primary" fullWidth onClick={onSubmit}>
-          Send Request
+        <Button 
+          variant="primary" 
+          fullWidth 
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? "Sending..." : "Send Request"}
         </Button>
       </div>
     </div>

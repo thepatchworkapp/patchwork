@@ -1,12 +1,31 @@
-import { Calendar, DollarSign } from "lucide-react";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { Input } from "../components/patchwork/Input";
 import { Chip } from "../components/patchwork/Chip";
-import { useState } from "react";
 
-export function RequestStep3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-  const [timing, setTiming] = useState("flexible");
+interface FormData {
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  address: string;
+  city: string;
+  province: string;
+  searchRadius: number;
+  timingType: "asap" | "specific_date" | "flexible";
+  specificDate: string;
+  specificTime: string;
+  budgetMin: string;
+  budgetMax: string;
+}
+
+interface RequestStep3Props {
+  onBack: () => void;
+  onNext: () => void;
+  formData: FormData;
+  onFormChange: (data: FormData) => void;
+}
+
+export function RequestStep3({ onBack, onNext, formData, onFormChange }: RequestStep3Props) {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -31,26 +50,82 @@ export function RequestStep3({ onBack, onNext }: { onBack: () => void; onNext: (
         <div className="mb-6">
           <label className="block mb-3 text-neutral-900">When do you need this done?</label>
           <div className="flex flex-wrap gap-2 mb-4">
-            <Chip label="Flexible" active={timing === "flexible"} onClick={() => setTiming("flexible")} />
-            <Chip label="Within 48h" active={timing === "48h"} onClick={() => setTiming("48h")} />
-            <Chip label="This week" active={timing === "week"} onClick={() => setTiming("week")} />
-            <Chip label="Specific date" active={timing === "specific"} onClick={() => setTiming("specific")} />
+            <Chip 
+              label="Flexible" 
+              active={formData.timingType === "flexible"} 
+              onClick={() => onFormChange({
+                ...formData,
+                timingType: "flexible",
+                specificDate: "",
+                specificTime: "",
+              })} 
+            />
+            <Chip 
+              label="ASAP" 
+              active={formData.timingType === "asap"} 
+              onClick={() => onFormChange({
+                ...formData,
+                timingType: "asap",
+                specificDate: "",
+                specificTime: "",
+              })} 
+            />
+            <Chip 
+              label="Specific date" 
+              active={formData.timingType === "specific_date"} 
+              onClick={() => onFormChange({
+                ...formData,
+                timingType: "specific_date",
+              })} 
+            />
           </div>
 
-          {timing === "specific" && (
+          {formData.timingType === "specific_date" && (
             <div className="space-y-3">
-              <Input type="date" label="Preferred date" />
-              <Input type="time" label="Preferred time" />
+              <Input 
+                type="date" 
+                label="Preferred date"
+                value={formData.specificDate}
+                onChange={(e) => onFormChange({
+                  ...formData,
+                  specificDate: e.target.value,
+                })}
+              />
+              <Input 
+                type="time" 
+                label="Preferred time"
+                value={formData.specificTime}
+                onChange={(e) => onFormChange({
+                  ...formData,
+                  specificTime: e.target.value,
+                })}
+              />
             </div>
           )}
         </div>
 
         <div className="mb-6">
-          <Input
-            type="text"
-            label="Budget (optional)"
-            placeholder="$100-150"
-          />
+          <label className="block mb-3 text-neutral-900">Budget (optional)</label>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              type="number"
+              placeholder="Min ($)"
+              value={formData.budgetMin}
+              onChange={(e) => onFormChange({
+                ...formData,
+                budgetMin: e.target.value,
+              })}
+            />
+            <Input
+              type="number"
+              placeholder="Max ($)"
+              value={formData.budgetMax}
+              onChange={(e) => onFormChange({
+                ...formData,
+                budgetMax: e.target.value,
+              })}
+            />
+          </div>
           <p className="text-[#6B7280] text-sm mt-2">
             Providing a budget helps Taskers assess if they're a good fit, but the final price is negotiated.
           </p>

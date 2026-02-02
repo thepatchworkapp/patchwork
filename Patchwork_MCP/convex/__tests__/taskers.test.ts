@@ -322,56 +322,277 @@ describe("taskers", () => {
     expect(hvacCategory?.fixedRate).toBe(25000);
   });
 
-  test("removeTaskerCategory removes category (keeps profile if other categories exist)", async () => {
-    const t = convexTest(schema, modules);
-    
-    const asUser = t.withIdentity({
-      tokenIdentifier: "google|505",
-      email: "removecat@example.com",
-    });
+   test("removeTaskerCategory removes category (keeps profile if other categories exist)", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|505",
+       email: "removecat@example.com",
+     });
 
-    await asUser.mutation(api.users.createProfile, {
-      name: "Remove Category Test",
-      city: "Halifax",
-      province: "NS",
-    });
+     await asUser.mutation(api.users.createProfile, {
+       name: "Remove Category Test",
+       city: "Halifax",
+       province: "NS",
+     });
 
-    await t.mutation(api.categories.seedCategories);
-    const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
-    });
-    const electrical = await t.query(api.categories.getCategoryBySlug, {
-      slug: "electrical",
-    });
+     await t.mutation(api.categories.seedCategories);
+     const plumbing = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+     const electrical = await t.query(api.categories.getCategoryBySlug, {
+       slug: "electrical",
+     });
 
-    // Create profile with plumbing
-    await asUser.mutation(api.taskers.createTaskerProfile, {
-      displayName: "Multi-Trade Worker",
-      categoryId: plumbing!._id,
-      categoryBio: "Plumbing services",
-      rateType: "hourly",
-      hourlyRate: 7000,
-      serviceRadius: 20,
-    });
+     // Create profile with plumbing
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Multi-Trade Worker",
+       categoryId: plumbing!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
 
-    // Add electrical
-    await asUser.mutation(api.taskers.addTaskerCategory, {
-      categoryId: electrical!._id,
-      categoryBio: "Electrical services",
-      rateType: "hourly",
-      hourlyRate: 8000,
-      serviceRadius: 20,
-    });
+     // Add electrical
+     await asUser.mutation(api.taskers.addTaskerCategory, {
+       categoryId: electrical!._id,
+       categoryBio: "Electrical services",
+       rateType: "hourly",
+       hourlyRate: 8000,
+       serviceRadius: 20,
+     });
 
-    // Remove plumbing category
-    await asUser.mutation(api.taskers.removeTaskerCategory, {
-      categoryId: plumbing!._id,
-    });
+     // Remove plumbing category
+     await asUser.mutation(api.taskers.removeTaskerCategory, {
+       categoryId: plumbing!._id,
+     });
 
-    // Verify only electrical remains
-    const profile = await asUser.query(api.taskers.getTaskerProfile);
-    expect(profile).not.toBeNull();
-    expect(profile?.categories).toHaveLength(1);
-    expect(profile?.categories[0].categoryId).toBe(electrical!._id);
-  });
+     // Verify only electrical remains
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile).not.toBeNull();
+     expect(profile?.categories).toHaveLength(1);
+     expect(profile?.categories[0].categoryId).toBe(electrical!._id);
+   });
+
+   test("updateSubscriptionPlan sets plan to basic correctly", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|601",
+       email: "basic@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Basic Plan Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+
+     // Create tasker profile
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Basic Subscriber",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     // Update to basic plan
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "basic",
+     });
+
+     // Verify plan was set correctly
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("basic");
+     expect(profile?.ghostMode).toBe(false);
+     expect(profile?.premiumPin).toBeUndefined();
+   });
+
+   test("updateSubscriptionPlan sets plan to premium and generates premiumPin", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|602",
+       email: "premium@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Premium Plan Test",
+       city: "Vancouver",
+       province: "BC",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "electrical",
+     });
+
+     // Create tasker profile
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Premium Subscriber",
+       categoryId: category!._id,
+       categoryBio: "Electrical services",
+       rateType: "hourly",
+       hourlyRate: 8000,
+       serviceRadius: 25,
+     });
+
+     // Update to premium plan
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "premium",
+     });
+
+     // Verify plan was set correctly and premiumPin was generated
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("premium");
+     expect(profile?.ghostMode).toBe(false);
+     expect(profile?.premiumPin).toBeDefined();
+     expect(profile?.premiumPin).toMatch(/^\d{6}$/); // 6-digit string
+   });
+
+   test("updateSubscriptionPlan clears ghostMode when activating subscription", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|603",
+       email: "ghostclear@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Ghost Clear Test",
+       city: "Calgary",
+       province: "AB",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "handyman",
+     });
+
+     // Create tasker profile
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Ghost Mode Tasker",
+       categoryId: category!._id,
+       categoryBio: "General handyman",
+       rateType: "hourly",
+       hourlyRate: 6500,
+       serviceRadius: 15,
+     });
+
+     // First set to basic plan
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "basic",
+     });
+
+     // Verify ghostMode is false
+     let profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.ghostMode).toBe(false);
+
+     // Update to premium plan
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "premium",
+     });
+
+     // Verify ghostMode is still false
+     profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("setGhostMode fails without active subscription", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|604",
+       email: "noghost@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "No Ghost Test",
+       city: "Montreal",
+       province: "QC",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "painting",
+     });
+
+     // Create tasker profile (subscriptionPlan defaults to "none")
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "No Subscription Tasker",
+       categoryId: category!._id,
+       categoryBio: "Painting services",
+       rateType: "hourly",
+       hourlyRate: 5500,
+       serviceRadius: 20,
+     });
+
+     // Try to set ghost mode without subscription - should throw
+     await expect(
+       asUser.mutation(api.taskers.setGhostMode, {
+         ghostMode: true,
+       })
+     ).rejects.toThrow("Active subscription required to toggle ghost mode");
+   });
+
+   test("setGhostMode succeeds with active subscription", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|605",
+       email: "withghost@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "With Ghost Test",
+       city: "Edmonton",
+       province: "AB",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "hvac",
+     });
+
+     // Create tasker profile
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Ghost Mode Enabled Tasker",
+       categoryId: category!._id,
+       categoryBio: "HVAC services",
+       rateType: "hourly",
+       hourlyRate: 9000,
+       serviceRadius: 30,
+     });
+
+     // Set subscription to basic
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "basic",
+     });
+
+     // Enable ghost mode
+     await asUser.mutation(api.taskers.setGhostMode, {
+       ghostMode: true,
+     });
+
+     // Verify ghost mode is enabled
+     let profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.ghostMode).toBe(true);
+
+     // Disable ghost mode
+     await asUser.mutation(api.taskers.setGhostMode, {
+       ghostMode: false,
+     });
+
+     // Verify ghost mode is disabled
+     profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.ghostMode).toBe(false);
+   });
 });

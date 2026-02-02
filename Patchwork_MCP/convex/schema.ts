@@ -302,15 +302,31 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_seeker", ["seekerId"])
-    .index("by_tasker", ["taskerId"])
-    .index("by_status", ["status"])
-    .index("by_seeker_status", ["seekerId", "status"])
-    .index("by_tasker_status", ["taskerId", "status"]),
+     .index("by_seeker", ["seekerId"])
+     .index("by_tasker", ["taskerId"])
+     .index("by_status", ["status"])
+     .index("by_seeker_status", ["seekerId", "status"])
+     .index("by_tasker_status", ["taskerId", "status"]),
 
-  // ============================================
-  // JOB REQUESTS
-  // ============================================
+   /**
+    * Review for a completed job (bidirectional)
+    */
+   reviews: defineTable({
+     jobId: v.id("jobs"),
+     reviewerId: v.id("users"),
+     revieweeId: v.id("users"),
+     rating: v.number(), // 1-5, validated in mutation
+     text: v.string(),
+     createdAt: v.number(),
+   })
+     .index("by_job_reviewer", ["jobId", "reviewerId"]) // Unique constraint
+     .index("by_job", ["jobId"])
+     .index("by_reviewer", ["reviewerId"])
+     .index("by_reviewee", ["revieweeId"]),
+
+   // ============================================
+   // JOB REQUESTS
+   // ============================================
 
   /**
    * Job request posted by seeker
@@ -368,4 +384,10 @@ export default defineSchema({
     .index("by_created", ["createdAt"])
     .index("by_location", ["location.coordinates.lat", "location.coordinates.lng"])
     .index("by_seeker_status", ["seekerId", "status"]),
+
+  otps: defineTable({
+    email: v.string(),
+    otp: v.string(),
+    createdAt: v.number(),
+  }).index("by_email", ["email"]),
 });

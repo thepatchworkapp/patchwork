@@ -80,4 +80,31 @@ describe("users", () => {
       })
     ).rejects.toThrow();
   });
+
+  test("createProfile is idempotent - returns existing user ID on duplicate", async () => {
+    const t = convexTest(schema, modules);
+    
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|idempotent789",
+      email: "idempotent@example.com",
+    });
+
+    const firstUserId = await asUser.mutation(api.users.createProfile, {
+      name: "First Call",
+      city: "Ottawa",
+      province: "ON",
+    });
+
+    const secondUserId = await asUser.mutation(api.users.createProfile, {
+      name: "Second Call",
+      city: "Calgary",
+      province: "AB",
+    });
+
+    expect(secondUserId).toBe(firstUserId);
+
+    const user = await asUser.query(api.users.getCurrentUser);
+    expect(user?.name).toBe("First Call");
+    expect(user?.location?.city).toBe("Ottawa");
+  });
 });

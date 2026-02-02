@@ -51,6 +51,11 @@ export const sendProposal = mutation({
       content: "Proposal sent",
     });
 
+    await ctx.runMutation(internal.messages.sendSystemMessage, {
+      conversationId: args.conversationId,
+      systemType: "proposal_sent",
+    });
+
     return proposalId;
   },
 });
@@ -193,6 +198,11 @@ export const counterProposal = mutation({
       senderId: user._id,
       proposalId: counterProposalId,
       content: "Counter proposal sent",
+    });
+
+    await ctx.runMutation(internal.messages.sendSystemMessage, {
+      conversationId: originalProposal.conversationId,
+      systemType: "proposal_countered",
     });
 
     return counterProposalId;

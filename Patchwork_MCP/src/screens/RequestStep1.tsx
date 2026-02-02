@@ -1,14 +1,47 @@
-import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { Textarea } from "../components/patchwork/Input";
 import { Chip } from "../components/patchwork/Chip";
 
-export function RequestStep1({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-  const [category, setCategory] = useState("Plumbing");
-  const [description, setDescription] = useState("");
+interface FormData {
+  categoryId: string;
+  categoryName: string;
+  description: string;
+  address: string;
+  city: string;
+  province: string;
+  searchRadius: number;
+  timingType: "asap" | "specific_date" | "flexible";
+  specificDate: string;
+  specificTime: string;
+  budgetMin: string;
+  budgetMax: string;
+}
 
-  const categories = ["Plumbing", "Electrical", "Handyman", "Cleaning", "Moving", "Painting"];
+interface RequestStep1Props {
+  onBack: () => void;
+  onNext: () => void;
+  formData: FormData;
+  onFormChange: (data: FormData) => void;
+}
+
+export function RequestStep1({ onBack, onNext, formData, onFormChange }: RequestStep1Props) {
+  const categories = useQuery(api.categories.listCategories);
+
+  if (!categories) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col">
+        <AppBar title="New Request" onBack={onBack} />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-neutral-600">Loading categories...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedCategory = categories.find(c => c._id === formData.categoryId);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -35,10 +68,14 @@ export function RequestStep1({ onBack, onNext }: { onBack: () => void; onNext: (
           <div className="flex flex-wrap gap-2">
             {categories.map((cat) => (
               <Chip
-                key={cat}
-                label={cat}
-                active={category === cat}
-                onClick={() => setCategory(cat)}
+                key={cat._id}
+                label={cat.name}
+                active={formData.categoryId === cat._id}
+                onClick={() => onFormChange({
+                  ...formData,
+                  categoryId: cat._id,
+                  categoryName: cat.name,
+                })}
               />
             ))}
           </div>
@@ -47,8 +84,11 @@ export function RequestStep1({ onBack, onNext }: { onBack: () => void; onNext: (
         <Textarea
           label="Describe your task"
           placeholder="E.g., Kitchen sink is leaking under the counter. Water drips constantly even when taps are off. Need someone to diagnose and fix ASAP."
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          value={formData.description}
+          onChange={(e) => onFormChange({
+            ...formData,
+            description: e.target.value,
+          })}
           rows={6}
         />
 
@@ -58,7 +98,12 @@ export function RequestStep1({ onBack, onNext }: { onBack: () => void; onNext: (
       </div>
 
       <div className="p-4 border-t border-neutral-200">
-        <Button variant="primary" fullWidth onClick={onNext} disabled={!description.trim()}>
+        <Button 
+          variant="primary" 
+          fullWidth 
+          onClick={onNext} 
+          disabled={!formData.categoryId || !formData.description.trim()}
+        >
           Continue
         </Button>
       </div>

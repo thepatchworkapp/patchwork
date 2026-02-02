@@ -1,0 +1,41 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e4]:
+  - heading "Messages" [level=1] [ref=e7]
+  - generic [ref=e9]:
+    - button "Seeker" [ref=e10]: Seeker
+    - button "Tasker" [active] [ref=e12]:
+      - img [ref=e13]
+      - text: Tasker
+  - generic [ref=e17]:
+    - img [ref=e18]
+    - textbox "Search conversations..." [ref=e21]
+  - paragraph [ref=e23]: No conversations yet.
+  - generic [ref=e25]:
+    - button "Seek" [ref=e26]:
+      - img [ref=e27]
+      - generic [ref=e30]: Seek
+    - button "Jobs" [ref=e31]:
+      - img [ref=e32]
+      - generic [ref=e35]: Jobs
+    - button "Messages" [ref=e36]:
+      - img [ref=e37]
+      - generic [ref=e39]: Messages
+    - button "Profile" [ref=e40]:
+      - img [ref=e41]
+      - generic [ref=e44]: Profile
+  - generic [ref=e46]:
+    - generic [ref=e47]:
+      - img [ref=e49]
+      - heading "Become a Tasker" [level=3] [ref=e52]
+      - paragraph [ref=e53]: "Do you have a service to provide? Sign up as a Tasker to:"
+      - generic [ref=e54]:
+        - paragraph [ref=e58]: Receive job requests from clients in your area
+        - paragraph [ref=e62]: Set your own rates and schedule
+        - paragraph [ref=e66]: Build your reputation through real reviews
+        - paragraph [ref=e70]: Connect with clients within 250km
+    - generic [ref=e71]:
+      - button "Not Now" [ref=e72]
+      - button "Continue" [ref=e73]
+```

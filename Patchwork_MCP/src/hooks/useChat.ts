@@ -81,10 +81,16 @@ export interface UseChatReturn {
   ) => Promise<void>;
   loadMoreMessages: () => void;
   currentUser: any | null;
+  completeJob: (jobId: Id<"jobs">) => Promise<void>;
+  createReview: (jobId: Id<"jobs">, rating: number, text: string) => Promise<void>;
+  conversation: Conversation | null | undefined;
+  job: any | null | undefined;
 }
 
 export function useChat(conversationId: Id<"conversations">): UseChatReturn {
   const currentUser = useQuery(api.users.getCurrentUser);
+  const conversation = useQuery(api.conversations.getConversation, { conversationId });
+  const job = useQuery(api.jobs.getJob, conversation?.jobId ? { jobId: conversation.jobId } : "skip");
   
   const { results, status, loadMore } = usePaginatedQuery(
     api.messages.listMessages,
@@ -97,6 +103,8 @@ export function useChat(conversationId: Id<"conversations">): UseChatReturn {
   const acceptProposalMutation = useMutation(api.proposals.acceptProposal);
   const declineProposalMutation = useMutation(api.proposals.declineProposal);
   const counterProposalMutation = useMutation(api.proposals.counterProposal);
+  const completeJobMutation = useMutation(api.jobs.completeJob);
+  const createReviewMutation = useMutation(api.reviews.createReview);
 
   const messages = useMemo(() => {
     return [...(results || [])].reverse() as Message[];
@@ -155,6 +163,14 @@ export function useChat(conversationId: Id<"conversations">): UseChatReturn {
     });
   }, [counterProposalMutation]);
 
+  const completeJob = useCallback(async (jobId: Id<"jobs">) => {
+    await completeJobMutation({ jobId });
+  }, [completeJobMutation]);
+
+  const createReview = useCallback(async (jobId: Id<"jobs">, rating: number, text: string) => {
+    await createReviewMutation({ jobId, rating, text });
+  }, [createReviewMutation]);
+
   const loadMoreMessages = useCallback(() => {
     if (status === "CanLoadMore") {
       loadMore(25);
@@ -172,5 +188,9 @@ export function useChat(conversationId: Id<"conversations">): UseChatReturn {
     counterProposal,
     loadMoreMessages,
     currentUser,
+    completeJob,
+    createReview,
+    conversation,
+    job,
   };
 }

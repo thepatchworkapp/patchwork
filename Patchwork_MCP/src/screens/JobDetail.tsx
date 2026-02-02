@@ -1,115 +1,158 @@
-import { MapPin, Clock, DollarSign, MessageCircle, X, Check } from "lucide-react";
+import { Clock, DollarSign, MessageCircle, Calendar } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
-import { Avatar } from "../components/patchwork/Avatar";
 import { Badge } from "../components/patchwork/Badge";
 import { Card } from "../components/patchwork/Card";
 
-export function JobDetail({ onBack }: { onBack: () => void }) {
+interface JobDetailProps {
+  jobId: Id<"jobs">;
+  onBack: () => void;
+  onNavigate?: (screen: string) => void;
+}
+
+export function JobDetail({ jobId, onBack, onNavigate }: JobDetailProps) {
+  const job = useQuery(api.jobs.getJob, { jobId });
+  const canReview = useQuery(api.reviews.canReview, { jobId });
+
+  if (job === undefined) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4F46E5]" />
+      </div>
+    );
+  }
+
+  if (job === null) {
+    return (
+      <div className="min-h-screen bg-neutral-50 pb-24">
+        <AppBar title="Job Detail" onBack={onBack} />
+        <div className="p-4 text-center text-neutral-600">Job not found</div>
+      </div>
+    );
+  }
+
+  const startDate = new Date(job.startDate).toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const completedDate = job.completedDate 
+    ? new Date(job.completedDate).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+    : null;
+
+  const isCompleted = job.status === "completed";
+
   return (
     <div className="min-h-screen bg-neutral-50 pb-24">
-      <AppBar title="Job Request" onBack={onBack} />
+      <AppBar title="Job Detail" onBack={onBack} />
 
       <div className="px-4 py-6 space-y-6">
         <Card>
-          <div className="flex items-start gap-3 mb-4">
-            <Avatar src="" alt="Sarah M." size="md" />
-            <div className="flex-1">
-              <p className="text-neutral-900 mb-1">Sarah M.</p>
-              <div className="flex items-center gap-2">
-                <Badge variant="success">Verified</Badge>
-                <span className="text-[#6B7280] text-sm">3 completed jobs</span>
-              </div>
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-neutral-500 text-sm mb-1">{job.categoryName}</p>
+              <h2 className="text-xl font-semibold text-neutral-900 mb-2">
+                {job.description.split('\n')[0].substring(0, 50)}
+                {job.description.length > 50 ? "..." : ""}
+              </h2>
             </div>
-            <Badge variant="warning">New</Badge>
+            <Badge variant={
+              job.status === "completed" ? "success" :
+              job.status === "in_progress" ? "primary" :
+              "neutral"
+            }>
+              {job.status.replace("_", " ")}
+            </Badge>
           </div>
         </Card>
 
         <div>
-          <h2 className="text-neutral-900 mb-3">Kitchen sink leak repair</h2>
-          <p className="text-[#6B7280] mb-4">
-            Kitchen sink is leaking under the counter. Water drips constantly even when taps are off. Need someone to diagnose and fix ASAP. I have a shutoff valve under the sink that I've turned off for now.
+          <h3 className="text-neutral-900 font-medium mb-2">Description</h3>
+          <p className="text-neutral-600 whitespace-pre-wrap">
+            {job.notes || job.description}
           </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Card>
             <div className="flex items-start gap-2">
-              <MapPin size={20} className="text-[#6B7280] flex-shrink-0 mt-0.5" />
+              <Clock size={20} className="text-neutral-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-[#6B7280] text-sm mb-1">Location</p>
-                <p className="text-neutral-900">3.2 km away</p>
-                <p className="text-[#6B7280] text-sm">Toronto, ON</p>
+                <p className="text-neutral-500 text-sm mb-1">
+                  {isCompleted ? "Completed" : "Start Date"}
+                </p>
+                <p className="text-neutral-900 text-sm font-medium">
+                  {isCompleted ? completedDate : startDate}
+                </p>
               </div>
             </div>
           </Card>
 
           <Card>
             <div className="flex items-start gap-2">
-              <Clock size={20} className="text-[#6B7280] flex-shrink-0 mt-0.5" />
+              <DollarSign size={20} className="text-neutral-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-[#6B7280] text-sm mb-1">Timing</p>
-                <p className="text-neutral-900">Within 48h</p>
-                <p className="text-[#6B7280] text-sm">Flexible</p>
+                <p className="text-neutral-500 text-sm mb-1">Rate</p>
+                <p className="text-neutral-900 font-medium">
+                  ${(job.rate / 100).toFixed(2)}
+                </p>
+                <p className="text-neutral-500 text-xs capitalize">
+                  {job.rateType}
+                </p>
               </div>
             </div>
           </Card>
 
           <Card>
             <div className="flex items-start gap-2">
-              <DollarSign size={20} className="text-[#6B7280] flex-shrink-0 mt-0.5" />
+              <Calendar size={20} className="text-neutral-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-[#6B7280] text-sm mb-1">Budget</p>
-                <p className="text-neutral-900">$100-150</p>
-                <p className="text-[#6B7280] text-sm">Estimate</p>
+                <p className="text-neutral-500 text-sm mb-1">Created</p>
+                <p className="text-neutral-900 text-sm">
+                  {new Date(job.createdAt).toLocaleDateString()}
+                </p>
               </div>
             </div>
           </Card>
-
+          
           <Card>
-            <div className="flex items-start gap-2">
-              <MessageCircle size={20} className="text-[#6B7280] flex-shrink-0 mt-0.5" />
+             <div className="flex items-start gap-2">
+              <MessageCircle size={20} className="text-neutral-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-[#6B7280] text-sm mb-1">Posted</p>
-                <p className="text-neutral-900">2 hours ago</p>
-                <p className="text-[#6B7280] text-sm">3 quotes sent</p>
+                <p className="text-neutral-500 text-sm mb-1">Status</p>
+                <p className="text-neutral-900 text-sm capitalize">
+                  {job.status.replace("_", " ")}
+                </p>
               </div>
             </div>
           </Card>
         </div>
+      </div>
 
-        <div>
-          <h3 className="text-neutral-900 mb-3">Photos</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {[1, 2].map((i) => (
-              <div key={i} className="aspect-square bg-neutral-200 rounded-lg" />
-            ))}
+      {isCompleted && canReview && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-4">
+          <div className="max-w-[390px] mx-auto">
+            <Button 
+              variant="primary" 
+              fullWidth
+              onClick={() => onNavigate?.("leave-review")}
+            >
+              Leave Review
+            </Button>
           </div>
         </div>
-
-        <div className="bg-indigo-50 rounded-lg p-4">
-          <p className="text-[#4F46E5] mb-2">💡 Response tip</p>
-          <p className="text-[#6B7280] text-sm">
-            Responding within 1 hour increases your chances of being hired by 60%. Be specific about your availability and pricing.
-          </p>
-        </div>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-4">
-        <div className="max-w-[390px] mx-auto flex gap-3">
-          <Button variant="secondary">
-            <X size={20} />
-          </Button>
-          <Button variant="secondary" fullWidth>
-            <MessageCircle size={20} className="mr-2" />
-            Message
-          </Button>
-          <Button variant="primary" fullWidth>
-            <Check size={20} className="mr-2" />
-            Send Quote
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useAuth } from "./lib/auth";
 import { TaskerSuccess } from "./screens/TaskerSuccess";
@@ -83,6 +83,8 @@ export default function App() {
   const [history, setHistory] = useState<Screen[]>(["home"]);
   const [isTasker, setIsTasker] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<Id<"conversations"> | null>(null);
+  const [activeJobId, setActiveJobId] = useState<Id<"jobs"> | null>(null);
+  const [activeTaskerId, setActiveTaskerId] = useState<Id<"taskerProfiles"> | null>(null);
   // Mock user photo - in real app, would come from CreateProfile
   const [userPhoto] = useState<string>("");
   const [displayName, setDisplayName] = useState("");
@@ -94,17 +96,41 @@ export default function App() {
   const [categoryServiceRadius, setCategoryServiceRadius] = useState(50);
   const [categoryPhotos, setCategoryPhotos] = useState<string[]>([]);
   const [pendingNewCategory, setPendingNewCategory] = useState<string | null>(null);
-  const [verificationEmail, setVerificationEmail] = useState("");
-  
-  // Subscription tracking
-  const [subscriptionPlan, setSubscriptionPlan] = useState<"none" | "basic" | "premium">("none"); // Mock: no subscription
-  const [pendingCategories, setPendingCategories] = useState<string[]>([]);
+   const [verificationEmail, setVerificationEmail] = useState("");
+   
+   // Subscription tracking
+   const [subscriptionPlan, setSubscriptionPlan] = useState<"none" | "basic" | "premium">("none"); // Mock: no subscription
+   const [pendingCategories, setPendingCategories] = useState<string[]>([]);
 
-  // Auth state
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const convexUser = useQuery(api.users.getCurrentUser);
-  const categories = useQuery(api.categories.listCategories);
-  const createTaskerProfile = useMutation(api.taskers.createTaskerProfile);
+   // Request form state (shared across RequestStep1-4)
+   const [requestFormData, setRequestFormData] = useState({
+     categoryId: "",
+     categoryName: "",
+     description: "",
+     address: "",
+     city: "",
+     province: "",
+     searchRadius: 25,
+     timingType: "flexible" as "asap" | "specific_date" | "flexible",
+     specificDate: "",
+     specificTime: "",
+     budgetMin: "",
+     budgetMax: "",
+   });
+
+   // Auth state
+   const { isAuthenticated, isLoading: authLoading } = useAuth();
+   const { isAuthenticated: convexAuth, isLoading: convexAuthLoading } = useConvexAuth();
+   const convexUser = useQuery(
+     api.users.getCurrentUser,
+     convexAuth ? {} : "skip"
+   );
+   const taskerProfile = useQuery(
+     api.taskers.getTaskerProfile,
+     convexAuth ? {} : "skip"
+   );
+   const categories = useQuery(api.categories.listCategories);
+   const createTaskerProfile = useMutation(api.taskers.createTaskerProfile);
 
   const navigate = (screen: Screen | string) => {
     const validScreen = screen as Screen;
@@ -154,30 +180,47 @@ export default function App() {
     }
   };
 
-  // Smart redirect based on auth state
-  useEffect(() => {
-    if (authLoading) return;
-    
-    const authScreens = ["sign-in", "create-account", "email-entry", "email-verify", "onboarding", "splash"];
-    const protectedScreens = ["home", "profile", "messages", "jobs", "browse", "categories"];
-    
-    if (!isAuthenticated) {
-      // Not authenticated - redirect to onboarding/sign-in if on protected screen
-      if (protectedScreens.includes(currentScreen) || currentScreen === "home") {
-        navigate("splash");
-      }
-    } else if (isAuthenticated && convexUser === null) {
-      // Authenticated but no profile yet - go to create profile
-      if (currentScreen !== "create-profile") {
-        navigate("create-profile");
-      }
-    } else if (isAuthenticated && convexUser) {
-      // Authenticated with profile - redirect to home if on auth screen
-      if (authScreens.includes(currentScreen)) {
-        navigate("home");
-      }
-    }
-  }, [isAuthenticated, convexUser, authLoading, currentScreen]);
+   // Sync subscription plan from tasker profile
+   useEffect(() => {
+     if (taskerProfile && taskerProfile.subscriptionPlan) {
+       setSubscriptionPlan(taskerProfile.subscriptionPlan);
+     }
+   }, [taskerProfile?.subscriptionPlan]);
+
+   // Smart redirect based on auth state
+   useEffect(() => {
+     if (authLoading || convexAuthLoading) return;
+
+     const authScreens = ["sign-in", "create-account", "email-entry", "email-verify", "onboarding", "splash"];
+     const protectedScreens = ["home", "profile", "messages", "jobs", "browse", "categories"];
+
+     if (!isAuthenticated || !convexAuth) {
+       if (protectedScreens.includes(currentScreen) || currentScreen === "home") {
+         navigate("splash");
+       }
+       return;
+     }
+
+     if (convexUser === undefined) return;
+
+     if (convexUser === null) {
+       if (currentScreen !== "create-profile") {
+         navigate("create-profile");
+       }
+       return;
+     }
+
+     if (authScreens.includes(currentScreen)) {
+       navigate("home");
+     }
+   }, [
+     authLoading,
+     convexAuthLoading,
+     isAuthenticated,
+     convexAuth,
+     convexUser,
+     currentScreen,
+   ]);
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -234,49 +277,74 @@ export default function App() {
         );
       
       case "home":
-        return <HomeSwipe onNavigate={navigate} />;
+        return (
+          <HomeSwipe 
+            onNavigate={navigate} 
+            onViewTasker={(id) => {
+              setActiveTaskerId(id);
+              navigate("provider-detail");
+            }}
+          />
+        );
       
       case "categories":
         return <Categories onNavigate={navigate} onBack={goBack} />;
       
       case "browse":
-        return <Browse onNavigate={navigate} onBack={goBack} />;
+        return (
+          <Browse 
+            onNavigate={navigate} 
+            onBack={goBack}
+            onViewTasker={(id) => {
+              setActiveTaskerId(id);
+              navigate("provider-detail");
+            }}
+          />
+        );
       
       case "provider-detail":
-        return <ProviderDetail onBack={goBack} onNavigate={navigate} />;
+        return <ProviderDetail taskerId={activeTaskerId} onBack={goBack} onNavigate={navigate} />;
       
-      case "request-step1":
-      case "post-job":
-        return (
-          <RequestStep1
-            onBack={goBack}
-            onNext={() => navigate("request-step2")}
-          />
-        );
-      
-      case "request-step2":
-        return (
-          <RequestStep2
-            onBack={goBack}
-            onNext={() => navigate("request-step3")}
-          />
-        );
-      
-      case "request-step3":
-        return (
-          <RequestStep3
-            onBack={goBack}
-            onNext={() => navigate("request-step4")}
-          />
-        );
-      
-      case "request-step4":
-        return (
-          <RequestStep4
-            onBack={goBack}
-            onSubmit={() => navigate("request-success")}
-          />
-        );
+       case "request-step1":
+       case "post-job":
+         return (
+           <RequestStep1
+             onBack={goBack}
+             onNext={() => navigate("request-step2")}
+             formData={requestFormData}
+             onFormChange={setRequestFormData}
+           />
+         );
+       
+       case "request-step2":
+         return (
+           <RequestStep2
+             onBack={goBack}
+             onNext={() => navigate("request-step3")}
+             formData={requestFormData}
+             onFormChange={setRequestFormData}
+           />
+         );
+       
+       case "request-step3":
+         return (
+           <RequestStep3
+             onBack={goBack}
+             onNext={() => navigate("request-step4")}
+             formData={requestFormData}
+             onFormChange={setRequestFormData}
+           />
+         );
+       
+       case "request-step4":
+         return (
+           <RequestStep4
+             onBack={goBack}
+             onSubmit={() => navigate("request-success")}
+             formData={requestFormData}
+             onFormChange={setRequestFormData}
+           />
+         );
       
       case "request-success":
         return (
@@ -395,7 +463,8 @@ export default function App() {
         );
       
       case "job-detail":
-        return <JobDetail onBack={goBack} />;
+        if (!activeJobId) return <HomeSwipe onNavigate={navigate} />;
+        return <JobDetail jobId={activeJobId} onBack={goBack} onNavigate={navigate} />;
       
       case "leave-review":
         return (
@@ -409,7 +478,15 @@ export default function App() {
         return <Help onBack={goBack} />;
       
       case "jobs":
-        return <Jobs onNavigate={navigate} />;
+        return (
+          <Jobs
+            onNavigate={navigate}
+            onOpenJob={(id) => {
+              setActiveJobId(id);
+              navigate("job-detail");
+            }}
+          />
+        );
       
       case "category-selection":
         return (

@@ -2,14 +2,20 @@ import { useState, useEffect } from "react";
 import { Star, MapPin, SlidersHorizontal, List, Map, Loader2 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { AppBar } from "../components/patchwork/AppBar";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Card } from "../components/patchwork/Card";
-import { Badge } from "../components/patchwork/Badge";
 import { Avatar } from "../components/patchwork/Avatar";
 
-export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) => void; onBack: () => void }) {
+interface BrowseProps {
+  onNavigate: (screen: string) => void;
+  onBack: () => void;
+  onViewTasker?: (taskerId: Id<"taskerProfiles">) => void;
+}
+
+export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
   const [view, setView] = useState<"list" | "map">("list");
   const { location, isLoading: isLocationLoading, requestLocation, error: locationError } = useUserLocation();
 
@@ -98,7 +104,13 @@ export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) =>
       ) : (
         <div className="p-4 space-y-3">
           {providers?.map((provider) => (
-            <Card key={provider.id} onClick={() => onNavigate("provider-detail")}>
+            <Card key={provider.id} onClick={() => {
+              if (onViewTasker) {
+                onViewTasker(provider.id);
+              } else {
+                onNavigate("provider-detail");
+              }
+            }}>
               <div className="flex gap-3">
                 <Avatar src="" alt={provider.name} size="lg" />
                 

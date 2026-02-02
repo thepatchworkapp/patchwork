@@ -19,7 +19,8 @@ export const createProfile = mutation({
       .first();
 
     if (existing) {
-      throw new Error("User already exists");
+      // Return existing user ID (idempotent) instead of throwing
+      return existing._id;
     }
 
     const now = Date.now();

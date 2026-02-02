@@ -302,3 +302,10 @@ await t.run(async (ctx) => {
 
 #### Verification
 - `bun test convex/__tests__/search.test.ts` (8/8 passing)
+
+## Task 6: Wire HomeSwipe to Real Data
+- Integrated `useQuery(api.search.searchTaskers)` into HomeSwipe.tsx.
+- Connected `useUserLocation` for geospatial search.
+- Added explicit loading state (spinner) and empty state (message + filter controls).
+- Used `useEffect` to reset card index when filters change.
+- Verified build success.

@@ -8,11 +8,15 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
+import type * as adminOtp from "../adminOtp.js";
 import type * as auth from "../auth.js";
 import type * as categories from "../categories.js";
 import type * as conversations from "../conversations.js";
 import type * as files from "../files.js";
+import type * as geospatial from "../geospatial.js";
 import type * as http from "../http.js";
+import type * as jobRequests from "../jobRequests.js";
 import type * as jobs from "../jobs.js";
 import type * as location from "../location.js";
 import type * as messages from "../messages.js";
@@ -30,11 +34,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
+  adminOtp: typeof adminOtp;
   auth: typeof auth;
   categories: typeof categories;
   conversations: typeof conversations;
   files: typeof files;
+  geospatial: typeof geospatial;
   http: typeof http;
+  jobRequests: typeof jobRequests;
   jobs: typeof jobs;
   location: typeof location;
   messages: typeof messages;

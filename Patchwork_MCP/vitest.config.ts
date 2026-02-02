@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    include: ["convex/__tests__/**/*.test.ts"],
+    exclude: ["tests/ui/**", "node_modules/**"],
   },
 });

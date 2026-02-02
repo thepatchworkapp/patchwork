@@ -19,14 +19,15 @@
 ```
 Patchwork_MCP/
 ├── convex/           # Backend (mutations, queries, schema)
-│   └── __tests__/    # Backend tests with convex-test
+│   └── __tests__/    # Backend tests with convex-test (85 tests)
 ├── src/
 │   ├── screens/      # 38 screen components (non-router navigation)
 │   ├── components/
 │   │   ├── ui/       # shadcn/ui components (48 files)
 │   │   └── patchwork/ # Custom app components (10 files)
+│   ├── hooks/        # Custom hooks (useUserLocation, useChat)
 │   └── styles/       # Tailwind + global CSS
-├── tests/ui/         # Browser-based UI tests
+├── tests/ui/         # Browser-based UI tests (Playwright)
 └── .sisyphus/        # Work plans and tracking
 ```
 
@@ -44,6 +45,19 @@ function Screen({ onNavigate, onBack }) {
 
 // Screen names are strings, not routes
 // See App.tsx for the screen state machine
+```
+
+### 1.5 Auth Readiness (Better Auth + Convex)
+
+Gate redirects and `getCurrentUser` on Convex auth readiness:
+
+```tsx
+import { useConvexAuth } from "convex/react";
+
+const { isAuthenticated: convexAuth, isLoading: convexAuthLoading } = useConvexAuth();
+const convexUser = useQuery(api.users.getCurrentUser, convexAuth ? {} : "skip");
+
+if (authLoading || convexAuthLoading) return;
 ```
 
 ### 2. Convex Backend Patterns
@@ -130,6 +144,38 @@ import { Dialog } from "@/components/ui/dialog";
 </div>
 ```
 
+### 6. Location Pattern (HomeSwipe/Browse)
+
+When using `useUserLocation`, request location on mount to avoid a skipped search query:
+
+```tsx
+useEffect(() => {
+  if (!location && !isLoading && !error) {
+    requestLocation();
+  }
+}, [location, isLoading, error, requestLocation]);
+```
+
+### 7. Subscription Pattern (Mock Payment Bypass)
+
+Subscriptions bypass real payment processing (RevenueCat will be used for mobile production):
+
+```typescript
+// Subscribe to a plan (no payment required in dev)
+const updateSubscription = useMutation(api.taskers.updateSubscriptionPlan);
+await updateSubscription({ plan: "premium" }); // or "basic"
+
+// Toggle ghost mode (requires active subscription)
+const setGhostMode = useMutation(api.taskers.setGhostMode);
+await setGhostMode({ ghostMode: true });
+```
+
+**Key behaviors:**
+- `updateSubscriptionPlan` sets ghostMode to false (user becomes visible)
+- `updateSubscriptionPlan` generates 6-digit `premiumPin` for Premium subscribers
+- `setGhostMode` throws error if `subscriptionPlan === "none"`
+- App.tsx syncs `subscriptionPlan` state from `getTaskerProfile` query
+
 ## Type Safety Rules
 
 **NEVER use:**
@@ -188,6 +234,20 @@ status: v.union(v.literal("pending"), v.literal("active")),
 3. **Hardcoded colors** throughout - Use CSS variables from index.css
 4. **No error boundaries** - Add try/catch for Convex queries
 
+## Recent Design Decisions
+
+### Subscription System (Feb 2026)
+- **Decision**: Mock payment bypass instead of Stripe integration
+- **Rationale**: Real payments will use RevenueCat for mobile app; no need to integrate Stripe for web-only dev
+- **Implementation**: `updateSubscriptionPlan` and `setGhostMode` mutations in `convex/taskers.ts`
+- **Future**: Add RevenueCat webhook to call same mutations after payment verification
+
+### Search & Discovery (Feb 2026)
+- **Decision**: Service area overlap matching (`seekerRadius + taskerServiceRadius`)
+- **Rationale**: Fair to both parties - seeker defines how far they'll travel, tasker defines service area
+- **Implementation**: `convex/search.ts` with `searchTaskers` query
+- **Note**: Using simple bounding box filter, not full geospatial component (sufficient for MVP)
+
 ## Build & Test Commands
 
 ```bash
@@ -197,6 +257,9 @@ npm run test       # Run Vitest in watch mode
 npm run test:run   # Run tests once
 npx convex dev     # Start Convex backend
 ```
+
+Notes:
+- Vitest is scoped to `convex/__tests__/**` and excludes `tests/ui/**` (Playwright)
 
 ## Environment Variables
 

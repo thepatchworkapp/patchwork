@@ -7,14 +7,45 @@ import { Button } from "../components/patchwork/Button";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { api } from "../../convex/_generated/api";
 
-export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void }) {
+import { Id } from "../../convex/_generated/dataModel";
+
+interface HomeSwipeProps {
+  onNavigate: (screen: string) => void;
+  onViewTasker?: (taskerId: Id<"taskerProfiles">) => void;
+}
+
+type TaskerCard = {
+  id: Id<"taskerProfiles">;
+  name: string;
+  category: string;
+  rating: number;
+  reviews: number;
+  price: string;
+  distance: string;
+  verified: boolean;
+  bio: string;
+  completedJobs: number;
+};
+
+export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
   const [selectedCategory, setSelectedCategory] = useState("All categories");
   const [showCategories, setShowCategories] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [radiusKm, setRadiusKm] = useState(25);
   const [showRadiusModal, setShowRadiusModal] = useState(false);
 
-  const { location, isLoading: locationLoading } = useUserLocation();
+  const {
+    location,
+    isLoading: locationLoading,
+    requestLocation,
+    error: locationError,
+  } = useUserLocation();
+
+  useEffect(() => {
+    if (!location && !locationLoading && !locationError) {
+      requestLocation();
+    }
+  }, [location, locationLoading, locationError, requestLocation]);
 
   useEffect(() => {
     setCurrentCardIndex(0);
@@ -51,7 +82,24 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
     "Tutoring"
   ];
 
-  if (taskers === undefined || locationLoading) {
+  if (locationError) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center px-6 text-center">
+        <MapPin className="w-10 h-10 text-neutral-300 mb-4" />
+        <p className="text-neutral-900 mb-2">Location access required</p>
+        <p className="text-neutral-600 text-sm mb-4">{locationError}</p>
+        <button
+          onClick={() => requestLocation()}
+          className="text-[#4F46E5] font-medium"
+        >
+          Try Again
+        </button>
+        <BottomNav active="home" onNavigate={onNavigate} />
+      </div>
+    );
+  }
+
+  if (locationLoading || (!location && !locationError) || taskers === undefined) {
     return (
       <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#4F46E5] animate-spin mb-4" />
@@ -61,7 +109,9 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
     );
   }
 
-  if (taskers.length === 0) {
+  const taskerList: TaskerCard[] = taskers ?? [];
+
+  if (taskerList.length === 0) {
     return (
       <div className="min-h-screen bg-neutral-50 pb-20">
         <div className="bg-white px-4 pt-12 pb-4 border-b border-neutral-200">
@@ -168,10 +218,10 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
     );
   }
 
-  const currentTasker = taskers[currentCardIndex];
+  const currentTasker = taskerList[currentCardIndex];
 
   const handleSkip = () => {
-    if (currentCardIndex < taskers.length - 1) {
+    if (currentCardIndex < taskerList.length - 1) {
       setCurrentCardIndex(currentCardIndex + 1);
     } else {
       // Reset to beginning or show "no more taskers" message
@@ -181,7 +231,7 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
 
   const handleLike = () => {
     // Save tasker to favorites
-    if (currentCardIndex < taskers.length - 1) {
+    if (currentCardIndex < taskerList.length - 1) {
       setCurrentCardIndex(currentCardIndex + 1);
     } else {
       setCurrentCardIndex(0);
@@ -189,7 +239,11 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
   };
 
   const handleViewProfile = () => {
-    onNavigate("provider-detail");
+    if (onViewTasker && currentTasker) {
+      onViewTasker(currentTasker.id);
+    } else {
+      onNavigate("provider-detail");
+    }
   };
 
   return (
@@ -311,7 +365,7 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
 
           {/* Card Counter */}
           <div className="text-center mt-4 text-[#6B7280]">
-            {currentCardIndex + 1} of {taskers.length}
+             {currentCardIndex + 1} of {taskerList.length}
           </div>
         </div>
       ) : (

@@ -1,90 +1,31 @@
 import { useState } from "react";
 import { Calendar, DollarSign } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { AppBar } from "../components/patchwork/AppBar";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Avatar } from "../components/patchwork/Avatar";
 import { Badge } from "../components/patchwork/Badge";
 
-export function Jobs({ onNavigate }: { onNavigate: (screen: string) => void }) {
+interface JobsProps {
+  onNavigate: (screen: string) => void;
+  onOpenJob: (id: Id<"jobs">) => void;
+}
+
+export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
   const [activeTab, setActiveTab] = useState<"in-progress" | "completed">("in-progress");
 
-  const inProgressJobs = [
-    {
-      id: "1",
-      taskerName: "Alex Chen",
-      taskerAvatar: "",
-      category: "Plumbing",
-      rate: 85,
-      rateType: "hourly" as const,
-      startDate: "Dec 18, 2024",
-      notes: "Kitchen sink repair - bringing own tools"
-    },
-    {
-      id: "2",
-      taskerName: "Maria Garcia",
-      taskerAvatar: "",
-      category: "House Cleaning",
-      rate: 250,
-      rateType: "fixed" as const,
-      startDate: "Dec 20, 2024",
-      notes: "Deep clean 3-bedroom apartment"
-    },
-    {
-      id: "3",
-      taskerName: "David Kim",
-      taskerAvatar: "",
-      category: "Electrical",
-      rate: 95,
-      rateType: "hourly" as const,
-      startDate: "Dec 22, 2024",
-      notes: "Install ceiling fan in living room"
-    }
-  ];
+  const allJobs = useQuery(api.jobs.listJobs);
 
-  const completedJobs = [
-    {
-      id: "4",
-      taskerName: "Sarah Johnson",
-      taskerAvatar: "",
-      category: "Moving Help",
-      rate: 400,
-      rateType: "fixed" as const,
-      completedDate: "Dec 10, 2024",
-      notes: "2-bedroom apartment move - 3 hours"
-    },
-    {
-      id: "5",
-      taskerName: "James Wilson",
-      taskerAvatar: "",
-      category: "Lawn Care",
-      rate: 60,
-      rateType: "hourly" as const,
-      completedDate: "Dec 5, 2024",
-      notes: "Mowing and edging front/back yard"
-    },
-    {
-      id: "6",
-      taskerName: "Emma Davis",
-      taskerAvatar: "",
-      category: "Painting",
-      rate: 500,
-      rateType: "fixed" as const,
-      completedDate: "Nov 28, 2024",
-      notes: "Two rooms - walls only, paint included"
-    },
-    {
-      id: "7",
-      taskerName: "Michael Brown",
-      taskerAvatar: "",
-      category: "Furniture Assembly",
-      rate: 55,
-      rateType: "hourly" as const,
-      completedDate: "Nov 15, 2024",
-      notes: "IKEA bedroom furniture set"
+  const jobs = allJobs?.filter((job) => {
+    if (activeTab === "in-progress") {
+      return job.status === "in_progress" || job.status === "pending";
     }
-  ];
+    return job.status === "completed";
+  });
 
-  const jobs = activeTab === "in-progress" ? inProgressJobs : completedJobs;
+  const isLoading = allJobs === undefined;
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
@@ -118,7 +59,11 @@ export function Jobs({ onNavigate }: { onNavigate: (screen: string) => void }) {
 
       {/* Jobs List */}
       <div className="p-4 space-y-3">
-        {jobs.length === 0 ? (
+        {isLoading ? (
+          <div className="p-8 flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4F46E5]"></div>
+          </div>
+        ) : !jobs || jobs.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-[#6B7280]">
               {activeTab === "in-progress"
@@ -129,15 +74,16 @@ export function Jobs({ onNavigate }: { onNavigate: (screen: string) => void }) {
         ) : (
           jobs.map((job) => (
             <div
-              key={job.id}
-              className="bg-white rounded-lg p-4 border border-neutral-200"
+              key={job._id}
+              onClick={() => onOpenJob(job._id)}
+              className="bg-white rounded-lg p-4 border border-neutral-200 cursor-pointer active:bg-neutral-50 transition-colors"
             >
               {/* Header */}
               <div className="flex items-start gap-3 mb-3">
-                <Avatar src={job.taskerAvatar} alt={job.taskerName} size="md" />
+                <Avatar src="" alt="Tasker" size="md" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-neutral-900 mb-1">{job.taskerName}</p>
-                  <Badge variant="neutral">{job.category}</Badge>
+                  <p className="text-neutral-900 mb-1">Tasker</p>
+                  <Badge variant="neutral">{job.categoryName}</Badge>
                 </div>
               </div>
 
@@ -155,15 +101,19 @@ export function Jobs({ onNavigate }: { onNavigate: (screen: string) => void }) {
                 <Calendar size={16} />
                 <span className="text-sm">
                   {activeTab === "in-progress"
-                    ? `Starts ${(job as typeof inProgressJobs[0]).startDate}`
-                    : `Completed ${(job as typeof completedJobs[0]).completedDate}`}
+                    ? `Starts ${new Date(job.startDate).toLocaleDateString()}`
+                    : `Completed ${
+                        job.completedDate
+                          ? new Date(job.completedDate).toLocaleDateString()
+                          : ""
+                      }`}
                 </span>
               </div>
 
               {/* Notes */}
-              {job.notes && (
+              {job.description && (
                 <div className="bg-neutral-50 rounded p-3">
-                  <p className="text-sm text-[#6B7280]">{job.notes}</p>
+                  <p className="text-sm text-[#6B7280]">{job.description}</p>
                 </div>
               )}
             </div>

@@ -1,5 +1,7 @@
 {
   "devDependencies": {
-    "agent-browser": "^0.8.6"
+    "@playwright/test": "^1.58.1",
+    "agent-browser": "^0.8.6",
+    "convex": "^1.31.7"
   }
 }

@@ -218,6 +218,73 @@ export const addTaskerCategory = mutation({
   },
 });
 
+export const getTaskerById = query({
+  args: { taskerId: v.id("taskerProfiles") },
+  handler: async (ctx, args) => {
+    const profile = await ctx.db.get(args.taskerId);
+    if (!profile) return null;
+
+    const user = await ctx.db.get(profile.userId);
+    if (!user) return null;
+
+    const taskerCategories = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
+      .collect();
+
+    const categoriesWithNames = await Promise.all(
+      taskerCategories.map(async (tc) => {
+        const category = await ctx.db.get(tc.categoryId);
+        return {
+          id: tc._id,
+          categoryId: tc.categoryId,
+          categoryName: category?.name ?? "Unknown",
+          categorySlug: category?.slug ?? "unknown",
+          bio: tc.bio,
+          rateType: tc.rateType,
+          hourlyRate: tc.hourlyRate,
+          fixedRate: tc.fixedRate,
+          serviceRadius: tc.serviceRadius,
+          completedJobs: tc.completedJobs,
+        };
+      })
+    );
+
+    const reviews = await ctx.db
+      .query("reviews")
+      .withIndex("by_reviewee", (q) => q.eq("revieweeId", profile.userId))
+      .order("desc")
+      .take(10);
+
+    const reviewsWithReviewers = await Promise.all(
+      reviews.map(async (r) => {
+        const reviewer = await ctx.db.get(r.reviewerId);
+        return {
+          id: r._id,
+          rating: r.rating,
+          text: r.text,
+          reviewerName: reviewer?.name ?? "Anonymous",
+          createdAt: r.createdAt,
+        };
+      })
+    );
+
+    return {
+      id: profile._id,
+      displayName: profile.displayName,
+      bio: profile.bio,
+      rating: profile.rating,
+      reviewCount: profile.reviewCount,
+      completedJobs: profile.completedJobs,
+      verified: profile.verified,
+      userName: user.name,
+      userPhoto: user.photo,
+      categories: categoriesWithNames,
+      reviews: reviewsWithReviewers,
+    };
+  },
+});
+
 export const removeTaskerCategory = mutation({
   args: {
     categoryId: v.id("categories"),
@@ -251,5 +318,78 @@ export const removeTaskerCategory = mutation({
     }
 
     await ctx.db.delete(category._id);
+  },
+});
+
+export const updateSubscriptionPlan = mutation({
+  args: {
+    plan: v.union(v.literal("basic"), v.literal("premium")),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    const profile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .first();
+
+    if (!profile) throw new Error("Tasker profile not found");
+
+    const updates: any = {
+      subscriptionPlan: args.plan,
+      ghostMode: false,
+      updatedAt: Date.now(),
+    };
+
+    // Generate 6-digit premiumPin for premium subscribers only
+    if (args.plan === "premium") {
+      updates.premiumPin = Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    await ctx.db.patch(profile._id, updates);
+  },
+});
+
+export const setGhostMode = mutation({
+  args: {
+    ghostMode: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    const profile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .first();
+
+    if (!profile) throw new Error("Tasker profile not found");
+
+    // Validate active subscription
+    if (profile.subscriptionPlan === "none") {
+      throw new Error("Active subscription required to toggle ghost mode");
+    }
+
+    const updates: any = {
+      ghostMode: args.ghostMode,
+      updatedAt: Date.now(),
+    };
+
+    await ctx.db.patch(profile._id, updates);
   },
 });

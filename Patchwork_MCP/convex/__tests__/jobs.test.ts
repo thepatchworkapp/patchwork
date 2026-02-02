@@ -90,7 +90,7 @@ describe("jobs", () => {
     })) as Doc<"jobs">;
 
     expect(job).toBeDefined();
-    expect(job.status).toBe("pending");
+    expect(job.status).toBe("in_progress");
     expect(job.rate).toBe(5000);
     expect(job.rateType).toBe("hourly");
     expect(job.proposalId).toBe(proposalId);
@@ -151,7 +151,7 @@ describe("jobs", () => {
     });
 
     expect(job).toBeDefined();
-    expect(job?.status).toBe("pending");
+    expect(job?.status).toBe("in_progress");
     expect(job?.rate).toBe(7500);
     expect(job?.rateType).toBe("flat");
     expect(job?.seekerId).toBe(seekerId);
@@ -323,15 +323,15 @@ describe("jobs", () => {
       proposalId,
     });
 
-    // List jobs with pending status filter
-    const pendingJobs = await asSeeker.query(api.jobs.listJobs, {
-      status: "pending",
+    // List jobs with in_progress status filter
+    const inProgressJobs = await asSeeker.query(api.jobs.listJobs, {
+      status: "in_progress",
     });
 
-    expect(pendingJobs.length).toBeGreaterThan(0);
-    const createdJob = pendingJobs.find((j) => j._id === result.jobId);
+    expect(inProgressJobs.length).toBeGreaterThan(0);
+    const createdJob = inProgressJobs.find((j) => j._id === result.jobId);
     expect(createdJob).toBeDefined();
-    expect(createdJob?.status).toBe("pending");
+    expect(createdJob?.status).toBe("in_progress");
 
     // List jobs with completed status filter (should not include our job)
     const completedJobs = await asSeeker.query(api.jobs.listJobs, {
@@ -340,5 +340,290 @@ describe("jobs", () => {
 
     const shouldNotExist = completedJobs.find((j) => j._id === result.jobId);
     expect(shouldNotExist).toBeUndefined();
+  });
+
+  test("seeker can complete in_progress job", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    // Create seeker
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_complete1",
+      email: "seeker_complete1@example.com",
+    });
+
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Complete 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Create tasker
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_complete1",
+      email: "tasker_complete1@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Complete 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Start conversation, send proposal, accept
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    // Complete job as seeker
+    const result = await asSeeker.mutation(api.jobs.completeJob, { jobId });
+
+    expect(result.jobId).toBe(jobId);
+
+    // Verify job status changed
+    const job = await asSeeker.query(api.jobs.getJob, { jobId });
+    expect(job?.status).toBe("completed");
+    expect(job?.completedDate).toBeDefined();
+    expect(typeof job?.completedDate).toBe("string");
+  });
+
+  test("tasker cannot complete job (unauthorized)", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    // Create seeker
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_complete2",
+      email: "seeker_complete2@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Complete 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Create tasker
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_complete2",
+      email: "tasker_complete2@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Complete 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Start conversation, send proposal, accept
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    // Try to complete job as tasker (should fail)
+    await expect(
+      asTasker.mutation(api.jobs.completeJob, { jobId })
+    ).rejects.toThrow("Only seeker can complete job");
+  });
+
+  test("cannot complete pending job", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    // Create seeker
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_complete3",
+      email: "seeker_complete3@example.com",
+    });
+
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Complete 3",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Create tasker
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_complete3",
+      email: "tasker_complete3@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Complete 3",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Start conversation, send proposal, accept
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    // Manually patch job to pending status (to test validation)
+    await t.run(async (ctx) => {
+      await ctx.db.patch(jobId, { status: "pending" });
+    });
+
+    // Try to complete pending job (should fail)
+    await expect(
+      asSeeker.mutation(api.jobs.completeJob, { jobId })
+    ).rejects.toThrow("Job must be in_progress to complete");
+  });
+
+  test("cannot complete already completed job", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    // Create seeker
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_complete4",
+      email: "seeker_complete4@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Complete 4",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Create tasker
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_complete4",
+      email: "tasker_complete4@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Complete 4",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Start conversation, send proposal, accept
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    // Complete job first time (should succeed)
+    await asSeeker.mutation(api.jobs.completeJob, { jobId });
+
+    // Try to complete again (should fail)
+    await expect(
+      asSeeker.mutation(api.jobs.completeJob, { jobId })
+    ).rejects.toThrow("Job must be in_progress to complete");
+  });
+
+  test("completeJob sets completedDate", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    // Create seeker
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_complete5",
+      email: "seeker_complete5@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Complete 5",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Create tasker
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_complete5",
+      email: "tasker_complete5@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Complete 5",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    // Start conversation, send proposal, accept
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    const beforeComplete = new Date().toISOString();
+
+    // Complete job
+    await asSeeker.mutation(api.jobs.completeJob, { jobId });
+
+    const afterComplete = new Date().toISOString();
+
+    // Verify completedDate is set and in correct range
+    const job = await asSeeker.query(api.jobs.getJob, { jobId });
+    expect(job?.completedDate).toBeDefined();
+    expect(typeof job?.completedDate).toBe("string");
+    if (job?.completedDate) {
+      expect(job.completedDate >= beforeComplete).toBe(true);
+      expect(job.completedDate <= afterComplete).toBe(true);
+    }
   });
 });

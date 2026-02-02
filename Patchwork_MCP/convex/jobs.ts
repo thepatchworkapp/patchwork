@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 export const createJob = internalMutation({
   args: { proposalId: v.id("proposals") },
@@ -23,7 +23,7 @@ export const createJob = internalMutation({
       rate: proposal.rate,
       rateType: proposal.rateType,
       startDate: proposal.startDateTime,
-      status: "pending",
+      status: "in_progress",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -97,5 +97,38 @@ export const listJobs = query({
     }
 
     return Array.from(jobMap.values());
+  },
+});
+
+export const completeJob = mutation({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job) throw new Error("Job not found");
+
+    if (job.seekerId !== user._id) {
+      throw new Error("Only seeker can complete job");
+    }
+
+    if (job.status !== "in_progress") {
+      throw new Error("Job must be in_progress to complete");
+    }
+
+    await ctx.db.patch(args.jobId, {
+      status: "completed",
+      completedDate: new Date().toISOString(),
+      updatedAt: Date.now(),
+    });
+
+    return { jobId: args.jobId };
   },
 });
