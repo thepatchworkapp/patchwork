@@ -1,6 +1,10 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
+import { taskerGeo } from "./geospatial";
+
+const MAX_SERVICE_RADIUS_KM = 250;
+const MAX_GEO_RESULTS = 100;
 
 export const searchTaskers = query({
   args: {
@@ -22,15 +26,24 @@ export const searchTaskers = query({
       }
     }
 
-    const taskerProfiles = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_ghostMode", (q) => q.eq("ghostMode", false))
-      .collect();
+    const maxDistanceMeters = (args.radiusKm + MAX_SERVICE_RADIUS_KM) * 1000;
+    const nearbyTaskers = await taskerGeo.nearest(ctx, {
+      point: {
+        latitude: args.lat,
+        longitude: args.lng,
+      },
+      limit: MAX_GEO_RESULTS,
+      maxDistance: maxDistanceMeters,
+    });
 
     const results = [];
 
-    for (const profile of taskerProfiles) {
-      if (!profile.isOnboarded) {
+    for (const geoResult of nearbyTaskers) {
+      const profile = await ctx.db.get(geoResult.key);
+      if (!profile) {
+        continue;
+      }
+      if (profile.ghostMode || !profile.isOnboarded) {
         continue;
       }
 
@@ -57,6 +70,9 @@ export const searchTaskers = query({
           continue;
         }
         currentCategory = await ctx.db.get(categoryData.categoryId);
+        if (!currentCategory) {
+          continue;
+        }
       }
 
       const price = formatPrice(
@@ -64,6 +80,12 @@ export const searchTaskers = query({
         categoryData.hourlyRate,
         categoryData.fixedRate
       );
+
+      const distanceKm = geoResult.distance / 1000;
+      const maxOverlapDistance = args.radiusKm + categoryData.serviceRadius;
+      if (distanceKm > maxOverlapDistance) {
+        continue;
+      }
 
       results.push({
         id: profile._id,
@@ -73,7 +95,7 @@ export const searchTaskers = query({
         rating: categoryData.rating,
         reviews: categoryData.reviewCount,
         price,
-        distance: "0.0 km",
+        distance: formatDistance(distanceKm),
         verified: profile.verified,
         bio: categoryData.bio,
         completedJobs: categoryData.completedJobs,
@@ -98,4 +120,8 @@ function formatPrice(
     return `$${dollars} flat`;
   }
   return "$0/hr";
+}
+
+function formatDistance(distanceKm: number): string {
+  return `${distanceKm.toFixed(1)} km`;
 }
