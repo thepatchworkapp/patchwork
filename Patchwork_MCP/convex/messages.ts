@@ -98,7 +98,7 @@ export const listMessages = query({
   },
 });
 
-export const sendSystemMessage = mutation({
+export const sendSystemMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),
     systemType: v.union(
@@ -110,15 +110,6 @@ export const sendSystemMessage = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new Error("User not found");
-
     const systemTypeMessages: Record<SystemMessageType, string> = {
       proposal_sent: "A proposal was sent",
       proposal_accepted: "The proposal was accepted",
@@ -130,9 +121,12 @@ export const sendSystemMessage = mutation({
     const content = systemTypeMessages[args.systemType];
     const now = Date.now();
 
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+
     const messageId = await ctx.db.insert("messages", {
       conversationId: args.conversationId,
-      senderId: user._id,
+      senderId: conversation.seekerId,
       type: "system",
       content,
       createdAt: now,
