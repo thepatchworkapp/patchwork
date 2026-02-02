@@ -1,5 +1,6 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { taskerGeo } from "./geospatial";
 
 /**
  * Calculates the Haversine distance between two coordinates in meters
@@ -128,6 +129,27 @@ export const updateTaskerLocation = mutation({
       },
       updatedAt: Date.now(),
     });
+
+    const primaryCategory = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile", (q) =>
+        q.eq("taskerProfileId", taskerProfile._id)
+      )
+      .first();
+
+    if (primaryCategory) {
+      await taskerGeo.insert(
+        ctx,
+        taskerProfile._id,
+        {
+          latitude: args.lat,
+          longitude: args.lng,
+        },
+        {
+          categoryId: primaryCategory.categoryId,
+        }
+      );
+    }
 
     return {
       updated: true,
