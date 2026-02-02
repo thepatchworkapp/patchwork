@@ -38,11 +38,11 @@ Transform the login page from basic/minimal to polished/professional.
 - Updated `patchwork-admin/src/pages/Login.tsx` with enhanced styling
 
 ### Definition of Done
-- [ ] Login page has icons from lucide-react
-- [ ] Glass-morphism card design with backdrop blur
-- [ ] Visual progress indicator showing email → OTP steps
-- [ ] Gradient buttons with shadows
-- [ ] Tests still pass (14/14)
+- [x] Login page has icons from lucide-react
+- [x] Glass-morphism card design with backdrop blur
+- [x] Visual progress indicator showing email → OTP steps
+- [x] Gradient buttons with shadows
+- [x] Tests still pass (14/14)
 
 ### Must Have
 - Shield icon for branding
@@ -316,8 +316,8 @@ cd patchwork-admin && npm run test:run  # Expected: 14 tests pass
 ```
 
 ### Final Checklist
-- [ ] Shield branding icon present
-- [ ] Input fields have icons
-- [ ] Buttons have gradients and loading states
-- [ ] Glass-morphism card design
-- [ ] Progress indicator functional
+- [x] Shield branding icon present
+- [x] Input fields have icons
+- [x] Buttons have gradients and loading states
+- [x] Glass-morphism card design
+- [x] Progress indicator functional
