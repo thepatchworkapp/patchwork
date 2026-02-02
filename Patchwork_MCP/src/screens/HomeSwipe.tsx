@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Star, MapPin, X, Check, Info, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { Star, MapPin, X, Check, Info, ChevronDown, Loader2 } from "lucide-react";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Badge } from "../components/patchwork/Badge";
 import { Button } from "../components/patchwork/Button";
+import { useUserLocation } from "../hooks/useUserLocation";
+import { api } from "../../convex/_generated/api";
 
 export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void }) {
   const [selectedCategory, setSelectedCategory] = useState("All categories");
@@ -10,6 +13,27 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [radiusKm, setRadiusKm] = useState(25);
   const [showRadiusModal, setShowRadiusModal] = useState(false);
+
+  const { location, isLoading: locationLoading } = useUserLocation();
+
+  useEffect(() => {
+    setCurrentCardIndex(0);
+  }, [selectedCategory, radiusKm]);
+
+  const taskers = useQuery(
+    api.search.searchTaskers,
+    location
+      ? {
+          categorySlug:
+            selectedCategory === "All categories"
+              ? undefined
+              : selectedCategory.toLowerCase(),
+          lat: location.lat,
+          lng: location.lng,
+          radiusKm: radiusKm,
+        }
+      : "skip"
+  );
 
   const categories = [
     "All categories",
@@ -27,63 +51,122 @@ export function HomeSwipe({ onNavigate }: { onNavigate: (screen: string) => void
     "Tutoring"
   ];
 
-  const taskers = [
-    {
-      name: "Alex Chen",
-      category: "Plumbing",
-      rating: 4.9,
-      reviews: 127,
-      price: "$85/hr",
-      distance: "3.2 km",
-      verified: true,
-      bio: "Licensed plumber with 10+ years experience. Specializing in residential repairs and installations.",
-      completedJobs: 243
-    },
-    {
-      name: "Maria Garcia",
-      category: "Cleaning",
-      rating: 4.8,
-      reviews: 203,
-      price: "$45/hr",
-      distance: "5.7 km",
-      verified: true,
-      bio: "Professional cleaning service for homes and offices. Eco-friendly products available.",
-      completedJobs: 456
-    },
-    {
-      name: "David Kim",
-      category: "Electrical",
-      rating: 4.7,
-      reviews: 89,
-      price: "$95/hr",
-      distance: "8.1 km",
-      verified: true,
-      bio: "Certified electrician. All types of electrical work, from repairs to complete rewiring.",
-      completedJobs: 178
-    },
-    {
-      name: "Sarah Johnson",
-      category: "Handyman",
-      rating: 4.9,
-      reviews: 156,
-      price: "$60/hr",
-      distance: "12.3 km",
-      verified: true,
-      bio: "General handyman services. No job too small! Furniture assembly, repairs, and more.",
-      completedJobs: 312
-    },
-    {
-      name: "James Lee",
-      category: "Painting",
-      rating: 4.6,
-      reviews: 98,
-      price: "$70/hr",
-      distance: "15.8 km",
-      verified: false,
-      bio: "Interior and exterior painting. Free estimates and color consultation included.",
-      completedJobs: 145
-    }
-  ];
+  if (taskers === undefined || locationLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#4F46E5] animate-spin mb-4" />
+        <p className="text-neutral-600">Finding taskers near you...</p>
+        <BottomNav active="home" onNavigate={onNavigate} />
+      </div>
+    );
+  }
+
+  if (taskers.length === 0) {
+    return (
+      <div className="min-h-screen bg-neutral-50 pb-20">
+        <div className="bg-white px-4 pt-12 pb-4 border-b border-neutral-200">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-neutral-900">Discover Taskers</h1>
+            <div className="size-10 rounded-lg bg-gradient-to-br from-[#4F46E5] to-[#7C3AED]" />
+          </div>
+          
+          <button 
+            onClick={() => setShowRadiusModal(true)}
+            className="flex items-center gap-2 text-[#4F46E5] mb-3"
+          >
+            <MapPin size={16} />
+            <span>Toronto, ON • {radiusKm} km radius</span>
+          </button>
+
+          <button
+            onClick={() => setShowCategories(!showCategories)}
+            className="w-full flex items-center justify-between px-4 py-3 border border-neutral-300 rounded-lg bg-white"
+          >
+            <span className="text-neutral-900">{selectedCategory}</span>
+            <ChevronDown size={20} className="text-neutral-600" />
+          </button>
+
+          {showCategories && (
+            <div className="absolute left-4 right-4 bg-white border border-neutral-300 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setSelectedCategory(cat);
+                    setShowCategories(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 hover:bg-neutral-50 ${
+                    cat === selectedCategory ? "bg-indigo-50 text-[#4F46E5]" : "text-neutral-900"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center px-8">
+            <p className="text-neutral-900 mb-2">No taskers found</p>
+            <p className="text-[#6B7280]">
+              Try adjusting your filters or search radius
+            </p>
+          </div>
+        </div>
+
+        {showRadiusModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+            <div className="bg-white rounded-t-3xl w-full max-w-[390px] mx-auto p-6 pb-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-neutral-900">Search Radius</h2>
+                <button
+                  onClick={() => setShowRadiusModal(false)}
+                  className="text-[#6B7280]"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2 text-[#4F46E5]">
+                    <MapPin size={16} />
+                    <span>Toronto, ON</span>
+                  </div>
+                  <span className="text-neutral-900">{radiusKm} km</span>
+                </div>
+
+                <input
+                  type="range"
+                  min="1"
+                  max="250"
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                  className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#4F46E5] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                />
+
+                <div className="flex items-center justify-between mt-2 text-sm text-[#6B7280]">
+                  <span>1 km</span>
+                  <span>250 km</span>
+                </div>
+              </div>
+
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={() => setShowRadiusModal(false)}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <BottomNav active="home" onNavigate={onNavigate} />
+      </div>
+    );
+  }
 
   const currentTasker = taskers[currentCardIndex];
 
