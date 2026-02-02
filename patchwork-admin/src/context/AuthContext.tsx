@@ -30,13 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (loginEmail: string, otp: string) => {
     setIsLoading(true);
     try {
-      const convexUrl = import.meta.env.VITE_CONVEX_URL;
-      if (!convexUrl) throw new Error('VITE_CONVEX_URL is not set');
-      const convexSiteUrl = convexUrl.includes('.convex.site') 
-        ? convexUrl 
-        : convexUrl.replace('.convex.cloud', '.convex.site');
-      
-      const response = await fetch(`${convexSiteUrl}/admin/verify-otp`, {
+      const response = await fetch('/api/admin/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: loginEmail, otp }),

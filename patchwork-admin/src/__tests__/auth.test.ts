@@ -1,4 +1,4 @@
-import { expect, test, describe, vi } from "vitest";
+import { expect, test, describe } from "vitest";
 import { generateOTP, getAdminEmail } from "../lib/auth";
 
 describe("auth functions", () => {

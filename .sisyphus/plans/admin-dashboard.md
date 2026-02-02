@@ -56,13 +56,13 @@ Build a read-only admin dashboard that provides visibility into all users, their
 - Vitest tests
 
 ### Definition of Done
-- [ ] Admin can log in with daveald@gmail.com + console OTP
-- [ ] Admin can see list of all users
-- [ ] Admin can expand/click user to see full details
-- [ ] User details show: roles, seeker profile, tasker profile, categories, jobs, reviews
-- [ ] No existing Convex functions modified
-- [ ] Tests pass
-- [ ] Build succeeds
+- [x] Admin can log in with daveald@gmail.com + console OTP
+- [x] Admin can see list of all users
+- [x] Admin can expand/click user to see full details
+- [x] User details show: roles, seeker profile, tasker profile, categories, jobs, reviews
+- [x] No existing Convex functions modified
+- [x] Tests pass
+- [x] Build succeeds
 
 ### Must Have
 - Authentication gate (only daveald@gmail.com can access)
@@ -126,7 +126,7 @@ Wave 3 (After Wave 2):
 
 ## TODOs
 
-- [ ] 1. Project Setup: Create patchwork-admin with Vite + Effect TS
+- [x] 1. Project Setup: Create patchwork-admin with Vite + Effect TS
 
   **What to do**:
   - Create `patchwork-admin/` directory at repo root
@@ -171,7 +171,7 @@ Wave 3 (After Wave 2):
 
 ---
 
-- [ ] 2. Implement Email OTP Authentication
+- [x] 2. Implement Email OTP Authentication
 
   **What to do**:
   - Create `patchwork-admin/src/lib/auth.ts` with simple OTP logic
@@ -225,7 +225,7 @@ Wave 3 (After Wave 2):
 
 ---
 
-- [ ] 3. Create Admin-Only Convex Queries
+- [x] 3. Create Admin-Only Convex Queries
 
   **What to do**:
   - Create `Patchwork_MCP/convex/admin.ts` with read-only queries
@@ -289,7 +289,7 @@ Wave 3 (After Wave 2):
 
 ---
 
-- [ ] 4. Build User List Page
+- [x] 4. Build User List Page
 
   **What to do**:
   - Create `patchwork-admin/src/pages/UserList.tsx`
@@ -338,7 +338,7 @@ Wave 3 (After Wave 2):
 
 ---
 
-- [ ] 5. Build User Detail View
+- [x] 5. Build User Detail View
 
   **What to do**:
   - Create `patchwork-admin/src/pages/UserDetail.tsx` OR expandable row component
@@ -396,7 +396,7 @@ Wave 3 (After Wave 2):
 
 ---
 
-- [ ] 6. Add Test Coverage
+- [x] 6. Add Test Coverage
 
   **What to do**:
   - Set up Vitest in patchwork-admin
@@ -474,13 +474,13 @@ cd Patchwork_MCP && npm run test:run
 ```
 
 ### Final Checklist
-- [ ] Admin can log in with hardcoded email
-- [ ] User list displays all users
-- [ ] User detail shows complete information
-- [ ] Images load from Convex storage
-- [ ] No existing Convex functions modified
-- [ ] All tests pass
-- [ ] Both projects build successfully
+- [x] Admin can log in with hardcoded email
+- [x] User list displays all users
+- [x] User detail shows complete information
+- [x] Images load from Convex storage
+- [x] No existing Convex functions modified
+- [x] All tests pass
+- [x] Both projects build successfully
 
 ---
 
