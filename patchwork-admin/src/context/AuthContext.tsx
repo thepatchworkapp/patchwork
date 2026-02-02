@@ -30,15 +30,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (loginEmail: string, otp: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/admin/verify-otp', {
+      const convexUrl = import.meta.env.VITE_CONVEX_URL;
+      if (!convexUrl) throw new Error('VITE_CONVEX_URL is not set');
+      const convexSiteUrl = convexUrl.includes('.convex.site') 
+        ? convexUrl 
+        : convexUrl.replace('.convex.cloud', '.convex.site');
+      
+      const response = await fetch(`${convexSiteUrl}/admin/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: loginEmail, otp }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Verification failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Verification failed');
       }
 
       localStorage.setItem('adminAuth', 'true');

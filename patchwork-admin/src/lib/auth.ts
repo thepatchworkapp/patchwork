@@ -4,6 +4,17 @@
 
 const ADMIN_EMAIL = "daveald@gmail.com";
 
+function getConvexSiteUrl(): string {
+  const url = import.meta.env.VITE_CONVEX_URL;
+  if (!url) {
+    throw new Error("VITE_CONVEX_URL is not set");
+  }
+  if (url.includes('.convex.site')) {
+    return url;
+  }
+  return url.replace('.convex.cloud', '.convex.site');
+}
+
 /**
  * Generate a 6-digit OTP code
  */
@@ -15,7 +26,7 @@ export function generateOTP(): string {
  * Send OTP to admin email
  * - Validates email is admin email
  * - Generates 6-digit OTP
- * - Stores in Convex otps table
+ * - Stores in Convex otps table via HTTP endpoint
  * - Logs to console (no email sending)
  */
 export async function sendOTP(email: string): Promise<void> {
@@ -27,16 +38,18 @@ export async function sendOTP(email: string): Promise<void> {
   // Generate OTP
   const otp = generateOTP();
 
-  // Store in Convex otps table
+  // Store in Convex otps table via HTTP endpoint
   try {
-    const response = await fetch("/api/admin/send-otp", {
+    const convexSiteUrl = getConvexSiteUrl();
+    const response = await fetch(`${convexSiteUrl}/admin/send-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, otp }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to store OTP");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Failed to store OTP");
     }
 
     // Log to console for testing
@@ -59,17 +72,18 @@ export async function verifyOTP(email: string, otp: string): Promise<boolean> {
     throw new Error("Invalid email. Only daveald@gmail.com is authorized.");
   }
 
-  // Verify OTP with Convex
+  // Verify OTP with Convex via HTTP endpoint
   try {
-    const response = await fetch("/api/admin/verify-otp", {
+    const convexSiteUrl = getConvexSiteUrl();
+    const response = await fetch(`${convexSiteUrl}/admin/verify-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, otp }),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Invalid OTP");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Invalid OTP");
     }
 
     return true;
