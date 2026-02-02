@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Star, MapPin, SlidersHorizontal, List, Map } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Star, MapPin, SlidersHorizontal, List, Map, Loader2 } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useUserLocation } from "../hooks/useUserLocation";
 import { AppBar } from "../components/patchwork/AppBar";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Card } from "../components/patchwork/Card";
@@ -8,54 +11,30 @@ import { Avatar } from "../components/patchwork/Avatar";
 
 export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) => void; onBack: () => void }) {
   const [view, setView] = useState<"list" | "map">("list");
+  const { location, isLoading: isLocationLoading, requestLocation, error: locationError } = useUserLocation();
 
-  const providers = [
-    {
-      name: "Alex Chen",
-      category: "Plumbing",
-      rating: 4.9,
-      reviews: 127,
-      price: "$85/hr",
-      distance: "3.2 km",
-      nextAvailable: "Today",
-      verified: true
-    },
-    {
-      name: "Maria Garcia",
-      category: "Cleaning",
-      rating: 4.8,
-      reviews: 203,
-      price: "$45/hr",
-      distance: "5.7 km",
-      nextAvailable: "Tomorrow",
-      verified: true
-    },
-    {
-      name: "David Kim",
-      category: "Electrical",
-      rating: 4.7,
-      reviews: 89,
-      price: "$95/hr",
-      distance: "8.1 km",
-      nextAvailable: "Wed, Nov 6",
-      verified: false
-    },
-    {
-      name: "Sarah Johnson",
-      category: "Handyman",
-      rating: 5.0,
-      reviews: 45,
-      price: "$65/hr",
-      distance: "11.3 km",
-      nextAvailable: "Thu, Nov 7",
-      verified: true
+  useEffect(() => {
+    if (!location && !isLocationLoading && !locationError) {
+      requestLocation();
     }
-  ];
+  }, [location, isLocationLoading, requestLocation, locationError]);
+
+  const providers = useQuery(
+    api.search.searchTaskers,
+    location ? {
+      lat: location.lat,
+      lng: location.lng,
+      radiusKm: 25,
+    } : "skip"
+  );
+
+  const isLoading = isLocationLoading || (location && providers === undefined);
+  const showEmpty = !isLoading && providers && providers.length === 0;
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
       <AppBar 
-        title="Plumbing" 
+        title="Browse Taskers" 
         onBack={onBack}
         action={
           <button className="p-2">
@@ -66,7 +45,9 @@ export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) =>
 
       <div className="px-4 py-4 bg-white border-b border-neutral-200">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[#6B7280]">47 Taskers near you</p>
+          <p className="text-[#6B7280]">
+            {isLoading ? "Finding Taskers..." : `${providers?.length || 0} Taskers near you`}
+          </p>
           <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
             <button
               onClick={() => setView("list")}
@@ -88,14 +69,36 @@ export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) =>
         </p>
       </div>
 
-      {view === "map" ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center h-64 text-[#6B7280]">
+          <Loader2 className="h-8 w-8 animate-spin mb-2" />
+          <p>Loading nearby Taskers...</p>
+        </div>
+      ) : locationError ? (
+        <div className="p-8 text-center text-[#6B7280]">
+          <MapPin className="h-12 w-12 mx-auto mb-3 text-neutral-300" />
+          <p className="mb-2">Location access required</p>
+          <p className="text-sm mb-4">{locationError}</p>
+          <button 
+            onClick={() => requestLocation()}
+            className="text-[#4F46E5] font-medium"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : showEmpty ? (
+        <div className="p-8 text-center text-[#6B7280]">
+          <p>No Taskers found in your area.</p>
+          <p className="text-sm mt-2">Try increasing your search radius.</p>
+        </div>
+      ) : view === "map" ? (
         <div className="h-[400px] bg-neutral-200 flex items-center justify-center">
-          <p className="text-[#6B7280]">Map View</p>
+          <p className="text-[#6B7280]">Map View coming soon</p>
         </div>
       ) : (
         <div className="p-4 space-y-3">
-          {providers.map((provider, i) => (
-            <Card key={i} onClick={() => onNavigate("provider-detail")}>
+          {providers?.map((provider) => (
+            <Card key={provider.id} onClick={() => onNavigate("provider-detail")}>
               <div className="flex gap-3">
                 <Avatar src="" alt={provider.name} size="lg" />
                 
@@ -126,7 +129,6 @@ export function Browse({ onNavigate, onBack }: { onNavigate: (screen: string) =>
 
                   <div className="flex items-center justify-between">
                     <p className="text-neutral-900">{provider.price}</p>
-                    <Badge variant="success">{provider.nextAvailable}</Badge>
                   </div>
                 </div>
               </div>
