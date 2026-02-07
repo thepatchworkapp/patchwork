@@ -1,0 +1,30 @@
+---
+import "../styles/global.css";
+
+import AdminApp from "../react/AdminApp";
+
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&family=Unbounded:wght@400;500;700&display=swap"
+			rel="stylesheet"
+		/>
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Patchwork Admin</title>
+	</head>
+	<body class="min-h-dvh antialiased">
+		<div class="pw-atmo"></div>
+		<div class="pw-grain"></div>
+		<div class="relative z-10">
+			<AdminApp client:only="react" />
+		</div>
+	</body>
+</html>

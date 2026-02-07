@@ -1,0 +1,191 @@
+/* Tailwind v4 needs to see Kumo's internal class strings to generate the utilities they use. */
+@source "../../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+
+@import "tailwindcss";
+@import "@cloudflare/kumo/styles/tailwind";
+
+:root {
+  /* "Cold Archive" theme */
+  --pw-bg: oklch(98% 0.02 250);
+  --pw-ink: oklch(17% 0.03 255);
+  --pw-muted: oklch(46% 0.03 255);
+  /* Slightly stronger than Kumo's default lines for clearer admin tables */
+  --pw-line: color-mix(in oklch, var(--pw-ink) 14%, transparent);
+  --pw-accent: oklch(58% 0.19 255);
+  --pw-accent-2: oklch(62% 0.17 145);
+
+  --pw-panel: color-mix(in oklch, white 65%, var(--pw-bg));
+  --pw-shadow:
+    0 1px 0 color-mix(in oklch, white 55%, transparent),
+    0 10px 26px color-mix(in oklch, black 10%, transparent),
+    0 22px 60px color-mix(in oklch, black 16%, transparent);
+
+  --pw-radius: 18px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: "Spline Sans", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--pw-ink);
+  background:
+    radial-gradient(1200px 900px at 10% 10%, color-mix(in oklch, var(--pw-accent) 12%, transparent), transparent 65%),
+    radial-gradient(1100px 900px at 90% 10%, color-mix(in oklch, var(--pw-accent-2) 14%, transparent), transparent 70%),
+    radial-gradient(1200px 900px at 20% 110%, color-mix(in oklch, var(--pw-ink) 10%, transparent), transparent 65%),
+    linear-gradient(180deg, color-mix(in oklch, white 70%, var(--pw-bg)) 0%, var(--pw-bg) 55%, color-mix(in oklch, white 72%, var(--pw-bg)) 100%);
+}
+
+.pw-display {
+  font-family: "Unbounded", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.pw-mono {
+  font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Subtle grid + grain overlay */
+.pw-atmo {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.28;
+  background:
+    linear-gradient(to right, var(--pw-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--pw-line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(closest-side at 20% 10%, black, transparent 70%),
+    radial-gradient(closest-side at 80% 0%, black, transparent 65%),
+    radial-gradient(closest-side at 40% 90%, black, transparent 75%);
+}
+
+.pw-grain {
+  position: fixed;
+  inset: -80px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.055;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+  mix-blend-mode: multiply;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pw-fade-up {
+    animation: pwFadeUp 700ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  }
+}
+
+@keyframes pwFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Shared admin card polish (subtle inset highlight + top hairline) */
+.pw-card {
+  position: relative;
+}
+
+.pw-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 70%, transparent);
+  opacity: 0.75;
+}
+
+.pw-card::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--pw-accent) 40%, transparent),
+    transparent
+  );
+  opacity: 0.85;
+}
+
+@layer components {
+  /* Reusable interior surfaces for consistent spacing and polish */
+  .pw-subcard {
+    border-radius: 16px; /* ~rounded-2xl */
+    border: 1px solid var(--pw-line);
+    background: var(--pw-panel);
+    padding: 16px;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, white 65%, transparent),
+      0 14px 34px color-mix(in oklch, black 6%, transparent);
+  }
+
+  .pw-inset {
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid var(--pw-line);
+    background: color-mix(in oklch, white 84%, var(--pw-bg));
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, white 70%, transparent),
+      0 16px 40px color-mix(in oklch, black 7%, transparent);
+  }
+
+  .pw-inset-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--pw-line);
+    background: color-mix(in oklch, white 88%, var(--pw-bg));
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  .pw-th {
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.025em; /* tracking-wide */
+    color: var(--pw-muted);
+  }
+
+  .pw-td {
+    padding: 12px 16px;
+    vertical-align: top;
+  }
+
+  .pw-badge-tight {
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  /* Small stat tiles used in Overview/Profiles */
+  .pw-microcard {
+    border-radius: 14px;
+    border: 1px solid var(--pw-line);
+    background: color-mix(in oklch, white 86%, var(--pw-bg));
+    padding: 10px 12px;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, white 65%, transparent),
+      0 12px 30px color-mix(in oklch, black 6%, transparent);
+  }
+}
