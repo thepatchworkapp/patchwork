@@ -147,7 +147,7 @@ export function Profile({
   // Build user object from real data
   const user = {
     name: userData.name,
-    photo: userPhoto || "", // Use passed photo or empty string
+    photo: userPhoto || userData.photo || "",
     memberSince,
     location: {
       city: userData.location.city,

@@ -8,10 +8,31 @@ import { useChat, Message } from "../hooks/useChat";
 
 interface ChatProps {
   onBack: () => void;
-  conversationId: Id<"conversations">;
+  conversationId?: Id<"conversations">;
 }
 
 export function Chat({ onBack, conversationId }: ChatProps) {
+  if (!conversationId) {
+    return (
+      <div className="min-h-screen bg-neutral-50 flex flex-col">
+        <AppBar onBack={onBack} title="Chat" />
+        <div className="flex-1 flex items-center justify-center px-6 text-center">
+          <div>
+            <p className="text-neutral-900 mb-2">Unable to open chat</p>
+            <p className="text-[#6B7280] text-sm mb-4">
+              This conversation is missing context. Please open chat again from Messages or Tasker profile.
+            </p>
+            <Button variant="primary" onClick={onBack}>Go Back</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <ChatContent onBack={onBack} conversationId={conversationId} />;
+}
+
+function ChatContent({ onBack, conversationId }: { onBack: () => void; conversationId: Id<"conversations"> }) {
   const {
     messages,
     isLoading,
@@ -147,20 +168,14 @@ export function Chat({ onBack, conversationId }: ChatProps) {
     <div className="min-h-screen bg-neutral-50 flex flex-col">
       <AppBar
         onBack={onBack}
-        title={
-          <div className="flex items-center gap-2">
-            <Avatar src="" alt="Chat" size="sm" />
-            <div>
-              <p className="text-neutral-900">Conversation</p>
-            </div>
-          </div>
-        }
+        title={conversation?.participantName ?? "Conversation"}
+        action={<Avatar src={conversation?.participantPhotoUrl ?? ""} alt={conversation?.participantName ?? "Chat"} size="sm" />}
       />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {hasMoreMessages && (
           <div className="flex justify-center">
-            <Button variant="secondary" onClick={loadMoreMessages} className="text-xs py-1 h-auto">
+            <Button variant="secondary" onClick={loadMoreMessages}>
               <ChevronUp size={14} className="mr-1" /> Load older messages
             </Button>
           </div>

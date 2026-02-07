@@ -16,16 +16,12 @@ interface JobsProps {
 export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
   const [activeTab, setActiveTab] = useState<"in-progress" | "completed">("in-progress");
 
-  const allJobs = useQuery(api.jobs.listJobs);
-
-  const jobs = allJobs?.filter((job) => {
-    if (activeTab === "in-progress") {
-      return job.status === "in_progress" || job.status === "pending";
-    }
-    return job.status === "completed";
+  const jobs = useQuery(api.jobs.listJobs, {
+    statusGroup: activeTab === "completed" ? "completed" : "active",
+    limit: 100,
   });
 
-  const isLoading = allJobs === undefined;
+  const isLoading = jobs === undefined;
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
@@ -35,6 +31,7 @@ export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
       <div className="bg-white border-b border-neutral-200">
         <div className="flex">
           <button
+            type="button"
             onClick={() => setActiveTab("in-progress")}
             className={`flex-1 py-4 text-center border-b-2 transition-colors ${
               activeTab === "in-progress"
@@ -45,6 +42,7 @@ export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
             In Progress
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("completed")}
             className={`flex-1 py-4 text-center border-b-2 transition-colors ${
               activeTab === "completed"
@@ -73,16 +71,17 @@ export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
           </div>
         ) : (
           jobs.map((job) => (
-            <div
+            <button
+              type="button"
               key={job._id}
               onClick={() => onOpenJob(job._id)}
-              className="bg-white rounded-lg p-4 border border-neutral-200 cursor-pointer active:bg-neutral-50 transition-colors"
+              className="w-full bg-white rounded-lg p-4 border border-neutral-200 cursor-pointer active:bg-neutral-50 transition-colors text-left"
             >
               {/* Header */}
               <div className="flex items-start gap-3 mb-3">
-                <Avatar src="" alt="Tasker" size="md" />
+                <Avatar src={job.counterpartyPhotoUrl ?? ""} alt={job.counterpartyName ?? "Tasker"} size="md" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-neutral-900 mb-1">Tasker</p>
+                  <p className="text-neutral-900 mb-1">{job.counterpartyName ?? "Tasker"}</p>
                   <Badge variant="neutral">{job.categoryName}</Badge>
                 </div>
               </div>
@@ -116,7 +115,7 @@ export function Jobs({ onNavigate, onOpenJob }: JobsProps) {
                   <p className="text-sm text-[#6B7280]">{job.description}</p>
                 </div>
               )}
-            </div>
+            </button>
           ))
         )}
       </div>

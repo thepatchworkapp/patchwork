@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { AppBar } from "../components/patchwork/AppBar";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Card } from "../components/patchwork/Card";
@@ -10,24 +12,12 @@ export function Categories({ onNavigate, onBack }: { onNavigate: (screen: string
   
   const filters = ["All", "Home", "Business", "Personal", "Outdoor"];
   
-  const categories = [
-    { name: "Plumbing", icon: "🔧", count: 47 },
-    { name: "Electrical", icon: "⚡", count: 32 },
-    { name: "Handyman", icon: "🛠️", count: 89 },
-    { name: "Cleaning", icon: "🧹", count: 156 },
-    { name: "Moving", icon: "📦", count: 23 },
-    { name: "Painting", icon: "🎨", count: 41 },
-    { name: "Gardening", icon: "🌱", count: 67 },
-    { name: "Pest Control", icon: "🐛", count: 19 },
-    { name: "Appliance Repair", icon: "🔌", count: 28 },
-    { name: "HVAC", icon: "🌡️", count: 34 },
-    { name: "IT Support", icon: "💻", count: 52 },
-    { name: "Tutoring", icon: "📚", count: 78 },
-    { name: "Pet Care", icon: "🐕", count: 45 },
-    { name: "Carpentry", icon: "🪚", count: 31 },
-    { name: "Locksmith", icon: "🔑", count: 15 },
-    { name: "Roofing", icon: "🏠", count: 22 }
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
+
+  const categories = (backendCategories ?? []).map(c => ({
+    name: c.name,
+    icon: c.emoji ?? "📋",
+  }));
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
@@ -56,7 +46,7 @@ export function Categories({ onNavigate, onBack }: { onNavigate: (screen: string
       </div>
 
       <div className="p-4">
-        <p className="text-[#6B7280] mb-4">65+ categories available</p>
+        <p className="text-[#6B7280] mb-4">{categories.length} categories available</p>
         
         <div className="grid grid-cols-2 gap-3">
           {categories.map((cat) => (
@@ -64,7 +54,6 @@ export function Categories({ onNavigate, onBack }: { onNavigate: (screen: string
               <div className="text-center">
                 <div className="text-4xl mb-2">{cat.icon}</div>
                 <p className="text-neutral-900 mb-1">{cat.name}</p>
-                <p className="text-[#6B7280] text-sm">{cat.count} Taskers</p>
               </div>
             </Card>
           ))}

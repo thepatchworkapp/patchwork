@@ -14,10 +14,13 @@ interface ProviderDetailProps {
   taskerId: Id<"taskerProfiles"> | null;
   onBack: () => void;
   onNavigate: (screen: string) => void;
+  onStartChat: (taskerUserId: Id<"users">) => Promise<void>;
 }
 
-export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailProps) {
+export function ProviderDetail({ taskerId, onBack, onNavigate, onStartChat }: ProviderDetailProps) {
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   
   const tasker = useQuery(
     api.taskers.getTaskerById,
@@ -72,13 +75,29 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
     });
   };
 
+  const handleStartChat = async () => {
+    if (isStartingChat) {
+      return;
+    }
+
+    setIsStartingChat(true);
+    setChatError(null);
+    try {
+      await onStartChat(tasker.userId);
+    } catch (error) {
+      console.error("Failed to start chat:", error);
+      setChatError("Unable to start chat right now. Please try again.");
+      setIsStartingChat(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-50 pb-24">
       <AppBar onBack={onBack} />
 
       <div className="bg-white px-4 pt-4 pb-6">
         <div className="flex items-start gap-4 mb-4">
-          <Avatar src="" alt={tasker.displayName} size="lg" />
+          <Avatar src={tasker.userPhotoUrl ?? ""} alt={tasker.displayName} size="lg" />
           <div className="flex-1">
             <h1 className="text-neutral-900 mb-2">{tasker.displayName}</h1>
             <p className="text-[#6B7280] mb-2">
@@ -122,6 +141,17 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
           </p>
         </div>
 
+        {selectedCategory?.firstPhotoUrl && (
+          <div>
+            <h2 className="text-neutral-900 mb-3">Work Photo</h2>
+            <img
+              src={selectedCategory.firstPhotoUrl}
+              alt={`${tasker.displayName} ${selectedCategory.categoryName} work sample`}
+              className="w-full h-48 object-cover rounded-lg"
+            />
+          </div>
+        )}
+
         <div>
           <h2 className="text-neutral-900 mb-3">Pricing</h2>
           <Card>
@@ -150,7 +180,7 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-neutral-900">Reviews</h2>
             {tasker.reviewCount > 0 && (
-              <button className="text-[#4F46E5]">See all {tasker.reviewCount}</button>
+              <button type="button" className="text-[#4F46E5]">See all {tasker.reviewCount}</button>
             )}
           </div>
 
@@ -159,7 +189,7 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
               {tasker.reviews.map((review) => (
                 <Card key={review.id}>
                   <div className="flex items-start gap-3 mb-2">
-                    <Avatar src="" alt={review.reviewerName} size="sm" />
+                    <Avatar src={review.reviewerPhotoUrl ?? ""} alt={review.reviewerName} size="sm" />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-neutral-900">{review.reviewerName}</p>
@@ -168,7 +198,7 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
                       <div className="flex items-center gap-2 mb-2">
                         <div className="flex">
                           {Array.from({ length: review.rating }).map((_, i) => (
-                            <Star key={i} size={14} className="fill-yellow-400 text-yellow-400" />
+                            <Star key={`${review.id}-${i}`} size={14} className="fill-yellow-400 text-yellow-400" />
                           ))}
                         </div>
                         <span className="text-[#6B7280] text-sm">{formatDate(review.createdAt)}</span>
@@ -189,16 +219,33 @@ export function ProviderDetail({ taskerId, onBack, onNavigate }: ProviderDetailP
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200 p-4">
         <div className="max-w-[390px] mx-auto flex gap-3">
-          <button className="size-12 border border-neutral-300 rounded-lg flex items-center justify-center">
+          <button type="button" className="size-12 border border-neutral-300 rounded-lg flex items-center justify-center">
             <Heart size={20} className="text-neutral-900" />
           </button>
-          <Button variant="primary" fullWidth onClick={() => onNavigate("chat")}>
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={() => void handleStartChat()}
+            disabled={isStartingChat}
+          >
             <div className="flex items-center justify-center gap-2">
-              <MessageCircle size={20} />
-              <span>Chat</span>
+              {isStartingChat ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>Opening chat...</span>
+                </>
+              ) : (
+                <>
+                  <MessageCircle size={20} />
+                  <span>Chat</span>
+                </>
+              )}
             </div>
           </Button>
         </div>
+        {chatError && (
+          <p className="max-w-[390px] mx-auto mt-2 text-sm text-[#DC2626]">{chatError}</p>
+        )}
       </div>
     </div>
   );

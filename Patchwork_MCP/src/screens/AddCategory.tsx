@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 
@@ -11,16 +13,9 @@ interface AddCategoryProps {
 export function AddCategory({ onBack, onAdd, existingCategories = [] }: AddCategoryProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
 
-  const allCategories = [
-    "Plumbing", "Electrical", "Handyman", "Cleaning",
-    "Moving", "Painting", "Gardening", "Pest Control",
-    "Appliance Repair", "HVAC", "IT Support", "Tutoring",
-    "Carpentry", "Roofing", "Flooring", "Welding",
-    "Auto Repair", "Pet Care", "Photography", "Event Planning",
-    "Catering", "Personal Training", "Massage", "Hair Styling"
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
+  const allCategories = (backendCategories ?? []).map(c => c.name);
 
-  // Filter out categories the user already has
   const availableCategories = allCategories.filter(cat => !existingCategories.includes(cat));
 
   return (

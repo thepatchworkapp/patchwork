@@ -23,20 +23,15 @@ function formatTimeAgo(timestamp: number) {
 export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavigate: (screen: string) => void; onOpenChat: (conversationId: Id<"conversations">) => void; isTasker?: boolean }) {
   const [activeTab, setActiveTab] = useState<"seeker" | "tasker">("seeker");
   const [showTaskerSignupModal, setShowTaskerSignupModal] = useState(false);
-  
-  const currentUser = useQuery(api.users.getCurrentUser);
-  const allConversations = useQuery(api.conversations.listConversations);
 
-  const filteredConversations = allConversations?.filter(conv => {
-    if (!currentUser) return false;
-    if (activeTab === "seeker") {
-      return conv.seekerId === currentUser._id;
-    } else {
-      return conv.taskerId === currentUser._id;
-    }
-  }) || [];
+  const conversations = useQuery(api.conversations.listConversations, {
+    role: activeTab,
+    limit: 50,
+  });
 
-  const isLoading = allConversations === undefined || currentUser === undefined;
+  const filteredConversations = conversations ?? [];
+
+  const isLoading = conversations === undefined;
 
   return (
     <div className="min-h-screen bg-neutral-50 pb-20">
@@ -46,6 +41,7 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
       <div className="bg-white border-b border-neutral-200">
         <div className="flex">
           <button
+            type="button"
             onClick={() => setActiveTab("seeker")}
             className={`flex-1 py-4 text-center relative ${
               activeTab === "seeker"
@@ -59,6 +55,7 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
             )}
           </button>
           <button
+            type="button"
             onClick={() => {
               if (isTasker) {
                 setActiveTab("tasker");
@@ -94,6 +91,7 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
             Sign up as a Tasker to receive job requests and chat with Seekers
           </p>
           <button
+            type="button"
             onClick={() => onNavigate("profile")}
             className="px-6 py-3 bg-[#4F46E5] text-white rounded-lg"
           >
@@ -129,16 +127,18 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
               {filteredConversations.map((conv) => {
                 const unreadCount = activeTab === "seeker" ? conv.seekerUnreadCount : conv.taskerUnreadCount;
                 const isUnread = unreadCount > 0;
-                const name = activeTab === "seeker" ? "Tasker" : "Seeker"; 
+                const fallbackName = activeTab === "seeker" ? "Tasker" : "Seeker";
+                const name = conv.participantName ?? fallbackName;
                 
                 return (
                   <button
+                    type="button"
                     key={conv._id}
                     onClick={() => onOpenChat(conv._id)}
                     className="w-full px-4 py-4 bg-white active:bg-neutral-50 flex items-start gap-3 text-left"
                   >
                     <div className="relative">
-                      <Avatar src="" alt={name} size="md" />
+                      <Avatar src={conv.participantPhotoUrl ?? ""} alt={name} size="md" />
                       {isUnread && (
                         <div className="absolute -top-1 -right-1 size-5 rounded-full bg-[#DC2626] text-white text-xs flex items-center justify-center">
                           {unreadCount}
@@ -217,7 +217,7 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
                 fullWidth 
                 onClick={() => {
                   setShowTaskerSignupModal(false);
-                  onNavigate("tasker-onboarding-1");
+                  onNavigate("tasker-onboarding1");
                 }}
               >
                 Continue

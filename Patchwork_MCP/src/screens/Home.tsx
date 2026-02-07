@@ -1,13 +1,12 @@
 import { Search, MapPin, PlusCircle, List, MessageCircle } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Card } from "../components/patchwork/Card";
 
 export function Home({ onNavigate }: { onNavigate: (screen: string) => void }) {
-  const categories = [
-    "Plumbing", "Electrical", "Handyman", "Cleaning",
-    "Moving", "Painting", "Gardening", "Pest Control",
-    "Appliance Repair", "HVAC", "IT Support", "Tutoring"
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
+  const categories = (backendCategories ?? []).map(c => c.name);
 
   const recentActivity = [
     { type: "quote", name: "Alex Chen", service: "Plumbing", time: "2h ago" },
@@ -46,7 +45,7 @@ export function Home({ onNavigate }: { onNavigate: (screen: string) => void }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-neutral-900">Popular near you</h2>
           <button onClick={() => onNavigate("categories")} className="text-[#4F46E5]">
-            See all 65+
+            See all
           </button>
         </div>
 

@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { ArrowLeft, Search, ArrowRight } from "lucide-react";
-import { Input } from "../components/patchwork/Input";
+import { useState, useMemo } from "react";
+import { ArrowLeft, Search, ArrowRight, Loader2 } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 interface CategorySelectionProps {
   onBack: () => void;
@@ -12,118 +13,31 @@ export function CategorySelection({ onBack, onConfirm, preSelected = [] }: Categ
   const [selectedCategories, setSelectedCategories] = useState<string[]>(preSelected);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const categoryGroups = [
-    {
-      title: "Beauty",
-      items: [
-        { emoji: "💄", label: "Makeup Artist" },
-        { emoji: "💇", label: "Hair Stylist" },
-        { emoji: "👁️", label: "Lash Tech" },
-        { emoji: "💅", label: "Nail Tech" },
-        { emoji: "🧖", label: "Hair Removal" },
-      ]
-    },
-    {
-      title: "Home & Garden",
-      items: [
-        { emoji: "🔧", label: "Property Maintenance" },
-        { emoji: "🎨", label: "Interior Painter" },
-        { emoji: "🖌️", label: "Exterior Painter" },
-        { emoji: "🚪", label: "Window Cleaner" },
-        { emoji: "🏠", label: "Gutter Cleaning" },
-        { emoji: "🌳", label: "Gardening" },
-        { emoji: "🪴", label: "Landscaping" },
-        { emoji: "🌿", label: "Lawn Care" },
-      ]
-    },
-    {
-      title: "Health & Wellbeing",
-      items: [
-        { emoji: "💆", label: "Massage Therapist" },
-        { emoji: "🍏", label: "Nutritionist" },
-        { emoji: "👵", label: "Care Giver" },
-        { emoji: "🏋️", label: "Personal Trainer" },
-        { emoji: "🏃", label: "Errand Runner" },
-      ]
-    },
-    {
-      title: "Pet Care",
-      items: [
-        { emoji: "🐕", label: "Dog Walking" },
-        { emoji: "🐾", label: "Pet Sitting" },
-        { emoji: "✂️", label: "Pet Grooming" },
-        { emoji: "🐕‍🦺", label: "Pet Training" },
-      ]
-    },
-    {
-      title: "Home Services",
-      items: [
-        { emoji: "🔌", label: "Electrical" },
-        { emoji: "🚰", label: "Plumbing" },
-        { emoji: "🔨", label: "Handyman" },
-        { emoji: "❄️", label: "HVAC" },
-        { emoji: "🏗️", label: "Carpentry" },
-        { emoji: "🏠", label: "Roofing" },
-        { emoji: "🪟", label: "Flooring" },
-        { emoji: "⚡", label: "Welding" },
-        { emoji: "🧹", label: "Cleaning" },
-        { emoji: "🐜", label: "Pest Control" },
-      ]
-    },
-    {
-      title: "Moving & Delivery",
-      items: [
-        { emoji: "📦", label: "Moving" },
-        { emoji: "🚚", label: "Delivery" },
-        { emoji: "📮", label: "Courier" },
-      ]
-    },
-    {
-      title: "Tech & Professional",
-      items: [
-        { emoji: "💻", label: "IT Support" },
-        { emoji: "📱", label: "Phone Repair" },
-        { emoji: "🖥️", label: "Computer Repair" },
-        { emoji: "📚", label: "Tutoring" },
-        { emoji: "🎓", label: "Music Lessons" },
-        { emoji: "🎸", label: "Art Lessons" },
-      ]
-    },
-    {
-      title: "Automotive",
-      items: [
-        { emoji: "🚗", label: "Auto Repair" },
-        { emoji: "🚙", label: "Car Detailing" },
-        { emoji: "🔧", label: "Oil Change" },
-        { emoji: "🚘", label: "Car Wash" },
-      ]
-    },
-    {
-      title: "Events & Creative",
-      items: [
-        { emoji: "📸", label: "Photography" },
-        { emoji: "🎥", label: "Videography" },
-        { emoji: "🎉", label: "Event Planning" },
-        { emoji: "🍽️", label: "Catering" },
-        { emoji: "🎤", label: "DJ Services" },
-        { emoji: "🎭", label: "Entertainment" },
-      ]
-    },
-    {
-      title: "Repair & Appliances",
-      items: [
-        { emoji: "🔧", label: "Appliance Repair" },
-        { emoji: "📺", label: "TV Mounting" },
-        { emoji: "🛠️", label: "Furniture Assembly" },
-      ]
-    },
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
 
-  const allCategories = categoryGroups.flatMap(group => 
-    group.items.map(item => item.label)
-  );
+  const categoryGroups = useMemo(() => {
+    if (!backendCategories) return [];
 
-  const totalCategories = allCategories.length;
+    const groupMap = new Map<string, { emoji: string; label: string }[]>();
+
+    for (const cat of backendCategories) {
+      const group = cat.group ?? "Other";
+      if (!groupMap.has(group)) {
+        groupMap.set(group, []);
+      }
+      groupMap.get(group)!.push({
+        emoji: cat.emoji ?? "📋",
+        label: cat.name,
+      });
+    }
+
+    return Array.from(groupMap.entries()).map(([title, items]) => ({
+      title,
+      items,
+    }));
+  }, [backendCategories]);
+
+  const totalCategories = backendCategories?.length ?? 0;
 
   const toggleCategory = (label: string) => {
     setSelectedCategories(prev =>
@@ -138,18 +52,24 @@ export function CategorySelection({ onBack, onConfirm, preSelected = [] }: Categ
     )
   })).filter(group => group.items.length > 0);
 
+  if (backendCategories === undefined) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#4F46E5] animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white flex flex-col w-full max-w-full">
-      {/* Header */}
       <div className="bg-[#4F46E5] text-white px-4 pt-4 pb-6 w-full">
-        <button onClick={onBack} className="mb-6">
+        <button type="button" onClick={onBack} className="mb-6">
           <ArrowLeft size={24} />
         </button>
         <h1 className="mb-2">Select a category</h1>
         <p className="text-white/80">{totalCategories} categories to browse.</p>
       </div>
 
-      {/* Search */}
       <div className="px-4 py-4 bg-white sticky top-0 z-10 shadow-sm">
         <div className="relative">
           <input
@@ -163,24 +83,21 @@ export function CategorySelection({ onBack, onConfirm, preSelected = [] }: Categ
         </div>
       </div>
 
-      {/* Categories */}
       <div className="flex-1 overflow-y-auto pb-24">
-        {filteredGroups.map((group, groupIdx) => (
-          <div key={groupIdx}>
-            {/* Separator Line */}
+        {filteredGroups.map((group) => (
+          <div key={group.title}>
             <div className="border-t border-neutral-200" />
             
-            {/* Header */}
             <div className="px-4 py-3">
               <h3 className="text-[#6B7280]">{group.title}</h3>
             </div>
             
-            {/* Category Items */}
             <div className="px-4 pb-4 overflow-x-auto">
               <div className="flex gap-4 pb-2">
-                {group.items.map((item, idx) => (
+                {group.items.map((item) => (
                   <button
-                    key={idx}
+                    type="button"
+                    key={item.label}
                     onClick={() => toggleCategory(item.label)}
                     className="flex-shrink-0 flex flex-col items-center gap-2 w-20"
                   >
@@ -206,12 +123,12 @@ export function CategorySelection({ onBack, onConfirm, preSelected = [] }: Categ
         ))}
       </div>
 
-      {/* Bottom Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#4F46E5] px-4 py-4 flex items-center justify-between w-full">
         <span className="text-white text-lg">
           {selectedCategories.length} selected
         </span>
         <button
+          type="button"
           onClick={() => onConfirm(selectedCategories)}
           disabled={selectedCategories.length === 0}
           className="bg-white text-[#4F46E5] size-12 rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"

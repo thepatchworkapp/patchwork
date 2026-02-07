@@ -129,8 +129,9 @@ export default function App() {
      api.taskers.getTaskerProfile,
      convexAuth ? {} : "skip"
    );
-   const categories = useQuery(api.categories.listCategories);
-   const createTaskerProfile = useMutation(api.taskers.createTaskerProfile);
+  const categories = useQuery(api.categories.listCategories);
+  const createTaskerProfile = useMutation(api.taskers.createTaskerProfile);
+  const startConversation = useMutation(api.conversations.startConversation);
 
   const navigate = (screen: Screen | string) => {
     const validScreen = screen as Screen;
@@ -303,7 +304,18 @@ export default function App() {
         );
       
       case "provider-detail":
-        return <ProviderDetail taskerId={activeTaskerId} onBack={goBack} onNavigate={navigate} />;
+        return (
+          <ProviderDetail
+            taskerId={activeTaskerId}
+            onBack={goBack}
+            onNavigate={navigate}
+            onStartChat={async (taskerUserId) => {
+              const conversationId = await startConversation({ taskerId: taskerUserId });
+              setActiveConversationId(conversationId);
+              navigate("chat");
+            }}
+          />
+        );
       
        case "request-step1":
        case "post-job":

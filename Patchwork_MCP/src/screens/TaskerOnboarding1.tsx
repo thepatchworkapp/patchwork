@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Camera } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { Input } from "../components/patchwork/Input";
@@ -27,16 +29,9 @@ export function TaskerOnboarding1({
   selectedCategories,
   onCategoriesChange
 }: TaskerOnboarding1Props) {
-  const allCategories = [
-    "Plumbing", "Electrical", "Handyman", "Cleaning",
-    "Moving", "Painting", "Gardening", "Pest Control",
-    "Appliance Repair", "HVAC", "IT Support", "Tutoring",
-    "Carpentry", "Roofing", "Flooring", "Welding",
-    "Auto Repair", "Pet Care", "Photography", "Event Planning",
-    "Catering", "Personal Training", "Massage", "Hair Styling"
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
+  const allCategories = (backendCategories ?? []).map(c => c.name);
 
-  // If user has selected a category, show it first, followed by top categories (excluding the selected one)
   const displayCategories = selectedCategories.length > 0
     ? [
         ...selectedCategories,

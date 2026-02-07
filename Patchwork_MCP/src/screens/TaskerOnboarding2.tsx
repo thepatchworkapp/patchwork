@@ -240,7 +240,14 @@ export function TaskerOnboarding2({ onBack, onNext }: TaskerOnboarding2Props) {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 max-w-[390px] mx-auto p-4 bg-white border-t border-neutral-200">
-        <Button variant="primary" fullWidth onClick={() => onNext({ bio, rateType, hourlyRate, fixedRate, serviceRadius, photos: categoryPhotos })}>
+        <Button variant="primary" fullWidth onClick={() => onNext({
+          bio,
+          rateType: rateType === "both" ? "hourly" : rateType,
+          hourlyRate,
+          fixedRate,
+          serviceRadius,
+          photos: categoryPhotos,
+        })}>
           Continue
         </Button>
       </div>

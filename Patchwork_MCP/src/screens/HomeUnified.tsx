@@ -1,14 +1,14 @@
 import { Search, MapPin, PlusCircle, List, MessageCircle, Briefcase, Calendar, TrendingUp, Star, Eye, Heart } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Card } from "../components/patchwork/Card";
 import { Button } from "../components/patchwork/Button";
 import { Badge } from "../components/patchwork/Badge";
 
 export function HomeUnified({ onNavigate, hasTaskerProfile = false }: { onNavigate: (screen: string) => void; hasTaskerProfile?: boolean }) {
-  const categories = [
-    "Plumbing", "Electrical", "Handyman", "Cleaning",
-    "Moving", "Painting", "Gardening", "Pest Control"
-  ];
+  const backendCategories = useQuery(api.categories.listCategories);
+  const categories = (backendCategories ?? []).map(c => c.name).slice(0, 8);
 
   const recentActivity = [
     { type: "quote", name: "Alex Chen", service: "Plumbing", time: "2h ago" },
@@ -66,7 +66,7 @@ export function HomeUnified({ onNavigate, hasTaskerProfile = false }: { onNaviga
           </div>
 
           <button onClick={() => onNavigate("categories")} className="text-[#4F46E5] text-sm mb-4">
-            See all 65+ categories
+            See all categories
           </button>
 
           <div className="space-y-3">

@@ -25,6 +25,8 @@ type TaskerCard = {
   verified: boolean;
   bio: string;
   completedJobs: number;
+  avatarUrl?: string | null;
+  categoryPhotoUrl?: string | null;
 };
 
 export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
@@ -47,10 +49,6 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
     }
   }, [location, locationLoading, locationError, requestLocation]);
 
-  useEffect(() => {
-    setCurrentCardIndex(0);
-  }, [selectedCategory, radiusKm]);
-
   const taskers = useQuery(
     api.search.searchTaskers,
     location
@@ -58,7 +56,11 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           categorySlug:
             selectedCategory === "All categories"
               ? undefined
-              : selectedCategory.toLowerCase(),
+              : selectedCategory
+                  .trim()
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")
+                  .replace(/^-+|-+$/g, ""),
           lat: location.lat,
           lng: location.lng,
           radiusKm: radiusKm,
@@ -66,20 +68,10 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
       : "skip"
   );
 
+  const backendCategories = useQuery(api.categories.listCategories);
   const categories = [
     "All categories",
-    "Plumbing",
-    "Electrical",
-    "Handyman",
-    "Cleaning",
-    "Moving",
-    "Painting",
-    "Gardening",
-    "Pest Control",
-    "Appliance Repair",
-    "HVAC",
-    "IT Support",
-    "Tutoring"
+    ...(backendCategories ?? []).map(c => c.name),
   ];
 
   if (locationError) {
@@ -89,6 +81,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
         <p className="text-neutral-900 mb-2">Location access required</p>
         <p className="text-neutral-600 text-sm mb-4">{locationError}</p>
         <button
+          type="button"
           onClick={() => requestLocation()}
           className="text-[#4F46E5] font-medium"
         >
@@ -121,6 +114,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           </div>
           
           <button 
+            type="button"
             onClick={() => setShowRadiusModal(true)}
             className="flex items-center gap-2 text-[#4F46E5] mb-3"
           >
@@ -129,6 +123,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           </button>
 
           <button
+            type="button"
             onClick={() => setShowCategories(!showCategories)}
             className="w-full flex items-center justify-between px-4 py-3 border border-neutral-300 rounded-lg bg-white"
           >
@@ -140,9 +135,11 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
             <div className="absolute left-4 right-4 bg-white border border-neutral-300 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
               {categories.map((cat) => (
                 <button
+                  type="button"
                   key={cat}
                   onClick={() => {
                     setSelectedCategory(cat);
+                    setCurrentCardIndex(0);
                     setShowCategories(false);
                   }}
                   className={`w-full text-left px-4 py-3 hover:bg-neutral-50 ${
@@ -171,6 +168,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-neutral-900">Search Radius</h2>
                 <button
+                  type="button"
                   onClick={() => setShowRadiusModal(false)}
                   className="text-[#6B7280]"
                 >
@@ -187,14 +185,17 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
                   <span className="text-neutral-900">{radiusKm} km</span>
                 </div>
 
-                <input
-                  type="range"
-                  min="1"
-                  max="250"
-                  value={radiusKm}
-                  onChange={(e) => setRadiusKm(Number(e.target.value))}
-                  className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#4F46E5] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
-                />
+                  <input
+                    type="range"
+                    min="1"
+                    max="250"
+                    value={radiusKm}
+                    onChange={(e) => {
+                      setRadiusKm(Number(e.target.value));
+                      setCurrentCardIndex(0);
+                    }}
+                    className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#4F46E5] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                  />
 
                 <div className="flex items-center justify-between mt-2 text-sm text-[#6B7280]">
                   <span>1 km</span>
@@ -219,6 +220,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
   }
 
   const currentTasker = taskerList[currentCardIndex];
+  const heroImage = currentTasker?.avatarUrl ?? currentTasker?.categoryPhotoUrl ?? null;
 
   const handleSkip = () => {
     if (currentCardIndex < taskerList.length - 1) {
@@ -257,6 +259,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
 
         {/* Location - moved above category filter */}
         <button 
+          type="button"
           onClick={() => setShowRadiusModal(true)}
           className="flex items-center gap-2 text-[#4F46E5] mb-3"
         >
@@ -266,6 +269,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
 
         {/* Category Filter */}
         <button
+          type="button"
           onClick={() => setShowCategories(!showCategories)}
           className="w-full flex items-center justify-between px-4 py-3 border border-neutral-300 rounded-lg bg-white"
         >
@@ -277,9 +281,11 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           <div className="absolute left-4 right-4 bg-white border border-neutral-300 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
             {categories.map((cat) => (
               <button
+                type="button"
                 key={cat}
                 onClick={() => {
                   setSelectedCategory(cat);
+                  setCurrentCardIndex(0);
                   setShowCategories(false);
                 }}
                 className={`w-full text-left px-4 py-3 hover:bg-neutral-50 ${
@@ -299,6 +305,13 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             {/* Profile Image Placeholder */}
             <div className="h-64 bg-gradient-to-br from-[#4F46E5] to-[#7C3AED] relative">
+              {heroImage && (
+                <img
+                  src={heroImage}
+                  alt={currentTasker.name}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              )}
               <div className="absolute top-4 right-4">
                 {currentTasker.verified && (
                   <Badge variant="success">Verified</Badge>
@@ -338,6 +351,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
               </p>
 
               <button
+                type="button"
                 onClick={handleViewProfile}
                 className="flex items-center gap-2 text-[#4F46E5] mb-6"
               >
@@ -348,12 +362,14 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
               {/* Action Buttons */}
               <div className="flex items-center gap-4">
                 <button
+                  type="button"
                   onClick={handleSkip}
                   className="flex-1 h-14 rounded-full border-2 border-neutral-300 flex items-center justify-center active:bg-neutral-50"
                 >
                   <X size={28} className="text-neutral-600" />
                 </button>
                 <button
+                  type="button"
                   onClick={handleLike}
                   className="flex-1 h-14 rounded-full bg-[#4F46E5] flex items-center justify-center active:bg-[#4338CA]"
                 >
@@ -389,6 +405,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-neutral-900">Search Radius</h2>
               <button
+                type="button"
                 onClick={() => setShowRadiusModal(false)}
                 className="text-[#6B7280]"
               >
@@ -410,7 +427,10 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
                 min="1"
                 max="250"
                 value={radiusKm}
-                onChange={(e) => setRadiusKm(Number(e.target.value))}
+                onChange={(e) => {
+                  setRadiusKm(Number(e.target.value));
+                  setCurrentCardIndex(0);
+                }}
                 className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#4F46E5] [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#4F46E5] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
               />
 

@@ -112,7 +112,7 @@ export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
               }
             }}>
               <div className="flex gap-3">
-                <Avatar src="" alt={provider.name} size="lg" />
+                <Avatar src={provider.avatarUrl ?? provider.categoryPhotoUrl ?? ""} alt={provider.name} size="lg" />
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between mb-1">

@@ -54,6 +54,12 @@ export interface Conversation {
   taskerLastReadAt?: number;
   createdAt: number;
   updatedAt: number;
+  participantName?: string | null;
+  participantPhotoUrl?: string | null;
+  seekerName?: string;
+  taskerName?: string;
+  seekerPhotoUrl?: string | null;
+  taskerPhotoUrl?: string | null;
 }
 
 /**
