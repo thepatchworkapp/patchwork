@@ -106,7 +106,7 @@ E2E UI tests (Playwright) live at repo root `tests/ui/`:
 ```bash
 cd ..
 # Ensure VITE_CONVEX_URL is set (use the value from Patchwork_MCP/.env.local)
-VITE_CONVEX_URL=https://aware-meerkat-572.convex.cloud \
+VITE_CONVEX_URL=https://<deployment>.convex.cloud \
   npx playwright test tests/ui/smoke.test.ts
 ```
 
@@ -129,3 +129,7 @@ See:
 - `Patchwork_MCP/AGENTS.md`
 - `Patchwork_MCP/convex/AGENTS.md`
 - `Patchwork_MCP/src/screens/AGENTS.md`
+
+## Staging (Cloudflare)
+
+For staging deployment and security settings, see `doc/staging-cloudflare.md`.

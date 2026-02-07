@@ -2,7 +2,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../Patchwork_MCP/convex/_generated/api";
 
-const convexUrl = "https://aware-meerkat-572.convex.cloud";
+const convexUrl = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL;
+if (!convexUrl) {
+  throw new Error("Missing Convex URL. Set VITE_CONVEX_URL (or CONVEX_URL) to https://<deployment>.convex.cloud");
+}
 const convex = new ConvexHttpClient(convexUrl);
 
 async function fetchOtp(email: string): Promise<string> {

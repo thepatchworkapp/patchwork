@@ -12,7 +12,7 @@
 | **Testing** | Vitest + convex-test (node environment) |
 | **Auth** | Google OAuth + Email OTP via @convex-dev/better-auth |
 | **Local Dev** | http://localhost:5173 |
-| **Convex** | https://aware-meerkat-572.convex.site |
+| **Convex** | `https://<deployment>.convex.cloud` (queries) / `https://<deployment>.convex.site` (HTTP actions) |
 
 ## Project Structure
 
@@ -233,6 +233,34 @@ status: v.union(v.literal("pending"), v.literal("active")),
 2. **Profile.tsx** is 664 lines - Extract before adding features
 3. **Hardcoded colors** throughout - Use CSS variables from index.css
 4. **No error boundaries** - Add try/catch for Convex queries
+5. **`.collect()` in Convex queries** - See `convex/AGENTS.md` Scaling Rules. Use `.take(n)` or `.paginate()`
+6. **Client-side filtering of query results** - Always pass filter args to server. See `src/screens/AGENTS.md`
+
+## Cross-Cutting Concerns (Known Gaps)
+
+### ~~Category Source-of-Truth Mismatch~~ — RESOLVED
+
+Backend is now the single source of truth. `categories` table has `emoji` and `group` fields. All frontend screens (`TaskerOnboarding1`, `CategorySelection`, `AddCategory`, `HomeSwipe`, `Home`, `HomeUnified`, `Categories`) fetch from `api.categories.listCategories`. Run `seedCategories` to populate 57 categories across 10 groups.
+
+### ~~Rate Type Enum Mismatch~~ — RESOLVED
+
+`TaskerOnboarding2.tsx` resolves `rateType="both"` to `"hourly"` before passing to `onNext`. Both hourly and fixed rate values are still sent — `rateType` just determines the primary display type.
+
+### ~~Geospatial Data Not Wired End-to-End~~ — RESOLVED
+
+`users.updateLocation` now schedules `internal.location.syncTaskerGeo` when the user is a tasker. This updates `taskerProfiles.location` and inserts into the geospatial index without requiring the UI to call a separate endpoint.
+
+### Mobile Subscription Lifecycle (Future)
+
+For mobile, minimize active Convex subscriptions to preserve battery/network:
+- Tie subscription lifecycle to screen visibility (pause when backgrounded)
+- Consider `usePaginatedQuery` over `useQuery` for large lists
+- Debounce location updates to avoid subscription churn
+- RevenueCat webhooks should call existing `updateSubscriptionPlan` / `setGhostMode` mutations
+
+### ~~Auth/Authorization Gaps~~ — RESOLVED
+
+All query endpoints now enforce ownership checks. `messages.listMessages`, `conversations.getConversation`, `jobs.getJob`, `reviews.getJobReviews` verify the caller is a participant. `sendMessage` rejects non-participants. `admin.listAllUsers` and `admin.getUserDetail` require admin email. Public endpoints (`getUserReviews`, `getTaskerById`, `searchTaskers`, categories, files) are intentionally open for browsing/discovery. See `convex/AGENTS.md` for full matrix.
 
 ## Recent Design Decisions
 
@@ -265,8 +293,9 @@ Notes:
 
 Required in `.env.local`:
 ```
-CONVEX_DEPLOYMENT=aware-meerkat-572
-VITE_CONVEX_URL=https://aware-meerkat-572.convex.site
+CONVEX_DEPLOYMENT=dev:<deployment-name>
+VITE_CONVEX_URL=https://<deployment>.convex.cloud
+VITE_CONVEX_SITE_URL=https://<deployment>.convex.site
 BETTER_AUTH_SECRET=<32+ chars>
 GOOGLE_CLIENT_ID=<oauth>
 GOOGLE_CLIENT_SECRET=<oauth>

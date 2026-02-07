@@ -159,6 +159,65 @@ import { Search, MapPin, Star, Lock, Camera } from "lucide-react";
 | **Chat.tsx** | 493 | 38+ useState, 4 similar handlers | Extract useProposalHandler |
 | **HomeSwipe.tsx** | ~400 | Complex swipe interactions | Keep isolated |
 
+## Query Optimization Patterns (CRITICAL)
+
+### Server-Side Filtering (MANDATORY)
+
+When a screen has tabs or filters (role, status, category), pass the filter value **as a query argument** to the backend. NEVER fetch all data then filter in the component.
+
+```tsx
+// CORRECT — pass filter to server
+const conversations = useQuery(api.conversations.listConversations, {
+  role: activeTab,   // "seeker" | "tasker"
+  limit: 50,
+});
+
+// FORBIDDEN — fetch all, filter in component
+const allConversations = useQuery(api.conversations.listConversations);
+const filtered = allConversations?.filter(c => 
+  activeTab === "seeker" ? c.seekerId === user._id : c.taskerId === user._id
+);
+```
+
+**Screens already optimized (follow these as reference)**:
+| Screen | Query | Filter Args |
+|--------|-------|-------------|
+| `Messages.tsx` | `listConversations` | `role`, `limit` |
+| `Jobs.tsx` | `listJobs` | `statusGroup` ("active" \| "completed") |
+| `HomeSwipe.tsx` | `searchTaskers` | `categorySlug`, `radiusKm`, location coords |
+
+### Avoid Unnecessary Query Dependencies
+
+Don't call `getCurrentUser` just to get the user's ID for filtering — if the backend query already resolves the user from auth context, skip it.
+
+```tsx
+// BAD — extra query just to get userId for client-side filtering
+const currentUser = useQuery(api.users.getCurrentUser);
+const conversations = useQuery(api.conversations.listConversations);
+const filtered = conversations?.filter(c => c.seekerId === currentUser?._id);
+
+// GOOD — server handles auth + filtering internally
+const conversations = useQuery(api.conversations.listConversations, { role: "seeker", limit: 50 });
+```
+
+### Category Slug Generation
+
+When generating slugs from category names for query args, use proper slugification:
+
+```tsx
+// CORRECT
+const slug = categoryName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+// "Pest Control" → "pest-control"
+
+// WRONG
+const slug = categoryName.toLowerCase();
+// "Pest Control" → "pest control" (breaks index lookup)
+```
+
+### ~~`usePaginatedQuery` for Chat~~ — RESOLVED
+
+`useChat` hook uses `usePaginatedQuery` with `initialNumItems: 25`. Chat.tsx has a "Load more" button wired to `loadMoreMessages`.
+
 ## Anti-Patterns to Avoid
 
 1. **Adding more useState to Chat.tsx** - Already has 38+, needs refactoring
@@ -166,6 +225,9 @@ import { Search, MapPin, Star, Lock, Camera } from "lucide-react";
 3. **Hardcoding screen names** - Use constants or App.tsx types
 4. **Missing loading states** - Always show loading UI for async operations
 5. **No error handling** - Add try/catch for Convex calls
+6. **Client-side filtering of Convex queries** - See Query Optimization above. Always server-side
+7. **Fetching `getCurrentUser` just for filtering** - Let the backend resolve user from auth context
+8. **Hardcoding category lists** - All categories come from `api.categories.listCategories`. NEVER define inline arrays of category names
 
 ## File Upload Pattern
 
