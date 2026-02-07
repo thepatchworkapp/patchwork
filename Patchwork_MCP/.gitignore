@@ -1,2 +1,18 @@
-
+# Secrets / local overrides
+.env
 .env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+
+# Tooling
+.wrangler/
+.vite/
+
+# OS
+.DS_Store
