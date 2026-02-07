@@ -20,24 +20,25 @@ const modules: Record<string, () => Promise<any>> = {
 };
 
 describe("categories", () => {
-  test("seedCategories creates 15 categories", async () => {
+  test("seedCategories creates all categories", async () => {
     const t = convexTest(schema, modules);
     
     await t.mutation(api.categories.seedCategories);
     
     const categories = await t.query(api.categories.listCategories);
-    expect(categories).toHaveLength(15);
+    expect(categories.length).toBeGreaterThanOrEqual(50);
   });
 
   test("seedCategories is idempotent (running twice doesn't duplicate)", async () => {
     const t = convexTest(schema, modules);
     
-    // Run seed twice
     await t.mutation(api.categories.seedCategories);
+    const firstRun = await t.query(api.categories.listCategories);
+
     await t.mutation(api.categories.seedCategories);
+    const secondRun = await t.query(api.categories.listCategories);
     
-    const categories = await t.query(api.categories.listCategories);
-    expect(categories).toHaveLength(15);
+    expect(secondRun).toHaveLength(firstRun.length);
   });
 
   test("listCategories returns all active categories sorted by sortOrder", async () => {
@@ -70,8 +71,8 @@ describe("categories", () => {
     expect(category).toBeDefined();
     expect(category?.name).toBe("Plumbing");
     expect(category?.slug).toBe("plumbing");
-    expect(category?.icon).toBe("wrench");
-    expect(category?.sortOrder).toBe(1);
+    expect(category?.emoji).toBe("🚰");
+    expect(category?.group).toBe("Home Services");
   });
 
   test("getCategoryBySlug returns null for non-existent slug", async () => {

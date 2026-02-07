@@ -72,7 +72,10 @@ export const createJobRequest = mutation({
 });
 
 export const listMyJobRequests = query({
-  handler: async (ctx) => {
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
 
@@ -82,10 +85,12 @@ export const listMyJobRequests = query({
       .first();
     if (!user) return null;
 
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
+
     return await ctx.db
       .query("jobRequests")
       .withIndex("by_seeker", (q) => q.eq("seekerId", user._id))
       .order("desc")
-      .collect();
+      .take(limit);
   },
 });

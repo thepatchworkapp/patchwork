@@ -626,4 +626,104 @@ describe("jobs", () => {
       expect(job.completedDate <= afterComplete).toBe(true);
     }
   });
+
+  test("getJob returns null for non-participant", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth_job1",
+      email: "seeker_auth_job1@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth Job 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth_job1",
+      email: "tasker_auth_job1@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth Job 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    const asStranger = t.withIdentity({
+      tokenIdentifier: "google|stranger_auth_job1",
+      email: "stranger_auth_job1@example.com",
+    });
+    await asStranger.mutation(api.users.createProfile, {
+      name: "Stranger Job",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const result = await asStranger.query(api.jobs.getJob, { jobId });
+    expect(result).toBeNull();
+  });
+
+  test("getJob returns null for unauthenticated user", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.categories.seedCategories);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth_job2",
+      email: "seeker_auth_job2@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth Job 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth_job2",
+      email: "tasker_auth_job2@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth Job 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(
+      api.conversations.startConversation,
+      { taskerId }
+    );
+
+    const proposalId = await asTasker.mutation(api.proposals.sendProposal, {
+      conversationId,
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const { jobId } = await asSeeker.mutation(api.proposals.acceptProposal, {
+      proposalId,
+    });
+
+    const result = await t.query(api.jobs.getJob, { jobId });
+    expect(result).toBeNull();
+  });
 });

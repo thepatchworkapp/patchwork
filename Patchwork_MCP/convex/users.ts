@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const createProfile = mutation({
   args: {
@@ -91,6 +92,8 @@ export const updateLocation = mutation({
     
     if (!user) throw new Error("User not found");
 
+    const now = Date.now();
+
     await ctx.db.patch(user._id, {
       location: {
         ...user.location,
@@ -103,8 +106,16 @@ export const updateLocation = mutation({
         ...user.settings,
         locationEnabled: true,
       },
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    if (user.roles.isTasker) {
+      await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
+        userId: user._id,
+        lat: args.lat,
+        lng: args.lng,
+      });
+    }
 
     return user._id;
   },

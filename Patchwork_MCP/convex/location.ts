@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { taskerGeo } from "./geospatial";
 
@@ -157,5 +157,41 @@ export const updateTaskerLocation = mutation({
         ? haversineDistance(currentLocation.lat, currentLocation.lng, args.lat, args.lng)
         : null,
     };
+  },
+});
+
+export const syncTaskerGeo = internalMutation({
+  args: {
+    userId: v.id("users"),
+    lat: v.number(),
+    lng: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const taskerProfile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!taskerProfile) return;
+
+    await ctx.db.patch(taskerProfile._id, {
+      location: { lat: args.lat, lng: args.lng },
+      updatedAt: Date.now(),
+    });
+
+    const primaryCategory = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile", (q) =>
+        q.eq("taskerProfileId", taskerProfile._id)
+      )
+      .first();
+
+    if (primaryCategory) {
+      await taskerGeo.insert(
+        ctx,
+        taskerProfile._id,
+        { latitude: args.lat, longitude: args.lng },
+        { categoryId: primaryCategory.categoryId }
+      );
+    }
   },
 });

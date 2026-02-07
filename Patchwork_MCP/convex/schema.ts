@@ -134,8 +134,10 @@ export default defineSchema({
     */
   categories: defineTable({
     name: v.string(),
-    slug: v.string(), // URL-safe identifier
-    icon: v.optional(v.string()), // Lucide icon name
+    slug: v.string(),
+    icon: v.optional(v.string()),
+    emoji: v.optional(v.string()),
+    group: v.optional(v.string()),
     description: v.optional(v.string()),
     isActive: v.boolean(),
     sortOrder: v.optional(v.number()),
@@ -389,5 +391,13 @@ export default defineSchema({
     email: v.string(),
     otp: v.string(),
     createdAt: v.number(),
+  }).index("by_email", ["email"]),
+
+  adminOtps: defineTable({
+    email: v.string(),
+    otpHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    verifyAttempts: v.number(),
   }).index("by_email", ["email"]),
 });

@@ -163,8 +163,22 @@ export const createReview = mutation({
 export const getJobReviews = query({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+    if (!user) return null;
+
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
+
+    // Only job participants can view reviews
+    if (job.seekerId !== user._id && job.taskerId !== user._id) {
+      return null;
+    }
 
     // Blind review: only show reviews if both parties have submitted
     if (!job.seekerReviewId || !job.taskerReviewId) {
@@ -174,7 +188,7 @@ export const getJobReviews = query({
     const reviews = await ctx.db
       .query("reviews")
       .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
-      .collect();
+      .take(2);
 
     return reviews;
   },
@@ -184,12 +198,18 @@ export const getJobReviews = query({
  * Get all reviews for a specific user (as reviewee)
  */
 export const getUserReviews = query({
-  args: { userId: v.id("users") },
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
+
     const reviews = await ctx.db
       .query("reviews")
       .withIndex("by_reviewee", (q) => q.eq("revieweeId", args.userId))
-      .collect();
+      .order("desc")
+      .take(limit);
 
     return reviews;
   },

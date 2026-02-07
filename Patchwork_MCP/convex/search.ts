@@ -5,6 +5,7 @@ import { taskerGeo } from "./geospatial";
 
 const MAX_SERVICE_RADIUS_KM = 250;
 const MAX_GEO_RESULTS = 100;
+const DEFAULT_GEO_RESULTS = 50;
 
 export const searchTaskers = query({
   args: {
@@ -12,8 +13,11 @@ export const searchTaskers = query({
     lat: v.number(),
     lng: v.number(),
     radiusKm: v.number(),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? DEFAULT_GEO_RESULTS, MAX_GEO_RESULTS));
+
     let category: Doc<"categories"> | null = null;
     if (args.categorySlug) {
       category = await ctx.db
@@ -32,7 +36,7 @@ export const searchTaskers = query({
         latitude: args.lat,
         longitude: args.lng,
       },
-      limit: MAX_GEO_RESULTS,
+      limit,
       maxDistance: maxDistanceMeters,
     });
 
@@ -47,25 +51,34 @@ export const searchTaskers = query({
         continue;
       }
 
-      const taskerCategories = await ctx.db
-        .query("taskerCategories")
-        .withIndex("by_taskerProfile", (q) =>
-          q.eq("taskerProfileId", profile._id)
-        )
-        .collect();
+      const user = await ctx.db.get(profile.userId);
+      if (!user) {
+        continue;
+      }
 
       let categoryData: Doc<"taskerCategories"> | null = null;
       let currentCategory: Doc<"categories"> | null = category;
       
       if (currentCategory) {
-        categoryData = taskerCategories.find(
-          (tc) => tc.categoryId === currentCategory!._id
-        ) ?? null;
+        categoryData = await ctx.db
+          .query("taskerCategories")
+          .withIndex("by_taskerProfile", (q) =>
+            q.eq("taskerProfileId", profile._id)
+          )
+          .filter((q) => q.eq(q.field("categoryId"), currentCategory!._id))
+          .first();
+
         if (!categoryData) {
           continue;
         }
       } else {
-        categoryData = taskerCategories[0] ?? null;
+        categoryData = await ctx.db
+          .query("taskerCategories")
+          .withIndex("by_taskerProfile", (q) =>
+            q.eq("taskerProfileId", profile._id)
+          )
+          .first();
+
         if (!categoryData) {
           continue;
         }
@@ -80,6 +93,12 @@ export const searchTaskers = query({
         categoryData.hourlyRate,
         categoryData.fixedRate
       );
+
+      const avatarUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+      const categoryPhotoStorageId = categoryData.photos?.[0];
+      const categoryPhotoUrl = categoryPhotoStorageId
+        ? await ctx.storage.getUrl(categoryPhotoStorageId)
+        : null;
 
       const distanceKm = geoResult.distance / 1000;
       const maxOverlapDistance = args.radiusKm + categoryData.serviceRadius;
@@ -99,6 +118,8 @@ export const searchTaskers = query({
         verified: profile.verified,
         bio: categoryData.bio,
         completedJobs: categoryData.completedJobs,
+        avatarUrl,
+        categoryPhotoUrl,
       });
     }
 

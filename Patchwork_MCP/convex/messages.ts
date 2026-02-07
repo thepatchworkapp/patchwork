@@ -32,6 +32,10 @@ export const sendMessage = mutation({
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) throw new Error("Conversation not found");
 
+    if (conversation.seekerId !== user._id && conversation.taskerId !== user._id) {
+      throw new Error("Not a participant in this conversation");
+    }
+
     const now = Date.now();
 
     const messageId = await ctx.db.insert("messages", {
@@ -109,30 +113,42 @@ export const listMessages = query({
     paginationOpts: v.optional(paginationOptsValidator),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+    if (!user) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+
+    const conversation = await ctx.db.get(args.conversationId);
+    if (
+      !conversation ||
+      (conversation.seekerId !== user._id && conversation.taskerId !== user._id)
+    ) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+
+    const paginationOpts = args.paginationOpts ?? {
+      cursor: null,
+      numItems: 25,
+    };
+
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_conversation_time", (q) =>
         q.eq("conversationId", args.conversationId)
       )
       .order("desc")
-      .collect();
-    
-    const paginationOpts = args.paginationOpts ?? { numItems: 25 };
-    const numItems = paginationOpts.numItems;
-    const cursor = 'cursor' in paginationOpts ? paginationOpts.cursor : null;
-    
-    let startIndex = 0;
-    if (cursor !== null) {
-      const cursorIndex = messages.findIndex((m) => m._id === cursor);
-      startIndex = cursorIndex >= 0 ? cursorIndex + 1 : messages.length;
-    }
-    
-    const page = messages.slice(startIndex, startIndex + numItems);
-    const isDone = startIndex + numItems >= messages.length;
-    const continueCursor = isDone ? undefined : page[page.length - 1]?._id;
-    
+      .paginate(paginationOpts);
+
     const pageWithProposals = await Promise.all(
-      page.map(async (msg) => {
+      messages.page.map(async (msg) => {
         if (msg.proposalId) {
           const proposal = await ctx.db.get(msg.proposalId);
           return { ...msg, proposal };
@@ -143,8 +159,8 @@ export const listMessages = query({
 
     return {
       page: pageWithProposals,
-      isDone,
-      continueCursor,
+      isDone: messages.isDone,
+      continueCursor: messages.continueCursor,
     };
   },
 });

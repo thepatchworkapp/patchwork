@@ -101,7 +101,7 @@ export const getTaskerProfile = query({
     const taskerCategories = await ctx.db
       .query("taskerCategories")
       .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
-      .collect();
+      .take(20);
 
     const categoriesWithNames = await Promise.all(
       taskerCategories.map(async (tc) => {
@@ -227,20 +227,28 @@ export const getTaskerById = query({
     const user = await ctx.db.get(profile.userId);
     if (!user) return null;
 
+    const userPhotoUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+
     const taskerCategories = await ctx.db
       .query("taskerCategories")
       .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
-      .collect();
+      .take(20);
 
     const categoriesWithNames = await Promise.all(
       taskerCategories.map(async (tc) => {
         const category = await ctx.db.get(tc.categoryId);
+        const firstPhotoStorageId = tc.photos?.[0];
+        const firstPhotoUrl = firstPhotoStorageId
+          ? await ctx.storage.getUrl(firstPhotoStorageId)
+          : null;
         return {
           id: tc._id,
           categoryId: tc.categoryId,
           categoryName: category?.name ?? "Unknown",
           categorySlug: category?.slug ?? "unknown",
           bio: tc.bio,
+          photos: tc.photos,
+          firstPhotoUrl,
           rateType: tc.rateType,
           hourlyRate: tc.hourlyRate,
           fixedRate: tc.fixedRate,
@@ -259,11 +267,15 @@ export const getTaskerById = query({
     const reviewsWithReviewers = await Promise.all(
       reviews.map(async (r) => {
         const reviewer = await ctx.db.get(r.reviewerId);
+        const reviewerPhotoUrl = reviewer?.photo
+          ? await ctx.storage.getUrl(reviewer.photo)
+          : null;
         return {
           id: r._id,
           rating: r.rating,
           text: r.text,
           reviewerName: reviewer?.name ?? "Anonymous",
+          reviewerPhotoUrl,
           createdAt: r.createdAt,
         };
       })
@@ -271,6 +283,7 @@ export const getTaskerById = query({
 
     return {
       id: profile._id,
+      userId: profile.userId,
       displayName: profile.displayName,
       bio: profile.bio,
       rating: profile.rating,
@@ -279,6 +292,7 @@ export const getTaskerById = query({
       verified: profile.verified,
       userName: user.name,
       userPhoto: user.photo,
+      userPhotoUrl,
       categories: categoriesWithNames,
       reviews: reviewsWithReviewers,
     };

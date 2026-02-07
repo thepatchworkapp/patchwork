@@ -487,4 +487,97 @@ describe("messages", () => {
     expect(afterTaskerMessage?.seekerUnreadCount).toBe(1); // Seeker has 1 unread
     expect(afterTaskerMessage?.taskerUnreadCount).toBe(1); // Tasker's count unchanged
   });
+
+  test("listMessages returns empty for non-participant", async () => {
+    const t = convexTest(schema, modules);
+    
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth_msg1",
+      email: "seeker_auth_msg1@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth Msg 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth_msg1",
+      email: "tasker_auth_msg1@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth Msg 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Secret message",
+    });
+
+    const asStranger = t.withIdentity({
+      tokenIdentifier: "google|stranger_auth_msg1",
+      email: "stranger_auth_msg1@example.com",
+    });
+    await asStranger.mutation(api.users.createProfile, {
+      name: "Stranger Msg",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const result = await asStranger.query(api.messages.listMessages, {
+      conversationId,
+    });
+    expect(result.page).toHaveLength(0);
+  });
+
+  test("sendMessage throws for non-participant", async () => {
+    const t = convexTest(schema, modules);
+    
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth_msg2",
+      email: "seeker_auth_msg2@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth Msg 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth_msg2",
+      email: "tasker_auth_msg2@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth Msg 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const asStranger = t.withIdentity({
+      tokenIdentifier: "google|stranger_auth_msg2",
+      email: "stranger_auth_msg2@example.com",
+    });
+    await asStranger.mutation(api.users.createProfile, {
+      name: "Stranger Msg 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await expect(
+      asStranger.mutation(api.messages.sendMessage, {
+        conversationId,
+        content: "Hacked message",
+      })
+    ).rejects.toThrow("Not a participant in this conversation");
+  });
 });

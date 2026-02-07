@@ -94,6 +94,69 @@ describe("conversations", () => {
     expect(conversation?.taskerUnreadCount).toBe(0);
   });
 
+  test("provider-detail style flow resolves tasker userId and opens chat with valid conversationId", async () => {
+    const t = convexTest(schema, modules);
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_provider_flow",
+      email: "tasker_provider_flow@example.com",
+    });
+
+    const taskerUserId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Provider",
+      city: "Waterloo",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.categories.seedCategories, {});
+    const categories = await asTasker.query(api.categories.listCategories, {});
+    const firstCategory = categories[0];
+    expect(firstCategory?._id).toBeDefined();
+
+    const taskerProfileId = await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Provider Flow Tasker",
+      categoryId: firstCategory._id,
+      categoryBio: "Experienced and reliable",
+      rateType: "hourly",
+      hourlyRate: 7500,
+      serviceRadius: 25,
+    });
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_provider_flow",
+      email: "seeker_provider_flow@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Provider",
+      city: "Waterloo",
+      province: "ON",
+    });
+
+    const taskerFromDetail = await asSeeker.query(api.taskers.getTaskerById, {
+      taskerId: taskerProfileId,
+    });
+
+    expect(taskerFromDetail).not.toBeNull();
+    expect(taskerFromDetail?.userId).toStrictEqual(taskerUserId);
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId: taskerFromDetail!.userId,
+    });
+
+    const conversation = await asSeeker.query(api.conversations.getConversation, {
+      conversationId,
+    });
+    expect(conversation).not.toBeNull();
+
+    const messages = await asSeeker.query(api.messages.listMessages, {
+      conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
+    });
+    expect(messages.page).toStrictEqual([]);
+    expect(messages.isDone).toBe(true);
+  });
+
   test("seeker can start conversation with initial message", async () => {
     const t = convexTest(schema, modules);
     
@@ -172,12 +235,12 @@ describe("conversations", () => {
 
     expect(conversationId1).toBeDefined();
 
-    // Try to start second conversation with same tasker
-    await expect(
-      asSeeker.mutation(api.conversations.startConversation, {
-        taskerId,
-      })
-    ).rejects.toThrow("Conversation already exists");
+    // Starting again with same participants returns existing conversation
+    const conversationId2 = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    expect(conversationId2).toStrictEqual(conversationId1);
   });
 
   test("listConversations returns conversations for authenticated user", async () => {
@@ -316,5 +379,81 @@ describe("conversations", () => {
         taskerId: seekerId, // Can't start conversation with yourself
       })
     ).rejects.toThrow("Cannot start conversation with yourself");
+  });
+
+  test("getConversation returns null for non-participant", async () => {
+    const t = convexTest(schema, modules);
+    
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth1",
+      email: "seeker_auth1@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth1",
+      email: "tasker_auth1@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth 1",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const asStranger = t.withIdentity({
+      tokenIdentifier: "google|stranger_auth1",
+      email: "stranger_auth1@example.com",
+    });
+    await asStranger.mutation(api.users.createProfile, {
+      name: "Stranger",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const result = await asStranger.query(api.conversations.getConversation, {
+      conversationId,
+    });
+    expect(result).toBeNull();
+  });
+
+  test("getConversation returns null for unauthenticated user", async () => {
+    const t = convexTest(schema, modules);
+    
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_auth2",
+      email: "seeker_auth2@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Auth 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_auth2",
+      email: "tasker_auth2@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Auth 2",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const result = await t.query(api.conversations.getConversation, {
+      conversationId,
+    });
+    expect(result).toBeNull();
   });
 });

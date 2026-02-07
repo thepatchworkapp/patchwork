@@ -168,7 +168,7 @@ describe("proposals", () => {
     });
 
     // Check for system message
-    const messages = await t.query(api.messages.listMessages, {
+    const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
     });
     
@@ -330,7 +330,7 @@ describe("proposals", () => {
     });
 
     // Check for system message
-    const messages = await t.query(api.messages.listMessages, {
+    const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
     });
     
@@ -439,7 +439,7 @@ describe("proposals", () => {
     });
 
     // Check for system message
-    const messages = await t.query(api.messages.listMessages, {
+    const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
     });
     
@@ -567,7 +567,7 @@ describe("proposals", () => {
     });
 
     // Check for system message
-    const messages = await t.query(api.messages.listMessages, {
+    const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
     });
     
