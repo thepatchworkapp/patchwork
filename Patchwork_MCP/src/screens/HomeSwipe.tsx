@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "convex/react";
-import { Star, MapPin, X, Check, Info, ChevronDown, Loader2 } from "lucide-react";
+import { useQuery, useConvexAuth } from "convex/react";
+import { Star, MapPin, X, Check, Info, ChevronDown, Loader2, MessageCircle } from "lucide-react";
 import { BottomNav } from "../components/patchwork/BottomNav";
 import { Badge } from "../components/patchwork/Badge";
 import { Button } from "../components/patchwork/Button";
@@ -12,10 +12,13 @@ import { Id } from "../../convex/_generated/dataModel";
 interface HomeSwipeProps {
   onNavigate: (screen: string) => void;
   onViewTasker?: (taskerId: Id<"taskerProfiles">) => void;
+  onStartChat?: (taskerUserId: Id<"users">) => Promise<void>;
+  currentUserId?: Id<"users"> | null;
 }
 
 type TaskerCard = {
   id: Id<"taskerProfiles">;
+  userId: Id<"users">;
   name: string;
   category: string;
   rating: number;
@@ -29,12 +32,13 @@ type TaskerCard = {
   categoryPhotoUrl?: string | null;
 };
 
-export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
+export function HomeSwipe({ onNavigate, onViewTasker, onStartChat, currentUserId }: HomeSwipeProps) {
   const [selectedCategory, setSelectedCategory] = useState("All categories");
   const [showCategories, setShowCategories] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [radiusKm, setRadiusKm] = useState(25);
   const [showRadiusModal, setShowRadiusModal] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
   const {
     location,
@@ -64,6 +68,7 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
           lat: location.lat,
           lng: location.lng,
           radiusKm: radiusKm,
+          excludeUserId: currentUserId ?? undefined,
         }
       : "skip"
   );
@@ -231,12 +236,15 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
     }
   };
 
-  const handleLike = () => {
-    // Save tasker to favorites
-    if (currentCardIndex < taskerList.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
-    } else {
-      setCurrentCardIndex(0);
+  const handleLike = async () => {
+    if (!currentTasker || !onStartChat || isStartingChat) return;
+
+    setIsStartingChat(true);
+    try {
+      await onStartChat(currentTasker.userId);
+    } catch (error) {
+      console.error("Failed to start chat:", error);
+      setIsStartingChat(false);
     }
   };
 
@@ -370,10 +378,15 @@ export function HomeSwipe({ onNavigate, onViewTasker }: HomeSwipeProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={handleLike}
-                  className="flex-1 h-14 rounded-full bg-[#4F46E5] flex items-center justify-center active:bg-[#4338CA]"
+                  onClick={() => void handleLike()}
+                  disabled={isStartingChat}
+                  className="flex-1 h-14 rounded-full bg-[#4F46E5] flex items-center justify-center active:bg-[#4338CA] disabled:opacity-50"
                 >
-                  <Check size={28} className="text-white" />
+                  {isStartingChat ? (
+                    <Loader2 size={28} className="text-white animate-spin" />
+                  ) : (
+                    <MessageCircle size={28} className="text-white" />
+                  )}
                 </button>
               </div>
             </div>

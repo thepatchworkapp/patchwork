@@ -285,6 +285,12 @@ export default function App() {
               setActiveTaskerId(id);
               navigate("provider-detail");
             }}
+            onStartChat={async (taskerUserId) => {
+              const conversationId = await startConversation({ taskerId: taskerUserId });
+              setActiveConversationId(conversationId);
+              navigate("chat");
+            }}
+            currentUserId={convexUser?._id ?? null}
           />
         );
       
@@ -591,7 +597,17 @@ export default function App() {
         );
       
       default:
-        return <HomeSwipe onNavigate={navigate} />;
+        return (
+          <HomeSwipe
+            onNavigate={navigate}
+            onStartChat={async (taskerUserId) => {
+              const conversationId = await startConversation({ taskerId: taskerUserId });
+              setActiveConversationId(conversationId);
+              navigate("chat");
+            }}
+            currentUserId={convexUser?._id ?? null}
+          />
+        );
     }
   };
 

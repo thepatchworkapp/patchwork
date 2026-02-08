@@ -14,6 +14,7 @@ export const searchTaskers = query({
     lng: v.number(),
     radiusKm: v.number(),
     limit: v.optional(v.number()),
+    excludeUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.min(args.limit ?? DEFAULT_GEO_RESULTS, MAX_GEO_RESULTS));
@@ -53,6 +54,11 @@ export const searchTaskers = query({
         continue;
       }
       if (profile.ghostMode || !profile.isOnboarded) {
+        continue;
+      }
+
+      // Exclude the current user's own tasker profile
+      if (args.excludeUserId && profile.userId === args.excludeUserId) {
         continue;
       }
 
