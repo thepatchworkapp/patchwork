@@ -1,10 +1,20 @@
 import { test, expect, Page } from "@playwright/test";
-import { ConvexClient } from "convex/browser";
-import { api } from "../../Patchwork_MCP/convex/_generated/api";
 import { generateTestId } from "../../Patchwork_MCP/tests/ui/helpers/cleanup";
 import { fetchOtp, signUpAndLogin } from "../../Patchwork_MCP/tests/ui/helpers/auth";
 
-const client = new ConvexClient(process.env.VITE_CONVEX_URL!);
+const convexSiteUrl = process.env.VITE_CONVEX_SITE_URL || process.env.VITE_CONVEX_URL?.replace(".convex.cloud", ".convex.site");
+if (!convexSiteUrl) throw new Error("Missing VITE_CONVEX_SITE_URL or VITE_CONVEX_URL");
+
+async function testProxy(action: string, args: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(`${convexSiteUrl}/test-proxy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, args }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Test proxy call failed");
+  return data.result;
+}
 
 // Unique test ID for this run to avoid collisions
 const testId = generateTestId();
@@ -14,7 +24,7 @@ const taskerEmail = `${testId}_tasker@test.com`;
 test.describe("Smoke Test Suite", () => {
   test.beforeAll(async ({ browser }) => {
     // 1. Setup: Ensure category exists
-    await client.mutation(api.testing.ensureCategoryExists, { name: "Cleaning" });
+    await testProxy("ensureCategoryExists", { name: "Cleaning" });
 
     // 2. Setup: Create a secondary user (Tasker) to enable Chat testing
     // We use a separate browser context to avoid interfering with the main test state
@@ -31,9 +41,9 @@ test.describe("Smoke Test Suite", () => {
   test.afterAll(async () => {
     // Cleanup: Delete test data
     // We clean up conversations first to avoid foreign key issues (though not strictly enforced in Convex usually)
-    await client.mutation(api.testing.cleanupConversations, { userEmail: seekerEmail });
-    await client.mutation(api.testing.deleteTestUser, { email: seekerEmail });
-    await client.mutation(api.testing.deleteTestUser, { email: taskerEmail });
+    await testProxy("cleanupConversations", { userEmail: seekerEmail });
+    await testProxy("deleteTestUser", { email: seekerEmail });
+    await testProxy("deleteTestUser", { email: taskerEmail });
   });
 
   test("Verify all 7 Convex-wired screens", async ({ page }) => {
@@ -90,7 +100,7 @@ test.describe("Smoke Test Suite", () => {
 
     // Step 6: Chat Screen
     // To test Chat, we need a conversation. We seed it now using the backend.
-    await client.mutation(api.testing.forceCreateConversation, {
+    await testProxy("forceCreateConversation", {
       seekerEmail,
       taskerEmail
     });

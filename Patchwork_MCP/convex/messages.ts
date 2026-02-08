@@ -29,6 +29,10 @@ export const sendMessage = mutation({
       throw new Error("Maximum 3 attachments allowed");
     }
 
+    // Input validation
+    if (args.content.length > 5000) throw new Error("Message must be 5000 characters or less");
+    if (args.content.trim().length === 0) throw new Error("Message cannot be empty");
+
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) throw new Error("Conversation not found");
 

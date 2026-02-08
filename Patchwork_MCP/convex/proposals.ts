@@ -21,8 +21,18 @@ export const sendProposal = mutation({
       .first();
     if (!user) throw new Error("User not found");
 
+    // Input validation
+    if (args.rate < 1 || args.rate > 100000000) throw new Error("Rate must be between 1 and 1,000,000 (in cents)");
+    if (args.startDateTime.length > 200) throw new Error("Start date/time must be 200 characters or less");
+    if (args.notes && args.notes.length > 2000) throw new Error("Notes must be 2000 characters or less");
+
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) throw new Error("Conversation not found");
+
+    // Verify caller is a participant in this conversation
+    if (conversation.seekerId !== user._id && conversation.taskerId !== user._id) {
+      throw new Error("Not a participant in this conversation");
+    }
 
     const receiverId =
       conversation.seekerId === user._id
@@ -160,6 +170,11 @@ export const counterProposal = mutation({
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
     if (!user) throw new Error("User not found");
+
+    // Input validation
+    if (args.rate < 1 || args.rate > 100000000) throw new Error("Rate must be between 1 and 1,000,000 (in cents)");
+    if (args.startDateTime.length > 200) throw new Error("Start date/time must be 200 characters or less");
+    if (args.notes && args.notes.length > 2000) throw new Error("Notes must be 2000 characters or less");
 
     const originalProposal = await ctx.db.get(args.proposalId);
     if (!originalProposal) throw new Error("Proposal not found");

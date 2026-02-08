@@ -18,6 +18,11 @@ export const searchTaskers = query({
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.min(args.limit ?? DEFAULT_GEO_RESULTS, MAX_GEO_RESULTS));
 
+    // Coordinate validation
+    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
+    if (args.radiusKm < 0 || args.radiusKm > 500) throw new Error("Search radius must be between 0 and 500 km");
+
     let category: Doc<"categories"> | null = null;
     if (args.categorySlug) {
       category = await ctx.db

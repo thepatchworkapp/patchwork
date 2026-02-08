@@ -24,6 +24,11 @@ export const createProfile = mutation({
       return existing._id;
     }
 
+    // Input validation
+    if (args.name.length > 100) throw new Error("Name must be 100 characters or less");
+    if (args.city.length > 100) throw new Error("City must be 100 characters or less");
+    if (args.province.length > 100) throw new Error("Province must be 100 characters or less");
+
     const now = Date.now();
 
     const userId = await ctx.db.insert("users", {
@@ -91,6 +96,10 @@ export const updateLocation = mutation({
       .first();
     
     if (!user) throw new Error("User not found");
+
+    // Coordinate validation
+    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
 
     const now = Date.now();
 

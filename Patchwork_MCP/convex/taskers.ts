@@ -33,6 +33,14 @@ export const createTaskerProfile = mutation({
       throw new Error("Tasker profile already exists");
     }
 
+    // Input validation
+    if (args.displayName.length > 100) throw new Error("Display name must be 100 characters or less");
+    if (args.bio && args.bio.length > 2000) throw new Error("Bio must be 2000 characters or less");
+    if (args.categoryBio.length > 2000) throw new Error("Category bio must be 2000 characters or less");
+    if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius must be between 1 and 250 km");
+    if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new Error("Hourly rate must be between 1 and 1,000,000 (in cents)");
+    if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new Error("Fixed rate must be between 1 and 1,000,000 (in cents)");
+
     const now = Date.now();
 
     const profileId = await ctx.db.insert("taskerProfiles", {
@@ -144,6 +152,10 @@ export const updateTaskerProfile = mutation({
 
     if (!profile) throw new Error("Tasker profile not found");
 
+    // Input validation
+    if (args.displayName !== undefined && args.displayName.length > 100) throw new Error("Display name must be 100 characters or less");
+    if (args.bio !== undefined && args.bio.length > 2000) throw new Error("Bio must be 2000 characters or less");
+
     const updates: any = {
       updatedAt: Date.now(),
     };
@@ -196,6 +208,12 @@ export const addTaskerCategory = mutation({
     if (existingCategory) {
       throw new Error("Category already exists for this tasker");
     }
+
+    // Input validation
+    if (args.categoryBio.length > 2000) throw new Error("Category bio must be 2000 characters or less");
+    if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius must be between 1 and 250 km");
+    if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new Error("Hourly rate must be between 1 and 1,000,000 (in cents)");
+    if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new Error("Fixed rate must be between 1 and 1,000,000 (in cents)");
 
     const now = Date.now();
 

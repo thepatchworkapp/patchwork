@@ -556,8 +556,7 @@ export default function App() {
             onBack={goBack}
             onSendCode={(email) => {
               setVerificationEmail(email);
-              // In a real app, this would send the code via API
-              console.log("Sending verification code to:", email);
+              // Email verification code sent via Better Auth
               navigate("email-verify");
             }}
           />
@@ -569,12 +568,10 @@ export default function App() {
             email={verificationEmail}
             onBack={goBack}
             onVerify={(code) => {
-              console.log("Verifying code:", code);
               navigate("home");
             }}
             onResendCode={() => {
-              // In a real app, this would resend the code via API
-              console.log("Resending verification code to:", verificationEmail);
+              // Resend verification code via Better Auth
             }}
             onBackToSignIn={() => {
               navigate("sign-in");

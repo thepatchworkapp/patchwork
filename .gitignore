@@ -16,6 +16,7 @@ build/
 .astro/
 .wrangler/
 .vscode/
+.sisyphus/
 test-results/
 playwright-report/
 coverage/

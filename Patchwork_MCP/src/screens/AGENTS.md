@@ -237,9 +237,13 @@ const generateUploadUrl = useMutation(api.files.generateUploadUrl);
 const handleUpload = async (file: File) => {
   setIsLoading(true);
   try {
-    const uploadUrl = await generateUploadUrl();
+    const uploadUrl = await generateUploadUrl({
+      contentType: file.type,
+      fileSize: file.size,
+    });
     const response = await fetch(uploadUrl, {
       method: "POST",
+      headers: { "Content-Type": file.type },
       body: file,
     });
     const { storageId } = await response.json();

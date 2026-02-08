@@ -31,7 +31,10 @@ export function CreateProfile({ onContinue }: { onContinue: () => void }) {
     try {
       setError("");
       
-      const uploadUrl = await generateUploadUrl();
+      const uploadUrl = await generateUploadUrl({
+        contentType: file.type,
+        fileSize: file.size,
+      });
       const result = await fetch(uploadUrl, {
         method: "POST",
         headers: { "Content-Type": file.type },

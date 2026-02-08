@@ -34,6 +34,8 @@ Admin authorization is enforced **server-side** in Convex via `ADMIN_EMAILS` (co
 
 The admin UI intentionally does **not** reveal allowlist status on the login screen (to avoid email enumeration).
 
+**Important**: `ADMIN_APP_ORIGIN` must be explicitly set as a Convex environment variable. There is no localhost fallback -- if unset, all admin HTTP requests are rejected (fail-closed).
+
 ## Required Environment Variables (Build-Time)
 
 Astro only exposes **client-safe** env vars to browser code when prefixed with `PUBLIC_`.
@@ -82,6 +84,7 @@ npx wrangler pages deploy dist \
 - React app: `/Users/daldwinc/Documents/nosync/development/patchwork/patchwork-admin/src/react/AdminApp.tsx`
 - Env helpers: `/Users/daldwinc/Documents/nosync/development/patchwork/patchwork-admin/src/react/lib/env.ts`
 - Convex URL helpers: `/Users/daldwinc/Documents/nosync/development/patchwork/patchwork-admin/src/react/lib/convexUrls.ts`
+- Security headers: `/Users/daldwinc/Documents/nosync/development/patchwork/patchwork-admin/public/_headers`
 
 ## Design System Notes (Kumo)
 

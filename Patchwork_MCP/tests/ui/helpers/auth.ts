@@ -1,17 +1,4 @@
 import { Page } from "@playwright/test";
-import { ConvexClient } from "convex/browser";
-import { api } from "../../../convex/_generated/api";
-
-/**
- * Initialize Convex client for testing
- */
-function getConvexClient(): ConvexClient {
-  const convexUrl = process.env.VITE_CONVEX_URL;
-  if (!convexUrl) {
-    throw new Error("VITE_CONVEX_URL environment variable is not set");
-  }
-  return new ConvexClient(convexUrl);
-}
 
 /**
  * Fetch OTP from Convex testing endpoint
@@ -19,17 +6,23 @@ function getConvexClient(): ConvexClient {
  * @returns OTP code or undefined if not found
  */
 export async function fetchOtp(email: string): Promise<string | undefined> {
-  const client = getConvexClient();
-  
+  const convexSiteUrl = process.env.VITE_CONVEX_SITE_URL || process.env.VITE_CONVEX_URL?.replace(".convex.cloud", ".convex.site");
+  if (!convexSiteUrl) throw new Error("VITE_CONVEX_SITE_URL or VITE_CONVEX_URL must be set");
+
   // Poll for OTP up to 10 seconds
   for (let i = 0; i < 20; i++) {
-    const otp = await client.query(api.testing.getOtp, { email });
-    if (otp) {
-      return otp;
+    const res = await fetch(`${convexSiteUrl}/test-proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getOtp", args: { email } }),
+    });
+    const data = await res.json();
+    if (data.result) {
+      return data.result;
     }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  
+
   return undefined;
 }
 

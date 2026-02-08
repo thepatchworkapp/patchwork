@@ -69,9 +69,18 @@ export const createReview = mutation({
       throw new Error("Rating must be between 1 and 5");
     }
 
+    // Validate rating is a whole number
+    if (!Number.isInteger(args.rating)) {
+      throw new Error("Rating must be a whole number");
+    }
+
     // 3. Validate text length
     if (args.text.trim().length < 10) {
       throw new Error("Review text must be at least 10 characters");
+    }
+
+    if (args.text.length > 5000) {
+      throw new Error("Review text must be 5000 characters or less");
     }
 
     // 4. Get job and validate it exists and is completed

@@ -1,21 +1,28 @@
 import { test, expect, type Page } from '@playwright/test';
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../Patchwork_MCP/convex/_generated/api";
 
-const convexUrl = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL;
-if (!convexUrl) {
-  throw new Error("Missing Convex URL. Set VITE_CONVEX_URL (or CONVEX_URL) to https://<deployment>.convex.cloud");
+const convexSiteUrl = process.env.VITE_CONVEX_SITE_URL || (process.env.VITE_CONVEX_URL || process.env.CONVEX_URL)?.replace(".convex.cloud", ".convex.site");
+if (!convexSiteUrl) {
+  throw new Error("Missing Convex Site URL. Set VITE_CONVEX_SITE_URL or VITE_CONVEX_URL");
 }
-const convex = new ConvexHttpClient(convexUrl);
+
+async function testProxy(action: string, args: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(`${convexSiteUrl}/test-proxy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, args }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Test proxy call failed");
+  return data.result;
+}
 
 async function fetchOtp(email: string): Promise<string> {
   console.log(`[Test] Fetching OTP for ${email}...`);
   for (let i = 0; i < 30; i++) {
-    // @ts-ignore - access testing api
-    const otp = await convex.query(api.testing.getOtp, { email });
+    const otp = await testProxy("getOtp", { email });
     if (otp) {
-        console.log(`[Test] Found OTP for ${email}: ${otp}`);
-        return otp;
+        console.log(`[Test] Found OTP for ${email}`);
+        return otp as string;
     }
     await new Promise(r => setTimeout(r, 1000));
   }
@@ -122,8 +129,7 @@ test.describe('End-to-End Messaging Flow', () => {
   
   test('verify db access', async () => {
       const email = `test_db_${Date.now()}@example.com`;
-      // @ts-ignore
-      await convex.mutation(api.testing.seedOtp, { email, otp: "999999" });
+      await testProxy("seedOtp", { email, otp: "999999" });
       const otp = await fetchOtp(email);
       expect(otp).toBe("999999");
   });
@@ -181,11 +187,10 @@ test.describe('End-to-End Messaging Flow', () => {
     await test.step('Seeker finds Tasker', async () => {
       console.log(`[Test] Force creating conversation...`);
       try {
-          // @ts-ignore
-          await convex.mutation(api.testing.forceCreateConversation, { 
-              seekerEmail, 
-              taskerEmail 
-          });
+           await testProxy("forceCreateConversation", { 
+               seekerEmail, 
+               taskerEmail 
+           });
           console.log(`[Test] Conversation created in backend`);
       } catch (e) {
           console.error(`[Test] Failed to create conversation:`, e);

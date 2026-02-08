@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { internalQuery, internalMutation } from "./_generated/server";
 
-export const getOtp = query({
+export const getOtp = internalQuery({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const otpRecord = await ctx.db
@@ -13,7 +13,7 @@ export const getOtp = query({
   },
 });
 
-export const seedOtp = mutation({
+export const seedOtp = internalMutation({
   args: { email: v.string(), otp: v.string() },
   handler: async (ctx, args) => {
     await ctx.db.insert("otps", { 
@@ -24,7 +24,7 @@ export const seedOtp = mutation({
   },
 });
 
-export const getUserId = query({
+export const getUserId = internalQuery({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const user = await ctx.db
@@ -35,7 +35,7 @@ export const getUserId = query({
   },
 });
 
-export const forceCreateConversation = mutation({
+export const forceCreateConversation = internalMutation({
   args: { seekerEmail: v.string(), taskerEmail: v.string() },
   handler: async (ctx, args) => {
     const seeker = await ctx.db.query("users").withIndex("by_email", q => q.eq("email", args.seekerEmail)).first();
@@ -61,7 +61,7 @@ export const forceCreateConversation = mutation({
   }
 });
 
-export const forceMakeTasker = mutation({
+export const forceMakeTasker = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const user = await ctx.db
@@ -80,7 +80,7 @@ export const forceMakeTasker = mutation({
   }
 });
 
-export const deleteTestUser = mutation({
+export const deleteTestUser = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     // Auth check removed for E2E testing
@@ -102,7 +102,7 @@ export const deleteTestUser = mutation({
   },
 });
 
-export const deleteByEmailPrefix = mutation({
+export const deleteByEmailPrefix = internalMutation({
   args: { prefix: v.string() },
   handler: async (ctx, args) => {
     // Auth check removed for E2E testing
@@ -124,7 +124,7 @@ export const deleteByEmailPrefix = mutation({
   },
 });
 
-export const ensureCategoryExists = mutation({
+export const ensureCategoryExists = internalMutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
     // Auth check removed for E2E testing
@@ -146,7 +146,7 @@ export const ensureCategoryExists = mutation({
   },
 });
 
-export const cleanupConversations = mutation({
+export const cleanupConversations = internalMutation({
   args: { userEmail: v.string() },
   handler: async (ctx, args) => {
     // Auth check removed for E2E testing

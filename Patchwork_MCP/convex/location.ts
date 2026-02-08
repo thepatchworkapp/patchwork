@@ -45,6 +45,10 @@ export const updateUserLocation = mutation({
       .first();
     if (!user) throw new Error("User not found");
 
+    // Coordinate validation
+    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
+
     const currentCoords = user.location.coordinates;
     if (currentCoords) {
       const distance = haversineDistance(
@@ -97,6 +101,10 @@ export const updateTaskerLocation = mutation({
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
     if (!user) throw new Error("User not found");
+
+    // Coordinate validation
+    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
 
     const taskerProfile = await ctx.db
       .query("taskerProfiles")

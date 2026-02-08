@@ -16,9 +16,7 @@ const trustedOrigins = Array.from(
       .filter(Boolean)
   )
 );
-const enableTestingHelpers =
-  process.env.ENABLE_TESTING_HELPERS === "true" ||
-  (process.env.NODE_ENV || "development") !== "production";
+const enableTestingHelpers = process.env.ENABLE_TESTING_HELPERS === "true";
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
@@ -36,6 +34,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     
     plugins: [
       emailOTP({
+        storeOTP: "hashed",
         async sendVerificationOTP({ email, otp, type }) {
           try {
             await ctx.runMutation(internal.resend.sendOtpEmail, {
@@ -45,7 +44,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
             });
 
             if (enableTestingHelpers) {
-              await ctx.runMutation(api.testing.seedOtp, { email, otp });
+              await ctx.runMutation(internal.testing.seedOtp, { email, otp });
             }
           } catch (error) {
             console.error("Failed to send OTP email:", error);

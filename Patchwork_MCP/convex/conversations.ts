@@ -20,6 +20,11 @@ export const startConversation = mutation({
       throw new Error("Cannot start conversation with yourself");
     }
 
+    // Input validation
+    if (args.initialMessage && args.initialMessage.length > 5000) {
+      throw new Error("Initial message must be 5000 characters or less");
+    }
+
     const existingConversation = await ctx.db
       .query("conversations")
       .withIndex("by_participants", (q) =>

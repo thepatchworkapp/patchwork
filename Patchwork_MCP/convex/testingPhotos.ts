@@ -1,7 +1,7 @@
-import { query, mutation } from "./_generated/server";
+import { internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
-export const checkUserPhotos = query({
+export const checkUserPhotos = internalQuery({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const user = await ctx.db
@@ -51,7 +51,7 @@ export const checkUserPhotos = query({
   }
 });
 
-export const forceUpdateUserPhoto = mutation({
+export const forceUpdateUserPhoto = internalMutation({
   args: {
     email: v.string(),
     photoStorageId: v.id("_storage")

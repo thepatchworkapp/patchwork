@@ -1,14 +1,14 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-export const forceGenerateUploadUrl = mutation({
+export const forceGenerateUploadUrl = internalMutation({
   handler: async (ctx) => {
     return await ctx.storage.generateUploadUrl();
   },
 });
 
-export const forceCreateTaskerProfile = mutation({
+export const forceCreateTaskerProfile = internalMutation({
   args: {
     email: v.string(),
     displayName: v.string(),

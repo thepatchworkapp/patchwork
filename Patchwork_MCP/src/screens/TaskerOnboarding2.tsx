@@ -210,12 +210,16 @@ export function TaskerOnboarding2({ onBack, onNext }: TaskerOnboarding2Props) {
                     input.onchange = async (e) => {
                       const file = (e.target as HTMLInputElement).files?.[0];
                       if (file) {
-                        // 1. Get upload URL
-                        const uploadUrl = await generateUploadUrl();
+                        // 1. Get upload URL (validates type + size server-side)
+                        const uploadUrl = await generateUploadUrl({
+                          contentType: file.type,
+                          fileSize: file.size,
+                        });
                         
                         // 2. Upload file
                         const response = await fetch(uploadUrl, {
                           method: "POST",
+                          headers: { "Content-Type": file.type },
                           body: file,
                         });
                         const { storageId } = await response.json();

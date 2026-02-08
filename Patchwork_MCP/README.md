@@ -107,13 +107,14 @@ E2E UI tests (Playwright) live at repo root `tests/ui/`:
 cd ..
 # Ensure VITE_CONVEX_URL is set (use the value from Patchwork_MCP/.env.local)
 VITE_CONVEX_URL=https://<deployment>.convex.cloud \
+VITE_CONVEX_SITE_URL=https://<deployment>.convex.site \
   npx playwright test tests/ui/smoke.test.ts
 ```
 
 Notes:
 
-- Email OTP E2E uses a testing query in `Patchwork_MCP/convex/testing.ts` to fetch the OTP from the `otps` table.
-- E2E test isolation/cleanup is implemented in `Patchwork_MCP/convex/testing.ts`:
+- Email OTP E2E uses the `/test-proxy` HTTP endpoint to invoke internal testing functions. Testing functions (`testing.ts`, `testingPhotos.ts`, `testingTasker.ts`) are `internalMutation`/`internalQuery` and cannot be called directly from clients. OTPs are stored hashed.
+- E2E test isolation/cleanup is implemented as internal functions in `Patchwork_MCP/convex/testing.ts`, accessed via `/test-proxy`:
   - `deleteTestUser`, `deleteByEmailPrefix`, `ensureCategoryExists`, `cleanupConversations`
 - Vitest is scoped to `convex/__tests__/**` and excludes `tests/ui/**` (Playwright)
 

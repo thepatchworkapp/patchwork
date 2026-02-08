@@ -16,6 +16,9 @@
 | `http.ts` | HTTP router for auth endpoints |
 | `convex.config.ts` | Convex app config with better-auth plugin |
 | `_generated/` | Auto-generated types - DO NOT EDIT |
+| `testing.ts` | Internal test utilities (OTP seeding, cleanup) - `internalMutation`/`internalQuery` only |
+| `testingPhotos.ts` | Internal photo test utilities - `internalMutation`/`internalQuery` only |
+| `testingTasker.ts` | Internal tasker test utilities - `internalMutation`/`internalQuery` only |
 
 ## Mutation Pattern (ALWAYS FOLLOW)
 
@@ -167,14 +170,42 @@ describe("myModule", () => {
 | Mutation - duplicate | `throw new Error("Already exists")` |
 | Query - no data | `return null` (NOT throw) |
 
+## Input Validation (All Mutations)
+
+All mutations validate inputs beyond Convex schema types. Add validation after auth/user lookup, before database writes:
+
+```typescript
+// String length limits
+if (args.name.length > 100) throw new Error("Name must be 100 characters or less");
+if (args.description.length > 5000) throw new Error("Description must be 5000 characters or less");
+
+// Numeric bounds
+if (args.rate < 1 || args.rate > 100000000) throw new Error("Rate out of range");
+if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius out of range");
+if (!Number.isInteger(args.rating)) throw new Error("Rating must be a whole number");
+
+// Coordinate validation
+if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
+if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
+```
+
+**Server-side resolution**: Never trust client-supplied derived values. `createJobRequest` resolves `categoryName` from `categoryId` server-side; the client-supplied value is ignored.
+
 ## File Storage Pattern
 
 ```typescript
 // files.ts
+// Allowed types: image/jpeg, image/png, image/webp, image/gif, image/heic, image/heif
+// Max size: 5 MB
 export const generateUploadUrl = mutation({
-  handler: async (ctx) => {
+  args: {
+    contentType: v.string(),
+    fileSize: v.number(),
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+    // Validates contentType against allowlist and fileSize <= 5MB
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -357,6 +388,7 @@ All query endpoints now enforce ownership checks. Non-participants get `null`/em
 | `reviews.getJobReviews` | Auth + job participant |
 | `admin.listAllUsers` | Auth + admin email |
 | `admin.getUserDetail` | Auth + admin email |
+| `proposals.sendProposal` | Auth + conversation participant |
 
 Intentionally public: `getUserReviews`, `getTaskerById`, `searchTaskers`, `listCategories`, `getCategoryBySlug`, `files.getUrl`.
 

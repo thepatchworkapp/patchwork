@@ -194,18 +194,24 @@ await setGhostMode({ ghostMode: true });
 ```typescript
 // Frontend
 const generateUploadUrl = useMutation(api.files.generateUploadUrl);
-const uploadUrl = await generateUploadUrl();
-const response = await fetch(uploadUrl, { method: "POST", body: file });
-const { storageId } = await response.json();
 
-// Backend (convex/files.ts)
-export const generateUploadUrl = mutation({
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    return ctx.storage.generateUploadUrl();
-  }
-});
+const handleUpload = async (file: File) => {
+  const uploadUrl = await generateUploadUrl({
+    contentType: file.type,
+    fileSize: file.size,
+  });
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  const { storageId } = await response.json();
+  // Use storageId for saving
+};
+
+// Backend (convex/files.ts) validates before generating URL:
+// - contentType: must be image/jpeg, image/png, image/webp, image/gif, image/heic, or image/heif
+// - fileSize: must be > 0 and <= 5 MB
 ```
 
 ## Schema Conventions
@@ -235,6 +241,36 @@ status: v.union(v.literal("pending"), v.literal("active")),
 4. **No error boundaries** - Add try/catch for Convex queries
 5. **`.collect()` in Convex queries** - See `convex/AGENTS.md` Scaling Rules. Use `.take(n)` or `.paginate()`
 6. **Client-side filtering of query results** - Always pass filter args to server. See `src/screens/AGENTS.md`
+
+## Security Conventions
+
+### Input Validation (All Mutations)
+
+All mutation handlers validate inputs beyond Convex schema types:
+- **String fields**: length limits (name <= 100, bio/description <= 2000-5000, address <= 500)
+- **Numeric fields**: bounded ranges (rate 1-100M cents, serviceRadius 1-250 km, rating integer 1-5)
+- **Coordinates**: lat [-90, 90], lng [-180, 180]
+- **File uploads**: content type whitelist (images only), file size <= 5 MB
+
+Never trust client-supplied derived values. Example: `createJobRequest` resolves `categoryName` from `categoryId` server-side; the client-supplied `categoryName` is ignored.
+
+### OTP Security
+
+OTPs are stored hashed (`storeOTP: "hashed"` in auth.ts). The `enableTestingHelpers` flag in auth.ts only checks `ENABLE_TESTING_HELPERS` env var (no NODE_ENV fallback).
+
+### Testing Functions
+
+All functions in `testing.ts`, `testingPhotos.ts`, and `testingTasker.ts` are `internalMutation`/`internalQuery`. They cannot be called from clients directly. E2E tests access them via the `/test-proxy` HTTP endpoint in `http.ts`, which is gated by `ENABLE_TESTING_HELPERS`.
+
+### Security Headers
+
+Both sites have Cloudflare Pages `_headers` files (`public/_headers`) that set:
+- `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`
+- `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
+
+### ADMIN_APP_ORIGIN
+
+`http.ts` has no localhost fallback for `ADMIN_APP_ORIGIN`. If the env var is unset, all admin HTTP requests are rejected (fail-closed).
 
 ## Cross-Cutting Concerns (Known Gaps)
 
