@@ -20,6 +20,9 @@ enum PatchworkError: LocalizedError {
 struct ConvexHTTPClient {
     var authToken: String?
     private var betterAuthCookie: String?
+    private let betterAuthSessionToken: String?
+    private let onAuthTokenRefresh: (@Sendable (String) async -> Void)?
+    private let onAuthSessionInvalidated: (@Sendable (String) async -> Void)?
 
     private let cloudURL: URL
     private let siteURL: URL
@@ -30,13 +33,19 @@ struct ConvexHTTPClient {
         siteURL: URL = AppConfig.convexSiteURL,
         session: URLSession = .shared,
         authToken: String? = nil,
-        betterAuthCookie: String? = nil
+        betterAuthCookie: String? = nil,
+        betterAuthSessionToken: String? = nil,
+        onAuthTokenRefresh: (@Sendable (String) async -> Void)? = nil,
+        onAuthSessionInvalidated: (@Sendable (String) async -> Void)? = nil
     ) {
         self.cloudURL = cloudURL
         self.siteURL = siteURL
         self.session = session
         self.authToken = authToken
         self.betterAuthCookie = betterAuthCookie
+        self.betterAuthSessionToken = betterAuthSessionToken
+        self.onAuthTokenRefresh = onAuthTokenRefresh
+        self.onAuthSessionInvalidated = onAuthSessionInvalidated
     }
 
     func query<T: Decodable>(_ path: String, args: [String: Any]) async throws -> T {
@@ -44,7 +53,7 @@ struct ConvexHTTPClient {
     }
 
     func mutation<T: Decodable>(_ path: String, args: [String: Any], requiresAuth: Bool = true) async throws -> T {
-        if requiresAuth && authToken == nil {
+        if requiresAuth && authToken == nil && !hasRefreshCredential {
             throw PatchworkError.missingToken
         }
         return try await call(functionType: "mutation", path: path, args: args)
@@ -53,6 +62,28 @@ struct ConvexHTTPClient {
     func sendEmailOTP(email: String) async throws {
         let payload: [String: Any] = ["email": email, "type": "sign-in"]
         try await postBetterAuth(path: "/api/auth/email-otp/send-verification-otp", payload: payload)
+    }
+
+    func signInForAppReview(email: String) async throws -> String {
+        var request = URLRequest(url: siteURL.appending(path: "/review/sign-in"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["email": email])
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PatchworkError.invalidResponse
+        }
+        guard 200 ..< 300 ~= httpResponse.statusCode else {
+            throw PatchworkError.server(Self.errorMessage(from: data) ?? "Authentication request failed.")
+        }
+
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if let sessionToken = object?["sessionToken"] as? String, !sessionToken.isEmpty {
+            return sessionToken
+        }
+        throw PatchworkError.invalidResponse
     }
 
     mutating func verifyEmailOTP(email: String, otp: String) async throws {
@@ -80,8 +111,9 @@ struct ConvexHTTPClient {
         }
     }
 
-    func fetchConvexJWT() async throws -> String {
+    func fetchConvexJWT(sessionToken: String? = nil) async throws -> String {
         var lastErrorMessage: String?
+        let activeSessionToken = sessionToken ?? betterAuthSessionToken
 
         for origin in betterAuthOrigins {
             var request = URLRequest(url: siteURL.appending(path: "/api/auth/convex/token"))
@@ -89,7 +121,9 @@ struct ConvexHTTPClient {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             request.setValue(origin, forHTTPHeaderField: "Origin")
             request.httpShouldHandleCookies = false
-            if let betterAuthCookie, !betterAuthCookie.isEmpty {
+            if let activeSessionToken, !activeSessionToken.isEmpty {
+                request.setValue("Bearer \(activeSessionToken)", forHTTPHeaderField: "Authorization")
+            } else if let betterAuthCookie, !betterAuthCookie.isEmpty {
                 request.setValue(betterAuthCookie, forHTTPHeaderField: "Better-Auth-Cookie")
             }
 
@@ -116,6 +150,10 @@ struct ConvexHTTPClient {
                message.localizedCaseInsensitiveContains("invalid origin") {
                 continue
             }
+
+            if isAuthenticationFailure(statusCode: httpResponse.statusCode, errorMessage: message) {
+                await notifyAuthSessionInvalidated()
+            }
             throw PatchworkError.server(message)
         }
 
@@ -123,11 +161,21 @@ struct ConvexHTTPClient {
     }
 
     private func call<T: Decodable>(functionType: String, path: String, args: [String: Any]) async throws -> T {
+        try await call(functionType: functionType, path: path, args: args, allowAuthRefresh: true)
+    }
+
+    private func call<T: Decodable>(
+        functionType: String,
+        path: String,
+        args: [String: Any],
+        allowAuthRefresh: Bool,
+        authTokenOverride: String? = nil
+    ) async throws -> T {
         var request = URLRequest(url: cloudURL.appending(path: "/api/\(functionType)"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let authToken {
+        if let authToken = await bestAvailableAuthTokenForRequest(authTokenOverride: authTokenOverride) {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -139,15 +187,66 @@ struct ConvexHTTPClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              200 ..< 300 ~= httpResponse.statusCode else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw PatchworkError.invalidResponse
         }
 
+        let usedAuthHeader = request.value(forHTTPHeaderField: "Authorization") != nil
+
+        if !(200 ..< 300 ~= httpResponse.statusCode) {
+            let errorMessage = Self.errorMessage(from: data)
+            if allowAuthRefresh,
+               usedAuthHeader && shouldRetryAfterAuthFailure(statusCode: httpResponse.statusCode, errorMessage: errorMessage) {
+                return try await retryAfterRefreshingAuth(
+                    functionType: functionType,
+                    path: path,
+                    args: args
+                )
+            }
+            if isAuthenticationFailure(statusCode: httpResponse.statusCode, errorMessage: errorMessage) {
+                await notifyAuthSessionInvalidated()
+            }
+            throw PatchworkError.server(errorMessage ?? PatchworkError.invalidResponse.localizedDescription)
+        }
+
         let decoder = JSONDecoder()
-        let envelope = try decoder.decode(ConvexEnvelope<T>.self, from: data)
-        if envelope.status == "success", let value = envelope.value {
-            return value
+        let envelope: ConvexEnvelope<T>
+        do {
+            envelope = try decoder.decode(ConvexEnvelope<T>.self, from: data)
+        } catch {
+            if allowAuthRefresh,
+               usedAuthHeader && shouldRetryAfterAuthFailure(statusCode: httpResponse.statusCode, errorMessage: nil) {
+                return try await retryAfterRefreshingAuth(
+                    functionType: functionType,
+                    path: path,
+                    args: args
+                )
+            }
+            if isAuthenticationFailure(statusCode: httpResponse.statusCode, errorMessage: nil) {
+                await notifyAuthSessionInvalidated()
+            }
+            throw PatchworkError.invalidResponse
+        }
+
+        if envelope.status == "success" {
+            if let value = envelope.value {
+                return value
+            }
+            if T.self == EmptyResponse.self {
+                return EmptyResponse() as! T
+            }
+            throw PatchworkError.server("Expected response payload from \(path)")
+        }
+        if allowAuthRefresh,
+           usedAuthHeader && shouldRetryAfterAuthFailure(statusCode: httpResponse.statusCode, errorMessage: envelope.errorMessage) {
+            return try await retryAfterRefreshingAuth(
+                functionType: functionType,
+                path: path,
+                args: args
+            )
+        }
+        if isAuthenticationFailure(statusCode: httpResponse.statusCode, errorMessage: envelope.errorMessage) {
+            await notifyAuthSessionInvalidated()
         }
         throw PatchworkError.server(envelope.errorMessage ?? "Unknown backend error")
     }
@@ -208,7 +307,7 @@ struct ConvexHTTPClient {
         components?.path = ""
         components?.query = nil
         components?.fragment = nil
-        return components?.string ?? "https://aware-meerkat-572.convex.site"
+        return components?.string ?? "https://vibrant-caribou-150.convex.site"
     }
 
     private var betterAuthOrigins: [String] {
@@ -220,4 +319,129 @@ struct ConvexHTTPClient {
         }
         return deduped
     }
+
+    var currentBetterAuthCookie: String? {
+        betterAuthCookie
+    }
+
+    private var hasRefreshCredential: Bool {
+        if let betterAuthCookie, !betterAuthCookie.isEmpty {
+            return true
+        }
+        if let betterAuthSessionToken, !betterAuthSessionToken.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    private func bestAvailableAuthTokenForRequest(authTokenOverride: String?) async -> String? {
+        if let authTokenOverride, !authTokenOverride.isEmpty {
+            return authTokenOverride
+        }
+
+        if let authToken, !authToken.isEmpty {
+            return authToken
+        }
+
+        guard hasRefreshCredential else {
+            return nil
+        }
+
+        return try? await refreshAuthToken()
+    }
+
+    private func retryAfterRefreshingAuth<T: Decodable>(
+        functionType: String,
+        path: String,
+        args: [String: Any]
+    ) async throws -> T {
+        guard hasRefreshCredential else {
+            throw PatchworkError.invalidResponse
+        }
+
+        let refreshedToken = try await refreshAuthToken()
+        return try await call(
+            functionType: functionType,
+            path: path,
+            args: args,
+            allowAuthRefresh: false,
+            authTokenOverride: refreshedToken
+        )
+    }
+
+    private func refreshAuthToken() async throws -> String {
+        do {
+            let refreshedToken = try await fetchConvexJWT()
+            await onAuthTokenRefresh?(refreshedToken)
+            return refreshedToken
+        } catch {
+            if case let PatchworkError.server(message) = error,
+               isAuthenticationFailure(statusCode: nil, errorMessage: message) {
+                await notifyAuthSessionInvalidated()
+            }
+            throw error
+        }
+    }
+
+    private func shouldRetryAfterAuthFailure(statusCode: Int, errorMessage: String?) -> Bool {
+        guard hasRefreshCredential else {
+            return false
+        }
+
+        if statusCode == 401 || statusCode == 403 {
+            return true
+        }
+
+        return authFailurePhrase(in: errorMessage) != nil
+    }
+
+    private func isAuthenticationFailure(statusCode: Int?, errorMessage: String?) -> Bool {
+        if let statusCode {
+            if statusCode == 401 || statusCode == 403 {
+                return true
+            }
+        }
+
+        return authFailurePhrase(in: errorMessage) != nil
+    }
+
+    private func notifyAuthSessionInvalidated() async {
+        await onAuthSessionInvalidated?(Self.sessionExpiredMessage)
+    }
+
+    private func authFailurePhrase(in errorMessage: String?) -> String? {
+        guard let errorMessage else {
+            return nil
+        }
+
+        let normalized = errorMessage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalized == "authentication request failed." || normalized == "authentication request failed" {
+            return nil
+        }
+
+        let authFailurePhrases = [
+            "unauthorized",
+            "forbidden",
+            "not authenticated",
+            "authentication expired",
+            "authentication required",
+            "session expired",
+            "expired session",
+            "invalid session",
+            "session is invalid",
+            "token expired",
+            "expired token",
+            "invalid token",
+            "token is invalid",
+            "invalid jwt",
+            "jwt expired",
+        ]
+        return authFailurePhrases.first(where: { normalized.contains($0) })
+    }
+
+    private static let sessionExpiredMessage = "Your session expired. Sign in again."
 }
+
+struct EmptyResponse: Decodable {}

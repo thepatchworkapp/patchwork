@@ -1,89 +1,309 @@
 import SwiftUI
 
 struct MessagesView: View {
+    private enum MainLayout {
+        static let horizontalGutter: CGFloat = 20
+        static let topRhythm: CGFloat = 16
+        static let cardGap: CGFloat = 8
+        static let bottomPadding: CGFloat = 20
+        static let controlSpacing: CGFloat = 14
+    }
+
+    private struct ConversationRoute: Hashable, Identifiable {
+        let id: ConvexID
+    }
+
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
 
     @State private var activeRole = "seeker"
+    @State private var searchText = ""
+    @State private var conversationRoute: ConversationRoute?
+    private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Role", selection: $activeRole) {
-                Text("Seeker").tag("seeker")
-                Text("Tasker").tag("tasker")
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .accessibilityIdentifier("Messages.roleTabs")
+        ZStack {
+            PatchworkBackdrop(tint: activeRole == "tasker" ? PatchworkTheme.accent : PatchworkTheme.brand)
 
-            if activeRole == "tasker", appState.currentUser?.roles?.isTasker != true {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Become a Tasker")
-                        .font(.title3.bold())
-                    Text("Enable tasker mode to receive incoming job requests and send proposals.")
-                        .foregroundStyle(.secondary)
-                    Button("Continue") {
-                        appState.selectedTab = .profile
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("Messages.taskerSignupContinueButton")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-            } else {
-                List(appState.conversations) { conversation in
-                    NavigationLink {
-                        ChatView(conversationId: conversation.id)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(conversation.participantName ?? "Conversation")
-                                    .font(.headline)
-                                Text(conversation.lastMessagePreview ?? "No messages yet")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+            VStack(spacing: 0) {
+                topControls
+
+                if isTaskerLocked {
+                    Spacer(minLength: 24)
+                    lockedTaskerState
+                        .padding(.horizontal, MainLayout.horizontalGutter)
+                        .padding(.top, MainLayout.topRhythm)
+                    Spacer()
+                } else {
+                    if filteredConversations.isEmpty {
+                        emptyState
+                            .padding(.horizontal, MainLayout.horizontalGutter)
+                            .padding(.top, MainLayout.topRhythm)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 14) {
+                                ForEach(filteredConversations) { conversation in
+                                    NavigationLink {
+                                        ChatView(conversationId: conversation.id)
+                                    } label: {
+                                        conversationRow(conversation)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("Messages.row.\(conversation.id)")
+                                }
                             }
-                            Spacer()
-                            if unreadCount(for: conversation) > 0 {
-                                Text("\(unreadCount(for: conversation))")
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.indigo, in: Capsule())
-                                    .foregroundStyle(.white)
-                            }
+                            .padding(.horizontal, MainLayout.horizontalGutter)
+                            .padding(.top, MainLayout.cardGap)
+                            .padding(.bottom, MainLayout.bottomPadding)
                         }
+                        .scrollIndicators(.hidden)
                     }
-                    .accessibilityIdentifier("Messages.row.\(conversation.id)")
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .navigationTitle("Messages")
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             activeRole = appState.conversationRole
+            guard !usesVisualPreview else {
+                return
+            }
             await appState.refreshConversations(client: sessionStore.client, role: activeRole)
+            if let conversationId = appState.selectedConversation?.id {
+                conversationRoute = ConversationRoute(id: conversationId)
+            }
         }
         .onChange(of: activeRole) { _, role in
+            guard !usesVisualPreview else {
+                return
+            }
             Task { await appState.refreshConversations(client: sessionStore.client, role: role) }
+        }
+        .onChange(of: appState.selectedConversation?.id) { _, conversationId in
+            conversationRoute = conversationId.map(ConversationRoute.init(id:))
+        }
+        .onAppear {
+            guard !usesVisualPreview else {
+                return
+            }
+            Task { await appState.refreshConversations(client: sessionStore.client, role: activeRole) }
+        }
+        .navigationDestination(item: $conversationRoute) { route in
+            ChatView(conversationId: route.id)
         }
     }
 
     private func unreadCount(for conversation: ConversationSummary) -> Int {
         activeRole == "tasker" ? (conversation.taskerUnreadCount ?? 0) : (conversation.seekerUnreadCount ?? 0)
     }
-}
 
-private struct PaginationOptions: Codable {
-    let numItems: Int
-    let cursor: String?
-    let id: Int
+    private var filteredConversations: [ConversationSummary] {
+        guard !searchText.isEmpty else { return appState.conversations }
+        return appState.conversations.filter { convo in
+            let name = convo.participantName ?? "Conversation"
+            let preview = convo.lastMessagePreview ?? ""
+            return name.localizedStandardContains(searchText) || preview.localizedStandardContains(searchText)
+        }
+    }
+
+    private var isTaskerLocked: Bool {
+        activeRole == "tasker" && appState.currentUser?.roles?.isTasker != true
+    }
+
+    private var topControls: some View {
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: MainLayout.controlSpacing) {
+                roleTabs
+                searchField
+                    .disabled(isTaskerLocked)
+                    .opacity(isTaskerLocked ? 0.65 : 1)
+            }
+        }
+        .padding(.horizontal, MainLayout.horizontalGutter)
+        .padding(.top, MainLayout.topRhythm)
+    }
+
+    private var roleTabs: some View {
+        HStack(spacing: 0) {
+            tabButton(title: "Seeker", value: "seeker", locked: false)
+            tabButton(title: "Tasker", value: "tasker", locked: appState.currentUser?.roles?.isTasker != true)
+        }
+        .padding(6)
+        .background(
+            PatchworkTheme.surface.opacity(0.9),
+            in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
+    }
+
+    private func tabButton(title: String, value: String, locked: Bool) -> some View {
+        let isSelected = activeRole == value
+        return Button {
+            activeRole = value
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: value == "tasker" ? "briefcase.fill" : "person.2.fill")
+                    .font(.caption)
+
+                HStack(spacing: 4) {
+                    Text(title)
+                    if locked {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                    }
+                }
+                .font(.patchworkBodyStrong)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 48)
+            .foregroundStyle(isSelected ? PatchworkTheme.surface : PatchworkTheme.textSecondary)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(PatchworkTheme.heroGradient) : AnyShapeStyle(Color.clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("Messages.roleTab.\(value)")
+    }
+
+    private var searchField: some View {
+        PatchworkSearchField(placeholder: "Search conversations...", text: $searchText, isEnabled: !isTaskerLocked)
+    }
+
+    private var lockedTaskerState: some View {
+        PatchworkEmptyStateCard(
+            systemImage: "lock.shield.fill",
+            title: "Open your tasker inbox",
+            message: "Enable tasker mode to receive seeker messages, proposals, and active job updates."
+        )
+        .overlay(alignment: .bottom) {
+            Button("Go to Profile") {
+                appState.selectedTab = .profile
+            }
+            .buttonStyle(PatchworkPrimaryButtonStyle())
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .accessibilityIdentifier("Messages.taskerSignupContinueButton")
+        }
+    }
+
+    private var emptyState: some View {
+        let isSearchEmptyState = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !appState.conversations.isEmpty
+        return PatchworkEmptyStateCard(
+            systemImage: isSearchEmptyState ? "magnifyingglass" : "bubble.left.and.bubble.right.fill",
+            title: isSearchEmptyState ? "No matching conversations" : "No conversations yet",
+            message: isSearchEmptyState ? "Try searching for a different name or message preview." : "Start a conversation from discovery or respond to a seeker to see your inbox come to life."
+        )
+        .frame(maxWidth: .infinity)
+    }
+
+    private func conversationRow(_ conversation: ConversationSummary) -> some View {
+        let unread = unreadCount(for: conversation)
+        return HStack(alignment: .top, spacing: 12) {
+            AsyncImage(url: URL(string: conversation.participantPhotoUrl ?? "")) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                PatchworkTheme.stroke
+            }
+            .frame(width: 54, height: 54)
+            .clipShape(.rect(cornerRadius: 14))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(conversation.participantName ?? "Conversation")
+                        .font(unread > 0 ? .patchworkBodyStrong : .patchworkBody)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                    Spacer()
+                    Text(conversationTimestampLabel(conversation.lastMessageAt))
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                }
+
+                Text(conversation.lastMessagePreview ?? "No messages yet")
+                    .lineLimit(1)
+                    .font(.patchworkBody)
+                    .foregroundStyle(unread > 0 ? PatchworkTheme.textPrimary : PatchworkTheme.textSecondary)
+                    .padding(.bottom, 6)
+
+                HStack(spacing: 8) {
+                    Text(activeRole == "tasker" ? "Tasker" : "Seeker")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.brand)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(PatchworkTheme.brandSoft, in: Capsule())
+
+                    if conversation.jobId != nil {
+                        Text("Job linked")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.success)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(PatchworkTheme.success.opacity(0.12), in: Capsule())
+                    }
+                }
+            }
+
+            if unread > 0 {
+                Text("\(unread)")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(PatchworkTheme.danger, in: Capsule())
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(unread > 0 ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
+        )
+        .shadow(color: PatchworkTheme.brand.opacity(0.06), radius: 16, y: 10)
+    }
+
+    private func conversationTimestampLabel(_ millis: Int?) -> String {
+        guard let millis else {
+            return ""
+        }
+
+        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
+        let now = Date()
+        let calendar = Calendar.current
+
+        if calendar.isDateInToday(date) {
+            let minutesAgo = Int(now.timeIntervalSince(date) / 60)
+            if minutesAgo < 1 {
+                return "Now"
+            }
+            if minutesAgo < 60 {
+                return "\(minutesAgo)m"
+            }
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+
+        if let daysAgo = calendar.dateComponents([.day], from: date, to: now).day,
+           daysAgo < 7 {
+            return date.formatted(.dateTime.weekday(.abbreviated))
+        }
+
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
 }
 
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.dismiss) private var dismiss
 
     let conversationId: ConvexID
 
@@ -111,69 +331,70 @@ struct ChatView: View {
     @State private var reviewText = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            if canLoadMore {
-                Button("Load older messages") {
-                    Task { await loadMessages(loadMore: true) }
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.accent)
+
+            VStack(spacing: 12) {
+                chatHeader
+                    .padding(.horizontal, 16)
+
+                if canLoadMore {
+                    Button("Load older messages") {
+                        Task { await loadMessages(loadMore: true) }
+                    }
+                    .buttonStyle(PatchworkSecondaryButtonStyle())
+                    .padding(.horizontal, 20)
+                    .accessibilityIdentifier("Chat.loadOlderButton")
                 }
-                .buttonStyle(.bordered)
-                .padding(.top, 8)
-                .accessibilityIdentifier("Chat.loadOlderButton")
-            }
 
-            if hasAcceptedProposal {
-                ChatAcceptedBanner(text: job?.status == "completed" ? "Job completed" : "Job in progress")
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .accessibilityIdentifier("Chat.jobInProgressBanner")
-            }
+                if hasAcceptedProposal {
+                    ChatAcceptedBanner(text: job?.status == "completed" ? "Job completed" : "Job in progress")
+                        .padding(.horizontal, 20)
+                        .accessibilityIdentifier("Chat.jobInProgressBanner")
+                }
 
-            List(messages) { message in
-                if message.type == "proposal", let proposal = message.proposal {
-                    ProposalMessageCard(
-                        proposal: proposal,
-                        isMine: isMyMessage(message),
-                        onAccept: { Task { await accept(proposal: proposal) } },
-                        onDecline: { Task { await decline(proposal: proposal) } },
-                        onCounter: {
-                            primeCounterForm(proposal)
-                            showProposalForm = true
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(messages) { message in
+                                chatRow(for: message)
+                                    .id(message.id)
+                            }
                         }
-                    )
-                    .listRowSeparator(.hidden)
-                } else if message.type == "system" {
-                    Text(message.content)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .listRowSeparator(.hidden)
-                } else {
-                    ChatMessageRow(
-                        text: message.content,
-                        time: timeLabel(message.createdAt),
-                        isMine: isMyMessage(message)
-                    )
-                    .listRowSeparator(.hidden)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                        .padding(.bottom, 12)
+                    }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: messages.last?.id) { _, lastMessageID in
+                        guard let lastMessageID else { return }
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(lastMessageID, anchor: .bottom)
+                        }
+                    }
                 }
+
+                ChatActionBar(
+                    canShowCompleteButton: canShowCompleteButton,
+                    hasAcceptedProposal: hasAcceptedProposal,
+                    onCompleteTap: { showCompleteConfirm = true },
+                    onProposeTap: {
+                        resetProposalForm()
+                        showProposalForm = true
+                    }
+                )
+
+                ChatComposerBar(
+                    text: $text,
+                    onSend: { Task { await send() } }
+                )
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
             }
-            .listStyle(.plain)
-
-            ChatActionBar(
-                canShowCompleteButton: canShowCompleteButton,
-                hasAcceptedProposal: hasAcceptedProposal,
-                onCompleteTap: { showCompleteConfirm = true },
-                onProposeTap: {
-                    resetProposalForm()
-                    showProposalForm = true
-                }
-            )
-
-            ChatComposerBar(
-                text: $text,
-                onSend: { Task { await send() } }
-            )
         }
-        .navigationTitle(conversation?.participantName ?? "Chat")
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .accessibilityIdentifier("Chat.screen.\(conversationId)")
         .task {
             await bootstrap()
         }
@@ -191,6 +412,7 @@ struct ChatView: View {
                 },
                 onSubmit: { Task { await submitProposal() } }
             )
+            .patchworkSheetChrome()
         }
         .sheet(isPresented: $showReviewForm) {
             ReviewFormSheet(
@@ -198,6 +420,7 @@ struct ChatView: View {
                 text: $reviewText,
                 onSubmit: { Task { await submitReview() } }
             )
+            .patchworkSheetChrome()
         }
         .sheet(isPresented: $showCompleteConfirm) {
             CompleteJobSheet(
@@ -207,7 +430,52 @@ struct ChatView: View {
                     Task { await completeJob() }
                 }
             )
+            .patchworkSheetChrome(detents: [.height(320)])
         }
+    }
+
+    private var chatHeader: some View {
+        HStack(spacing: 12) {
+            Button("Messages", systemImage: "chevron.left") {
+                appState.selectedConversation = nil
+                dismiss()
+            }
+            .labelStyle(.iconOnly)
+            .font(.patchworkBodyStrong)
+            .foregroundStyle(PatchworkTheme.textPrimary)
+            .frame(width: 44, height: 44)
+            .background(PatchworkTheme.surface.opacity(0.9), in: Circle())
+            .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Chat.backButton")
+
+            AsyncImage(url: URL(string: conversation?.participantPhotoUrl ?? "")) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                PatchworkTheme.stroke
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(.rect(cornerRadius: 14))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(conversation?.participantName ?? "Chat")
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+                Text(hasAcceptedProposal ? "Active conversation" : "Direct messages")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
     }
 
     private var hasAcceptedProposal: Bool {
@@ -234,13 +502,17 @@ struct ChatView: View {
         guard let conversation else { return }
         do {
             if let jobId = conversation.jobId {
+                let currentTimeMs = Int(Date().timeIntervalSince1970 * 1000)
                 async let jobCall: JobDetail? = sessionStore.client.query("jobs:getJob", args: ["jobId": jobId])
-                async let canReviewCall: Bool = sessionStore.client.query("reviews:canReview", args: ["jobId": jobId])
+                async let canReviewCall: Bool = sessionStore.client.query(
+                    "reviews:canReview",
+                    args: ["jobId": jobId, "currentTimeMs": currentTimeMs]
+                )
                 job = try await jobCall
                 canReview = try await canReviewCall
             }
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -250,9 +522,10 @@ struct ChatView: View {
         defer { isLoading = false }
 
         do {
-            let options = PaginationOptions(numItems: 25, cursor: loadMore ? cursor : nil, id: Int.random(in: 1000 ... 9999))
-            let data = try JSONEncoder().encode(options)
-            let optionsObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            let optionsObject: [String: Any] = [
+                "numItems": 25,
+                "cursor": loadMore ? ((cursor as Any?) ?? NSNull()) : NSNull(),
+            ]
             let result: MessagesPage = try await sessionStore.client.query(
                 "messages:listMessages",
                 args: [
@@ -269,7 +542,7 @@ struct ChatView: View {
             cursor = result.continueCursor.isEmpty ? nil : result.continueCursor
             canLoadMore = !result.isDone
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -284,7 +557,7 @@ struct ChatView: View {
             text = ""
             await loadMessages(loadMore: false)
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -294,7 +567,10 @@ struct ChatView: View {
               !proposalTime.isEmpty else { return }
 
         let cents = Int((rateNumber * 100).rounded())
-        let startDateTime = "\(proposalDate)T\(proposalTime)"
+        guard let startDateTime = ProposalDateTimeCodec.encode(date: proposalDate, time: proposalTime) else {
+            appState.lastError = "Enter a valid proposal date and time."
+            return
+        }
         do {
             if let original = counteringProposal {
                 _ = try await sessionStore.client.mutation(
@@ -323,7 +599,7 @@ struct ChatView: View {
             counteringProposal = nil
             await loadMessages(loadMore: false)
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -338,7 +614,7 @@ struct ChatView: View {
             conversation = appState.selectedConversation
             await refreshJobState()
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -347,7 +623,7 @@ struct ChatView: View {
             _ = try await sessionStore.client.mutation("proposals:declineProposal", args: ["proposalId": proposal.id]) as ConvexID
             await loadMessages(loadMore: false)
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -358,12 +634,13 @@ struct ChatView: View {
                 let jobId: ConvexID
             }
             _ = try await sessionStore.client.mutation("jobs:completeJob", args: ["jobId": job.id]) as JobCompleteResult
+            await appState.refreshJobs(client: sessionStore.client, statusGroup: appState.jobsStatusGroup)
             await refreshJobState()
             if canReview {
                 showReviewForm = true
             }
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -386,9 +663,10 @@ struct ChatView: View {
             showReviewForm = false
             reviewRating = 0
             reviewText = ""
+            await appState.refreshJobs(client: sessionStore.client, statusGroup: appState.jobsStatusGroup)
             await refreshJobState()
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
@@ -402,12 +680,40 @@ struct ChatView: View {
                 args: ["conversationId": conversationId]
             ) as ReadResult
         } catch {
-            appState.lastError = error.localizedDescription
+            appState.presentError(error)
         }
     }
 
     private func isMyMessage(_ message: ChatMessage) -> Bool {
         message.senderId == appState.currentUser?.id
+    }
+
+    @ViewBuilder
+    private func chatRow(for message: ChatMessage) -> some View {
+        if message.type == "proposal", let proposal = message.proposal {
+            ProposalMessageCard(
+                proposal: proposal,
+                isMine: isMyMessage(message),
+                onAccept: { Task { await accept(proposal: proposal) } },
+                onDecline: { Task { await decline(proposal: proposal) } },
+                onCounter: {
+                    primeCounterForm(proposal)
+                    showProposalForm = true
+                }
+            )
+        } else if message.type == "system" {
+            Text(message.content)
+                .font(.patchworkCaption)
+                .foregroundStyle(PatchworkTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+        } else {
+            ChatMessageRow(
+                text: message.content,
+                time: timeLabel(message.createdAt),
+                isMine: isMyMessage(message)
+            )
+        }
     }
 
     private func timeLabel(_ millis: Int) -> String {
@@ -417,11 +723,15 @@ struct ChatView: View {
 
     private func primeCounterForm(_ proposal: ProposalPayload) {
         counteringProposal = proposal
-        proposalRate = String(format: "%.2f", Double(proposal.rate) / 100)
+        proposalRate = (Double(proposal.rate) / 100).formatted(.number.precision(.fractionLength(2)))
         proposalRateType = proposal.rateType
-        let parts = proposal.startDateTime.split(separator: "T", maxSplits: 1).map(String.init)
-        proposalDate = parts.first ?? ""
-        proposalTime = parts.count > 1 ? String(parts[1].prefix(5)) : ""
+        if let fields = ProposalDateTimeCodec.formFields(from: proposal.startDateTime) {
+            proposalDate = fields.date
+            proposalTime = fields.time
+        } else {
+            proposalDate = ""
+            proposalTime = ""
+        }
         proposalNotes = proposal.notes ?? ""
     }
 
@@ -447,38 +757,67 @@ private struct ProposalMessageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("$\(String(format: "%.2f", Double(proposal.rate) / 100))/\(proposal.rateType)")
-                    .font(.headline)
+                Text(rateLabel)
+                    .font(.patchworkCardTitle)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
                 Spacer()
                 proposalStatus
             }
 
-            Text("\(startDateLabel) at \(startTimeLabel)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Text(scheduleLabel)
+                .font(.patchworkCaption)
+                .foregroundStyle(PatchworkTheme.textSecondary)
 
             if let notes = proposal.notes, !notes.isEmpty {
                 Text(notes)
-                    .font(.subheadline)
+                    .font(.patchworkBody)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
             }
 
             if canActOnProposal {
-                HStack {
-                    Button("Decline", action: onDecline)
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("Chat.proposal.declineButton")
-                    Button("Counter", action: onCounter)
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("Chat.proposal.counterButton")
-                    Button("Accept", action: onAccept)
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("Chat.proposal.acceptButton")
+                HStack(spacing: 8) {
+                    actionButton(
+                        title: "Decline",
+                        fill: Color(.systemBackground),
+                        foreground: .secondary,
+                        border: Color(.systemGray4),
+                        borderWidth: 1,
+                        identifier: "Chat.proposal.declineButton",
+                        action: onDecline
+                    )
+
+                    actionButton(
+                        title: "Counter",
+                        fill: Color(.systemBackground),
+                        foreground: .indigo,
+                        border: Color.indigo.opacity(0.25),
+                        borderWidth: 1,
+                        identifier: "Chat.proposal.counterButton",
+                        action: onCounter
+                    )
+
+                    actionButton(
+                        title: "Accept",
+                        fill: .indigo,
+                        foreground: .white,
+                        border: .indigo,
+                        borderWidth: 0,
+                        identifier: "Chat.proposal.acceptButton",
+                        action: onAccept
+                    )
                 }
                 .accessibilityIdentifier("Chat.proposalActions")
             }
         }
-        .padding(12)
-        .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .padding(16)
+        .background(
+            (isMine ? PatchworkTheme.brandSoft : PatchworkTheme.surface.opacity(0.92)),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
         .accessibilityIdentifier("Chat.proposal.\(proposal.id)")
     }
 
@@ -503,33 +842,129 @@ private struct ProposalMessageCard: View {
 
     private func statusPill(title: String, color: Color) -> some View {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(.patchworkCaption)
             .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(color.opacity(0.12), in: Capsule())
     }
 
-    private var startDateLabel: String {
-        proposalDate?.formatted(date: .abbreviated, time: .omitted) ?? proposal.startDateTime
+    private func actionButton(
+        title: String,
+        fill: Color,
+        foreground: Color,
+        border: Color,
+        borderWidth: CGFloat,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 44)
+                .background(fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(border, lineWidth: borderWidth)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityElement(children: .combine)
+        .contentShape(Rectangle())
+        .frame(maxWidth: .infinity)
+            .accessibilityIdentifier(identifier)
     }
 
-    private var startTimeLabel: String {
-        proposalDate?.formatted(date: .omitted, time: .shortened) ?? "TBD"
+    private var rateLabel: String {
+        let amount = (Double(proposal.rate) / 100).formatted(.number.precision(.fractionLength(2)))
+        return "$\(amount)/\(proposal.rateType)"
+    }
+
+    private var scheduleLabel: String {
+        guard let proposalDate else {
+            return "Schedule unavailable"
+        }
+        return "\(proposalDate.formatted(date: .abbreviated, time: .omitted)) at \(proposalDate.formatted(date: .omitted, time: .shortened))"
     }
 
     private var proposalDate: Date? {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-        if let parsed = parser.date(from: proposal.startDateTime) {
-            return parsed
+        ProposalDateTimeCodec.parse(proposal.startDateTime)
+    }
+}
+
+private enum ProposalDateTimeCodec {
+    static func encode(date: String, time: String) -> String? {
+        let trimmedDate = date.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTime = time.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let day = dateFormatter.date(from: trimmedDate),
+              let clock = timeFormatter.date(from: trimmedTime) else {
+            return nil
         }
 
-        let fallback = DateFormatter()
-        fallback.locale = Locale(identifier: "en_US_POSIX")
-        fallback.dateFormat = "yyyy-MM-dd'T'HH:mm"
-        return fallback.date(from: proposal.startDateTime)
+        var components = calendar.dateComponents([.year, .month, .day], from: day)
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: clock)
+        components.hour = timeComponents.hour
+        components.minute = timeComponents.minute
+        components.second = 0
+        components.timeZone = .current
+
+        guard let composedDate = calendar.date(from: components) else {
+            return nil
+        }
+
+        return internetDateTimeFormatter.string(from: composedDate)
     }
+
+    static func parse(_ value: String) -> Date? {
+        if let parsed = fractionalDateTimeFormatter.date(from: value) {
+            return parsed
+        }
+        return internetDateTimeFormatter.date(from: value)
+    }
+
+    static func formFields(from value: String) -> (date: String, time: String)? {
+        guard let parsed = parse(value) else {
+            return nil
+        }
+        return (dateFormatter.string(from: parsed), timeFormatter.string(from: parsed))
+    }
+
+    private static let calendar = Calendar(identifier: .gregorian)
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let fractionalDateTimeFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let internetDateTimeFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }
 
 private struct ChatAcceptedBanner: View {
@@ -538,14 +973,18 @@ private struct ChatAcceptedBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(PatchworkTheme.success)
             Text(text)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.green)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(PatchworkTheme.success)
             Spacer()
         }
-        .padding(10)
-        .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .padding(14)
+        .background(PatchworkTheme.success.opacity(0.12), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(PatchworkTheme.success.opacity(0.24), lineWidth: 1)
+        )
     }
 }
 
@@ -557,20 +996,43 @@ private struct ChatActionBar: View {
 
     var body: some View {
         if canShowCompleteButton {
-            Button("Complete Job") {
-                onCompleteTap()
-            }
-            .buttonStyle(.bordered)
-            .padding(.horizontal)
-            .accessibilityIdentifier("Chat.completeJobButton")
+            primaryActionButton(
+                title: "Complete Job",
+                identifier: "Chat.completeJobButton",
+                action: onCompleteTap
+            )
         } else if !hasAcceptedProposal {
-            Button("Propose terms") {
-                onProposeTap()
-            }
-            .buttonStyle(.bordered)
-            .padding(.horizontal)
-            .accessibilityIdentifier("Chat.proposeTermsButton")
+            primaryActionButton(
+                title: "Propose terms",
+                identifier: "Chat.proposeTermsButton",
+                action: onProposeTap
+            )
         }
+    }
+
+    private func primaryActionButton(title: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(canShowCompleteButton ? .white : PatchworkTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: PatchworkMetrics.buttonHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                        .fill(canShowCompleteButton ? AnyShapeStyle(PatchworkTheme.heroGradient) : AnyShapeStyle(PatchworkTheme.surface.opacity(0.9)))
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                        .stroke(canShowCompleteButton ? .clear : PatchworkTheme.strokeStrong, lineWidth: canShowCompleteButton ? 0 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityElement(children: .combine)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier(identifier)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -579,25 +1041,33 @@ private struct ChatComposerBar: View {
     let onSend: () -> Void
 
     var body: some View {
-        HStack {
-            Button {
-            } label: {
-                Image(systemName: "paperclip")
-            }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier("Chat.attachmentButton")
-
-            TextField("Type a message...", text: $text)
-                .textFieldStyle(.roundedBorder)
+        HStack(spacing: 12) {
+            TextField("Type a message...", text: $text, axis: .vertical)
+                .font(.patchworkBody)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+                .lineLimit(1 ... 5)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .accessibilityIdentifier("Chat.messageField")
-            Button("Send") {
+
+            Button("Send", systemImage: "arrow.up") {
                 onSend()
             }
-            .buttonStyle(.borderedProminent)
+            .labelStyle(.iconOnly)
+            .foregroundStyle(.white)
+            .frame(width: 48, height: 48)
+            .background(PatchworkTheme.heroGradient, in: Circle())
+            .buttonStyle(.plain)
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("Chat.sendButton")
         }
-        .padding()
+        .padding(12)
+        .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
     }
 }
 
@@ -611,12 +1081,17 @@ private struct ChatMessageRow: View {
             if isMine { Spacer() }
             VStack(alignment: .leading, spacing: 4) {
                 Text(text)
-                    .padding(10)
-                    .background(isMine ? Color.indigo : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(isMine ? .white : .primary)
+                    .font(.patchworkBody)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        isMine ? PatchworkTheme.heroGradient : LinearGradient(colors: [PatchworkTheme.surface.opacity(0.96), PatchworkTheme.surfaceMuted], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .foregroundStyle(isMine ? .white : PatchworkTheme.textPrimary)
                 Text(time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
             }
             if !isMine { Spacer() }
         }
@@ -628,33 +1103,36 @@ private struct CompleteJobSheet: View {
     let onConfirm: () -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Are you sure you want to mark this job as completed?")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.accent)
 
-                HStack(spacing: 12) {
-                    Button("Cancel") {
-                        onCancel()
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("Chat.completeJob.cancelButton")
+            PatchworkSurfaceCard {
+                VStack(alignment: .leading, spacing: 20) {
+                    PatchworkSectionIntro(
+                        eyebrow: "Job Status",
+                        title: "Complete Job",
+                        message: "Mark this job as completed once both sides agree the work is done."
+                    )
 
-                    Button("Complete Job") {
-                        onConfirm()
+                    HStack(spacing: 12) {
+                        Button("Cancel") {
+                            onCancel()
+                        }
+                        .buttonStyle(PatchworkSecondaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("Chat.completeJob.cancelButton")
+
+                        Button("Complete Job") {
+                            onConfirm()
+                        }
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("Chat.completeJob.confirmButton")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("Chat.completeJob.confirmButton")
                 }
             }
-            .padding(20)
-            .navigationTitle("Complete Job")
-            .navigationBarTitleDisplayMode(.inline)
+            .padding(.horizontal, 20)
         }
-        .presentationDetents([.height(220)])
     }
 }
 
@@ -669,48 +1147,74 @@ private struct ProposalFormSheet: View {
     let onSubmit: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Rate") {
-                    Picker("Type", selection: $rateType) {
-                        Text("Hourly").tag("hourly")
-                        Text("Flat").tag("flat")
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("ProposalForm.rateType")
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brand)
 
-                    TextField("Rate", text: $rate)
-                        .keyboardType(.decimalPad)
-                        .accessibilityIdentifier("ProposalForm.rateField")
-                }
-
-                Section("Start") {
-                    TextField("Date (YYYY-MM-DD)", text: $date)
-                        .accessibilityIdentifier("ProposalForm.dateField")
-                    TextField("Time (HH:MM)", text: $time)
-                        .accessibilityIdentifier("ProposalForm.timeField")
-                }
-
-                Section("Notes") {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 100)
-                        .accessibilityIdentifier("ProposalForm.notesField")
-                }
-            }
-            .navigationTitle(isCounter ? "Counter Proposal" : "Propose Terms")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel", action: onCancel)
+            ScrollView {
+                VStack(spacing: 18) {
+                    PatchworkTopBar(title: isCounter ? "Counter Proposal" : "Propose Terms", onBack: onCancel)
                         .accessibilityIdentifier("ProposalForm.cancelButton")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isCounter ? "Send Counter" : "Send") {
-                        onSubmit()
+
+                    PatchworkSurfaceCard {
+                        VStack(alignment: .leading, spacing: 18) {
+                            PatchworkSectionIntro(
+                                eyebrow: isCounter ? "Counter offer" : "Proposal",
+                                title: "Set clear terms",
+                                message: "Use one clean proposal path with explicit pricing and start time."
+                            )
+
+                            Picker("Type", selection: $rateType) {
+                                Text("Hourly").tag("hourly")
+                                Text("Flat").tag("flat")
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("ProposalForm.rateType")
+
+                            TextField("Rate", text: $rate)
+                                .keyboardType(.decimalPad)
+                                .patchworkInputFieldStyle()
+                                .accessibilityIdentifier("ProposalForm.rateField")
+
+                            HStack(spacing: 12) {
+                                TextField("Date (YYYY-MM-DD)", text: $date)
+                                    .patchworkInputFieldStyle()
+                                    .accessibilityIdentifier("ProposalForm.dateField")
+
+                                TextField("Time (HH:MM)", text: $time)
+                                    .patchworkInputFieldStyle()
+                                    .accessibilityIdentifier("ProposalForm.timeField")
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Notes")
+                                    .font(.patchworkCaption)
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+                                TextEditor(text: $notes)
+                                    .font(.patchworkBody)
+                                    .foregroundStyle(PatchworkTheme.textPrimary)
+                                    .frame(minHeight: 120)
+                                    .padding(10)
+                                    .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                                    )
+                                    .accessibilityIdentifier("ProposalForm.notesField")
+                            }
+
+                            Button(isCounter ? "Send Counter" : "Send") {
+                                onSubmit()
+                            }
+                            .buttonStyle(PatchworkPrimaryButtonStyle())
+                            .disabled(rate.isEmpty || date.isEmpty || time.isEmpty)
+                            .accessibilityIdentifier("ProposalForm.submitButton")
+                        }
                     }
-                    .disabled(rate.isEmpty || date.isEmpty || time.isEmpty)
-                    .accessibilityIdentifier("ProposalForm.submitButton")
+                    .padding(.horizontal, 20)
                 }
+                .padding(.vertical, 12)
             }
+            .scrollIndicators(.hidden)
         }
     }
 }
@@ -723,55 +1227,74 @@ private struct ReviewFormSheet: View {
     let onSubmit: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Rating") {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "info.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        Text("Only rate once you agree the job has been completed.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    .padding(8)
-                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.accent)
 
-                    HStack {
-                        ForEach(1 ... 5, id: \.self) { star in
-                            Button {
-                                rating = star
-                            } label: {
-                                Image(systemName: star <= rating ? "star.fill" : "star")
-                                    .foregroundStyle(.yellow)
+            ScrollView {
+                VStack(spacing: 18) {
+                    PatchworkTopBar(title: "Leave Review", onBack: { dismiss() })
+                        .accessibilityIdentifier("ReviewForm.skipButton")
+
+                    PatchworkSurfaceCard {
+                        VStack(alignment: .leading, spacing: 18) {
+                            PatchworkSectionIntro(
+                                eyebrow: "Completed Job",
+                                title: "Leave a thoughtful review",
+                                message: "Only rate once both sides agree the work is fully complete."
+                            )
+
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.patchworkCaption)
+                                    .foregroundStyle(PatchworkTheme.warning)
+                                Text("Only rate once you agree the job has been completed.")
+                                    .font(.patchworkCaption)
+                                    .foregroundStyle(PatchworkTheme.warning)
                             }
-                            .buttonStyle(.plain)
+                            .padding(10)
+                            .background(PatchworkTheme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                            HStack(spacing: 10) {
+                                ForEach(1 ... 5, id: \.self) { star in
+                                    Button {
+                                        rating = star
+                                    } label: {
+                                        Label("\(star) star", systemImage: star <= rating ? "star.fill" : "star")
+                                            .labelStyle(.iconOnly)
+                                            .font(.title3)
+                                            .foregroundStyle(.yellow)
+                                            .frame(maxWidth: .infinity, minHeight: 48)
+                                            .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            TextEditor(text: $text)
+                                .font(.patchworkBody)
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+                                .frame(minHeight: 140)
+                                .padding(10)
+                                .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                                .accessibilityIdentifier("ReviewForm.textField")
+
+                            Button("Submit") {
+                                onSubmit()
+                            }
+                            .buttonStyle(PatchworkPrimaryButtonStyle())
+                            .disabled(rating == 0 || text.trimmingCharacters(in: .whitespacesAndNewlines).count < 10)
+                            .accessibilityIdentifier("ReviewForm.submitButton")
                         }
                     }
+                    .padding(.horizontal, 20)
                 }
-
-                Section("Review") {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 120)
-                        .accessibilityIdentifier("ReviewForm.textField")
-                }
+                .padding(.vertical, 12)
             }
-            .navigationTitle("Review Job")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Skip") {
-                        dismiss()
-                    }
-                    .accessibilityIdentifier("ReviewForm.skipButton")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Submit") {
-                        onSubmit()
-                    }
-                    .disabled(rating == 0 || text.trimmingCharacters(in: .whitespacesAndNewlines).count < 10)
-                    .accessibilityIdentifier("ReviewForm.submitButton")
-                }
-            }
+            .scrollIndicators(.hidden)
         }
     }
 }

@@ -1,8 +1,11 @@
 import Foundation
 
 enum AppConfig {
-    static let convexCloudURL = URL(string: "https://aware-meerkat-572.convex.cloud")!
-    static let convexSiteURL = URL(string: "https://aware-meerkat-572.convex.site")!
-    static let defaultLatitude = 43.6532
-    static let defaultLongitude = -79.3832
+    static let convexCloudURL = URL(string: "https://vibrant-caribou-150.convex.cloud")!
+    static let convexSiteURL = URL(string: "https://vibrant-caribou-150.convex.site")!
+    static let revenueCatPublicAPIKey = "appl_KVrqPtiNVMghtWZGRGrnCnBQyfh"
+    static let revenueCatEntitlementID = "tasker_access"
+    static let revenueCatOfferingLookupKey = "tasker_access_paywall"
+    static let revenueCatWeeklyProductID = "ltd.ddga.patchwork.tasker.weekly"
+    static let revenueCatLifetimeProductID = "ltd.ddga.patchwork.tasker.lifetime"
 }

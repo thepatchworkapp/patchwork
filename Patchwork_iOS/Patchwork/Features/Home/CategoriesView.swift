@@ -27,41 +27,97 @@ struct CategoriesView: View {
     }
 
     var body: some View {
-        List {
-            if filteredCategories.isEmpty {
-                ContentUnavailableView(
-                    "No categories found",
-                    systemImage: "magnifyingglass",
-                    description: Text("Try a different search term.")
-                )
-                .accessibilityIdentifier("Categories.emptyState")
-            } else {
-                ForEach(groupedCategories, id: \.key) { group, categories in
-                    Section(group) {
-                        ForEach(categories) { category in
-                            Button {
-                                onSelect(category)
-                                if dismissOnSelect {
-                                    dismiss()
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text(category.emoji ?? "📋")
-                                        .font(.body)
-                                    Text(category.name)
-                                    Spacer()
-                                    if category.id == selectedCategoryID {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.indigo)
-                                            .accessibilityIdentifier("Categories.selectedBadge")
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brand)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    PatchworkSectionIntro(
+                        eyebrow: "Browse",
+                        title: title,
+                        message: "Choose a category that best matches the work you want to do."
+                    )
+                    .padding(.top, 12)
+
+                    if filteredCategories.isEmpty {
+                        PatchworkSurfaceCard {
+                            VStack(spacing: 16) {
+                                Circle()
+                                    .fill(PatchworkTheme.brandSoft)
+                                    .frame(width: 76, height: 76)
+                                    .overlay {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.system(size: 28, weight: .semibold))
+                                            .foregroundStyle(PatchworkTheme.brand)
                                     }
+
+                                Text("No categories found")
+                                    .font(.patchworkCardTitle)
+                                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                Text("Try a different search term.")
+                                    .font(.patchworkBody)
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .accessibilityIdentifier("Categories.emptyState")
+                    } else {
+                        ForEach(groupedCategories, id: \.key) { group, categories in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(group.uppercased())
+                                    .font(.patchworkCaption)
+                                    .tracking(1.1)
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+
+                                ForEach(categories) { category in
+                                    Button {
+                                        onSelect(category)
+                                        if dismissOnSelect {
+                                            dismiss()
+                                        }
+                                    } label: {
+                                        HStack(spacing: 14) {
+                                            Text(category.emoji ?? "📋")
+                                                .font(.title3)
+
+                                            Text(category.name)
+                                                .font(.patchworkBody)
+                                                .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                            Spacer()
+
+                                            if category.id == selectedCategoryID {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundStyle(PatchworkTheme.brand)
+                                                    .accessibilityIdentifier("Categories.selectedBadge")
+                                            } else {
+                                                Image(systemName: "chevron.right")
+                                                    .font(.caption.weight(.bold))
+                                                    .foregroundStyle(PatchworkTheme.textTertiary)
+                                            }
+                                        }
+                                        .padding(16)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                .stroke(category.id == selectedCategoryID ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("Categories.row.\(category.slug)")
                                 }
                             }
-                            .accessibilityIdentifier("Categories.row.\(category.slug)")
+                            .padding(.bottom, 6)
                         }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
+            .scrollIndicators(.hidden)
         }
         .navigationTitle(title)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search categories")

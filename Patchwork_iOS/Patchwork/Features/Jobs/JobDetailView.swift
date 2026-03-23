@@ -3,6 +3,7 @@ import SwiftUI
 struct JobDetailView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.dismiss) private var dismiss
 
     let jobId: ConvexID
 
@@ -10,60 +11,114 @@ struct JobDetailView: View {
     @State private var canReview = false
     @State private var isCompleting = false
     @State private var isLoading = true
+    @State private var isShowingReviewComposer = false
 
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading job...")
+                ZStack {
+                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+
+                    PatchworkLoadingCard(
+                        title: "Loading job...",
+                        message: "Fetching the latest job details and review status."
+                    )
+                    .padding(.horizontal, 20)
+                }
+                .accessibilityIdentifier("JobDetail.loading")
             } else if let detail {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        JobHeaderCard(detail: detail)
+                ZStack {
+                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Description")
-                                .font(.headline)
-                            Text(detail.notes?.isEmpty == false ? detail.notes ?? "" : detail.description)
-                                .foregroundStyle(.secondary)
-                        }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            PatchworkSectionIntro(
+                                eyebrow: "Job",
+                                title: "Job detail",
+                                message: "Review scope, dates, and completion status with the same high-trust bordered treatment as the rest of the app."
+                            )
 
-                        JobMetaGrid(detail: detail)
+                            JobHeaderCard(detail: detail)
 
-                        if canShowCompleteButton(detail: detail) {
-                            Button(isCompleting ? "Completing..." : "Complete Job") {
-                                Task { await completeJob() }
+                            PatchworkSurfaceCard {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Description")
+                                        .font(.patchworkCardTitle)
+                                        .foregroundStyle(PatchworkTheme.textPrimary)
+                                    Text(detail.notes?.isEmpty == false ? detail.notes ?? "" : detail.description)
+                                        .font(.patchworkBody)
+                                        .foregroundStyle(PatchworkTheme.textSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(isCompleting)
-                            .accessibilityIdentifier("JobDetail.completeButton")
+
+                            JobMetaGrid(detail: detail)
+
+                            if canShowCompleteButton(detail: detail) {
+                                Button(isCompleting ? "Completing..." : "Complete Job") {
+                                    Task { await completeJob() }
+                                }
+                                .buttonStyle(PatchworkPrimaryButtonStyle())
+                                .disabled(isCompleting)
+                                .accessibilityIdentifier("JobDetail.completeButton")
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .scrollIndicators(.hidden)
                 }
                 .safeAreaInset(edge: .bottom) {
                     if detail.status == "completed" && canReview {
-                        NavigationLink {
-                            LeaveReviewView(jobId: jobId)
-                        } label: {
-                            Text("Leave Review")
-                                .frame(maxWidth: .infinity)
+                        PatchworkSurfaceCard {
+                            Button("Leave Review") {
+                                isShowingReviewComposer = true
+                            }
+                            .buttonStyle(PatchworkPrimaryButtonStyle())
+                            .accessibilityIdentifier("JobDetail.leaveReviewButton")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 20)
                         .padding(.top, 8)
                         .padding(.bottom, 12)
-                        .background(.thinMaterial)
-                        .accessibilityIdentifier("JobDetail.leaveReviewButton")
                     }
                 }
             } else {
-                ContentUnavailableView("Job not found", systemImage: "doc.text.magnifyingglass")
+                ZStack {
+                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+
+                    PatchworkEmptyStateCard(
+                        systemImage: "doc.text.magnifyingglass",
+                        title: "Job not found",
+                        message: "This job is unavailable or has already been removed."
+                    )
+                    .padding(.horizontal, 20)
+                }
+                .accessibilityIdentifier("JobDetail.notFound")
             }
         }
         .navigationTitle("Job Detail")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .labelStyle(.titleAndIcon)
+                }
+                .accessibilityIdentifier("JobDetail.backButton")
+            }
+        }
         .task(id: jobId) {
             await load()
+        }
+        .navigationDestination(isPresented: $isShowingReviewComposer) {
+            LeaveReviewView(jobId: jobId)
+        }
+        .onAppear {
+            guard detail != nil else {
+                return
+            }
+            Task { await load() }
         }
     }
 
@@ -75,8 +130,12 @@ struct JobDetailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
+            let currentTimeMs = Int(Date().timeIntervalSince1970 * 1000)
             async let detailCall: JobDetail? = sessionStore.client.query("jobs:getJob", args: ["jobId": jobId])
-            async let canReviewCall: Bool = sessionStore.client.query("reviews:canReview", args: ["jobId": jobId])
+            async let canReviewCall: Bool = sessionStore.client.query(
+                "reviews:canReview",
+                args: ["jobId": jobId, "currentTimeMs": currentTimeMs]
+            )
             detail = try await detailCall
             canReview = try await canReviewCall
         } catch {
@@ -92,6 +151,7 @@ struct JobDetailView: View {
                 let jobId: ConvexID
             }
             _ = try await sessionStore.client.mutation("jobs:completeJob", args: ["jobId": jobId]) as Result
+            await appState.refreshJobs(client: sessionStore.client, statusGroup: appState.jobsStatusGroup)
             await load()
         } catch {
             appState.lastError = error.localizedDescription
@@ -103,28 +163,34 @@ private struct JobHeaderCard: View {
     let detail: JobDetail
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(detail.categoryName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(title)
-                        .font(.title3.weight(.semibold))
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(detail.categoryName.uppercased())
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.brand)
+                            .tracking(0.6)
+                        Text(title)
+                            .font(.patchworkSectionTitle)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(detail.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                        .font(.patchworkCaption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(statusColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(statusColor)
                 }
 
-                Spacer(minLength: 0)
-
-                Text(detail.status.replacingOccurrences(of: "_", with: " ").capitalized)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(statusColor.opacity(0.15), in: Capsule())
-                    .foregroundStyle(statusColor)
+                Label("Verified job record", systemImage: "checkmark.shield.fill")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
             }
         }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var title: String {
@@ -138,11 +204,11 @@ private struct JobHeaderCard: View {
     private var statusColor: Color {
         switch detail.status {
         case "completed":
-            return .green
+            return PatchworkTheme.success
         case "in_progress":
-            return .indigo
+            return PatchworkTheme.brand
         default:
-            return .secondary
+            return PatchworkTheme.textSecondary
         }
     }
 }
@@ -199,19 +265,21 @@ private struct JobMetaCard: View {
     let value: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.subheadline.weight(.medium))
-            }
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: icon)
+                .font(.patchworkCaption)
+                .foregroundStyle(PatchworkTheme.textSecondary)
+            Text(value)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
     }
 }

@@ -26,6 +26,8 @@
 	<string>$(IPHONEOS_DEPLOYMENT_TARGET)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Patchwork uses your location to show nearby taskers and improve local job matches.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
@@ -35,11 +37,8 @@
     </dict>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
-    <key>UIDeviceFamily</key>
-    <array>
-        <integer>1</integer>
-        <integer>2</integer>
-    </array>
+    <key>UIUserInterfaceStyle</key>
+    <string>Light</string>
     <key>UILaunchScreen</key>
     <dict>
         <key>UILaunchScreen</key>

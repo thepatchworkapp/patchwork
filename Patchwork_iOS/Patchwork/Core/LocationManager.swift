@@ -3,8 +3,10 @@ import Foundation
 import Observation
 
 @Observable
-final class LocationManager: NSObject, CLLocationManagerDelegate {
+@MainActor
+final class LocationManager: NSObject {
     private let manager = CLLocationManager()
+    private let geocoder = CLGeocoder()
     private var authorizationContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
     private var locationContinuation: CheckedContinuation<CLLocationCoordinate2D?, Never>?
 
@@ -57,6 +59,33 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    func geocode(city: String, province: String) async -> CLLocationCoordinate2D? {
+        let parts = [city, province]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !parts.isEmpty else {
+            return nil
+        }
+
+        let query = parts.joined(separator: ", ")
+
+        return await withCheckedContinuation { continuation in
+            geocoder.geocodeAddressString(query) { placemarks, error in
+                let message = error?.localizedDescription
+                let coordinate = placemarks?.first?.location?.coordinate
+                Task { @MainActor in
+                    if let message {
+                        self.lastErrorMessage = message
+                    }
+                    continuation.resume(returning: coordinate)
+                }
+            }
+        }
+    }
+
+}
+
+extension LocationManager: @MainActor CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         authorizationStatus = status

@@ -64,7 +64,7 @@ struct TaskerDetail: Codable, Hashable {
     let categoryProfiles: [TaskerCategoryProfile]
 
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
+        case id
         case userId
         case displayName
         case averageRating = "rating"
@@ -87,7 +87,7 @@ struct TaskerReview: Identifiable, Codable, Hashable {
     let createdAt: Int
 
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
+        case id
         case reviewerName
         case reviewerPhotoUrl
         case rating
@@ -110,7 +110,7 @@ struct TaskerCategoryProfile: Identifiable, Codable, Hashable {
     let firstPhotoUrl: String?
 
     enum CodingKeys: String, CodingKey {
-        case id = "_id"
+        case id
         case categoryId
         case categoryName
         case categorySlug
@@ -131,6 +131,7 @@ struct CurrentUser: Codable, Hashable {
     let roles: UserRoles?
     let location: UserLocation?
     let settings: UserSettings?
+    let createdAt: Int?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -139,6 +140,7 @@ struct CurrentUser: Codable, Hashable {
         case roles
         case location
         case settings
+        case createdAt
     }
 }
 
@@ -168,6 +170,7 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
     let seekerId: ConvexID
     let taskerId: ConvexID
     let jobId: ConvexID?
+    let lastMessageAt: Int?
     let lastMessagePreview: String?
     let seekerUnreadCount: Int?
     let taskerUnreadCount: Int?
@@ -179,6 +182,7 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         case seekerId
         case taskerId
         case jobId
+        case lastMessageAt
         case lastMessagePreview
         case seekerUnreadCount
         case taskerUnreadCount
@@ -315,29 +319,23 @@ struct JobDetail: Codable, Hashable {
     }
 }
 
-struct JobRequestSummary: Identifiable, Codable, Hashable {
-    let id: ConvexID
-    let categoryName: String
-    let description: String
-    let status: String
-    let createdAt: Int
-
-    enum CodingKeys: String, CodingKey {
-        case id = "_id"
-        case categoryName
-        case description
-        case status
-        case createdAt
-    }
-}
-
 struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let id: ConvexID
     let displayName: String
     let bio: String?
     let subscriptionPlan: String
+    let subscriptionAccessType: String?
+    let subscriptionStatus: String?
+    let subscriptionEndsAt: Int?
+    let hasActiveSubscription: Bool?
     let ghostMode: Bool
     let premiumPin: String?
+    let rating: Double?
+    let reviewCount: Int?
+    let completedJobs: Int?
+    let verified: Bool?
+    let responseTime: String?
+    let createdAt: Int?
     let categories: [TaskerManagedCategory]
 
     enum CodingKeys: String, CodingKey {
@@ -345,8 +343,18 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case displayName
         case bio
         case subscriptionPlan
+        case subscriptionAccessType
+        case subscriptionStatus
+        case subscriptionEndsAt
+        case hasActiveSubscription
         case ghostMode
         case premiumPin
+        case rating
+        case reviewCount
+        case completedJobs
+        case verified
+        case responseTime
+        case createdAt
         case categories
     }
 }

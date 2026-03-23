@@ -10,24 +10,37 @@
 		12D355FBBE67FA10EADF80CC /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8CE0A5718D2AC6132157B5B /* AppConfig.swift */; };
 		14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */; };
 		2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */; };
+		31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */; };
 		451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */; };
 		474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */; };
 		48CD452FB3052C6976D36007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 729E33D4E7B681C1ABDBD69A /* RootView.swift */; };
 		4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDAD88D57BEC8C727115A6F /* MessagesView.swift */; };
 		5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09019FECF835A15001917199 /* CategoriesView.swift */; };
+		607AB8F7707AD6EE1662A1CE /* SubscriptionReconciliation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */; };
 		62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B810AFA2F7D8E281A10001B8 /* ProfileView.swift */; };
+		686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */; };
 		73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA14B5338C5C33F540967A21 /* LocationManager.swift */; };
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
+		904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */; };
 		9159CA9BA57F8DDBC1796AFB /* PatchworkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */; };
+		9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */; };
 		A087AA9759E50A7CDF5F14C3 /* JobDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2645A99676B08C632ABA998 /* JobDetailView.swift */; };
+		A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF295505C244A4858E39A5D /* RevenueCatManager.swift */; };
 		AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */; };
 		B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */; };
+		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
+		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
+		D60729C5F813CE8E8D1D26FE /* UITheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D08930C048430E82A75FF1 /* UITheme.swift */; };
+		D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */; };
+		DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */; };
 		DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */; };
-		E76D48D7D1E11F100092DAA9 /* BrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799B71728CE9EC43E3F8F00C /* BrowseView.swift */; };
-		F4F9C14B56256ABC4229B823 /* RequestWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42896CA4EB03C831EB8C965B /* RequestWizardView.swift */; };
+		EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */; };
+		F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */; };
+		F713D2AF3260F99F0A8CF19D /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = A2B6386314D137BE552E1DFA /* RevenueCat */; };
 		F8897AC3264797291BAD224B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF104625A9E3F2BC20B0518E /* Models.swift */; };
+		FAFE4B58A3664CE4D1443EF5 /* PatchworkSheetChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,19 +62,29 @@
 
 /* Begin PBXFileReference section */
 		09019FECF835A15001917199 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
+		19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTopBar.swift; sourceTree = "<group>"; };
+		1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkInputFieldStyle.swift; sourceTree = "<group>"; };
+		1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSurfaceCard.swift; sourceTree = "<group>"; };
 		2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTests.swift; sourceTree = "<group>"; };
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
-		42896CA4EB03C831EB8C965B /* RequestWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestWizardView.swift; sourceTree = "<group>"; };
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		68BA4F09EB1C8E4E34CCC252 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		68D08930C048430E82A75FF1 /* UITheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITheme.swift; sourceTree = "<group>"; };
+		6FF295505C244A4858E39A5D /* RevenueCatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevenueCatManager.swift; sourceTree = "<group>"; };
 		729E33D4E7B681C1ABDBD69A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		799B71728CE9EC43E3F8F00C /* BrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseView.swift; sourceTree = "<group>"; };
+		79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkWordmark.swift; sourceTree = "<group>"; };
+		7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkBackdrop.swift; sourceTree = "<group>"; };
+		88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSheetChrome.swift; sourceTree = "<group>"; };
+		8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSectionIntro.swift; sourceTree = "<group>"; };
+		A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDetailView.swift; sourceTree = "<group>"; };
 		B2645A99676B08C632ABA998 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
+		B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkButtonStyles.swift; sourceTree = "<group>"; };
 		B810AFA2F7D8E281A10001B8 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliationTests.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2FF7A5790E5506D5EF7226A /* JobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsView.swift; sourceTree = "<group>"; };
 		CCDAD88D57BEC8C727115A6F /* MessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesView.swift; sourceTree = "<group>"; };
@@ -69,27 +92,32 @@
 		CFD2BD5E80A7F39881A464BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D1BDCE50B380DDF4CDDCF5A3 /* PatchworkUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
+		D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliation.swift; sourceTree = "<group>"; };
 		DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaveReviewView.swift; sourceTree = "<group>"; };
+		E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkStateViews.swift; sourceTree = "<group>"; };
 		E8CE0A5718D2AC6132157B5B /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		FA14B5338C5C33F540967A21 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXGroup section */
-		0A33C3EA3C0D8FD2A96B7296 /* Requests */ = {
-			isa = PBXGroup;
-			children = (
-				42896CA4EB03C831EB8C965B /* RequestWizardView.swift */,
+/* Begin PBXFrameworksBuildPhase section */
+		245831F7C94313463CA1B6E4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F713D2AF3260F99F0A8CF19D /* RevenueCat in Frameworks */,
 			);
-			path = Requests;
-			sourceTree = "<group>";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
 		519C93B72D3CD174ABE13197 /* Home */ = {
 			isa = PBXGroup;
 			children = (
-				799B71728CE9EC43E3F8F00C /* BrowseView.swift */,
 				09019FECF835A15001917199 /* CategoriesView.swift */,
 				F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */,
+				A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -154,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
+				B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */,
 			);
 			path = PatchworkTests;
 			sourceTree = "<group>";
@@ -166,7 +195,19 @@
 				424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */,
 				FA14B5338C5C33F540967A21 /* LocationManager.swift */,
 				CF104625A9E3F2BC20B0518E /* Models.swift */,
+				7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */,
+				B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */,
+				1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */,
+				8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */,
+				88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */,
+				E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */,
+				1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */,
+				19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */,
+				79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */,
+				6FF295505C244A4858E39A5D /* RevenueCatManager.swift */,
 				5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */,
+				D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */,
+				68D08930C048430E82A75FF1 /* UITheme.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -196,7 +237,6 @@
 				61BD51C437D3C8EBD32CB189 /* Jobs */,
 				BE901AEF2A31157915F1E50A /* Messages */,
 				64A7478B27F5090FB678ADA8 /* Profile */,
-				0A33C3EA3C0D8FD2A96B7296 /* Requests */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -220,6 +260,7 @@
 			buildPhases = (
 				3852369F6201BD00F0FF7BA7 /* Sources */,
 				85E12E46A56D3A177326B318 /* Resources */,
+				245831F7C94313463CA1B6E4 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -227,6 +268,7 @@
 			);
 			name = Patchwork;
 			packageProductDependencies = (
+				A2B6386314D137BE552E1DFA /* RevenueCat */,
 			);
 			productName = Patchwork;
 			productReference = BDF20E73132396D39BDD54F7 /* Patchwork.app */;
@@ -282,9 +324,13 @@
 						ProvisioningStyle = Automatic;
 					};
 					8977A4225AE3FD1CE633B023 = {
+						DevelopmentTeam = 6997N97HZD;
+						ProvisioningStyle = Automatic;
 						TestTargetID = 6FC2263C261E412B7E2F41CC;
 					};
 					A8001EB949FA4D95BB51D730 = {
+						DevelopmentTeam = 6997N97HZD;
+						ProvisioningStyle = Automatic;
 						TestTargetID = 6FC2263C261E412B7E2F41CC;
 					};
 				};
@@ -299,6 +345,9 @@
 			);
 			mainGroup = FD415B9AB19D7B27E769085E;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -329,7 +378,6 @@
 				12D355FBBE67FA10EADF80CC /* AppConfig.swift in Sources */,
 				7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */,
 				DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */,
-				E76D48D7D1E11F100092DAA9 /* BrowseView.swift in Sources */,
 				5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */,
 				AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */,
 				B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */,
@@ -340,10 +388,22 @@
 				4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */,
 				F8897AC3264797291BAD224B /* Models.swift in Sources */,
 				2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */,
+				EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */,
+				DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */,
+				B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */,
+				CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */,
+				FAFE4B58A3664CE4D1443EF5 /* PatchworkSheetChrome.swift in Sources */,
+				9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */,
+				F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */,
+				904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */,
+				D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */,
 				62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */,
-				F4F9C14B56256ABC4229B823 /* RequestWizardView.swift in Sources */,
+				686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */,
+				A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */,
 				48CD452FB3052C6976D36007 /* RootView.swift in Sources */,
 				14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */,
+				607AB8F7707AD6EE1662A1CE /* SubscriptionReconciliation.swift in Sources */,
+				D60729C5F813CE8E8D1D26FE /* UITheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,6 +412,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
+				31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -412,8 +473,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 6997N97HZD;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -469,8 +532,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 6997N97HZD;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -506,9 +571,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 23;
-				DEVELOPMENT_TEAM = 6997N97HZD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -591,9 +654,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 23;
-				DEVELOPMENT_TEAM = 6997N97HZD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -672,6 +733,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A2B6386314D137BE552E1DFA /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CB4A8DB81E6148DF2E9F4510 /* Project object */;
 }

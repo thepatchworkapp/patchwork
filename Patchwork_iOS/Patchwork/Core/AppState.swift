@@ -16,9 +16,9 @@ final class AppState {
 
     var categories: [Category] = []
     var taskers: [TaskerSummary] = []
+    var favouriteTaskers: [TaskerSummary] = []
     var conversations: [ConversationSummary] = []
     var jobs: [JobSummary] = []
-    var myRequests: [JobRequestSummary] = []
     var currentUser: CurrentUser?
     var taskerProfile: TaskerProfileSelf?
 
@@ -29,11 +29,7 @@ final class AppState {
     var conversationRole = "seeker"
     var jobsStatusGroup = "active"
 
-    var requestDescription = ""
-    var requestAddress = ""
-    var requestCity = "Toronto"
-    var requestProvince = "ON"
-    var requestRadius = 25
+    var searchRadius = 25
 
     var taskerDisplayName = ""
     var taskerBio = ""
@@ -41,49 +37,105 @@ final class AppState {
 
     var lastError: String?
 
+    func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    func presentError(_ error: Error, prefix: String? = nil) {
+        guard !isCancellationError(error) else {
+            return
+        }
+
+        if let prefix {
+            lastError = "\(prefix): \(error.localizedDescription)"
+        } else {
+            lastError = error.localizedDescription
+        }
+    }
+
     func loadBootstrapData(client: ConvexHTTPClient) async {
         isBootstrapped = false
         do {
-            async let categoriesCall: [Category] = client.query("categories:listCategories", args: [:])
-            async let taskersCall: [TaskerSummary] = client.query(
-                "search:searchTaskers",
-                args: [
-                    "lat": AppConfig.defaultLatitude,
-                    "lng": AppConfig.defaultLongitude,
-                    "radiusKm": 25,
-                    "limit": 50,
-                ]
-            )
-            categories = try await categoriesCall
-            taskers = try await taskersCall
-            await refreshAuthedData(client: client)
+            categories = try await client.query("categories:listCategories", args: [:])
+            await refreshAuthedData(client: client, surfaceErrors: false)
+            if currentUser != nil {
+                await searchTaskers(
+                    client: client,
+                    categorySlug: activeCategorySlug,
+                    radiusKm: searchRadius,
+                    excludeCurrentUserWhenTasker: true
+                )
+            } else {
+                taskers = []
+            }
             isBootstrapped = true
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to bootstrap app data")
             isBootstrapped = true
         }
     }
 
-    func refreshAuthedData(client: ConvexHTTPClient) async {
+    func refreshAuthedData(client: ConvexHTTPClient, surfaceErrors: Bool = true) async {
+        let previousCurrentUser = currentUser
+        let previousConversations = conversations
+        let previousJobs = jobs
+        let previousTaskerProfile = taskerProfile
         do {
-            currentUser = try await client.query("users:getCurrentUser", args: [:])
-            async let conversationsCall: [ConversationSummary] = client.query(
-                "conversations:listConversations",
-                args: ["role": conversationRole, "limit": 50]
-            )
-            async let jobsCall: [JobSummary] = client.query(
-                "jobs:listJobs",
-                args: ["statusGroup": jobsStatusGroup, "limit": 50]
-            )
-            async let requestsCall: [JobRequestSummary]? = client.query("jobRequests:listMyJobRequests", args: ["limit": 50])
-            async let taskerProfileCall: TaskerProfileSelf? = client.query("taskers:getTaskerProfile", args: [:])
+            let fetchedCurrentUser: CurrentUser? = try await client.query("users:getCurrentUser", args: [:])
+            guard let fetchedCurrentUser else {
+                if let previousCurrentUser {
+                    currentUser = previousCurrentUser
+                    conversations = previousConversations
+                    jobs = previousJobs
+                    taskerProfile = previousTaskerProfile
+                    return
+                }
 
-            conversations = try await conversationsCall
-            jobs = try await jobsCall
-            myRequests = try await requestsCall ?? []
-            taskerProfile = try await taskerProfileCall
+                currentUser = nil
+                conversations = []
+                jobs = []
+                taskerProfile = nil
+                return
+            }
+
+            currentUser = fetchedCurrentUser
+
+            do {
+                conversations = try await client.query(
+                    "conversations:listConversations",
+                    args: ["role": conversationRole, "limit": 50]
+                )
+            } catch {
+                conversations = previousConversations
+            }
+
+            do {
+                jobs = try await client.query(
+                    "jobs:listJobs",
+                    args: ["statusGroup": jobsStatusGroup, "limit": 50]
+                )
+            } catch {
+                jobs = previousJobs
+            }
+
+            do {
+                taskerProfile = try await client.query("taskers:getTaskerProfile", args: [:])
+            } catch {
+                taskerProfile = previousTaskerProfile
+            }
         } catch {
-            lastError = error.localizedDescription
+            currentUser = previousCurrentUser
+            conversations = previousConversations
+            jobs = previousJobs
+            taskerProfile = previousTaskerProfile
+            if surfaceErrors && previousCurrentUser == nil {
+                presentError(error, prefix: "Failed to refresh signed-in data")
+            }
         }
     }
 
@@ -95,7 +147,7 @@ final class AppState {
                 args: ["role": role, "limit": 50]
             )
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to refresh conversations")
         }
     }
 
@@ -107,18 +159,21 @@ final class AppState {
                 args: ["statusGroup": statusGroup, "limit": 50]
             )
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to refresh jobs")
         }
     }
 
-    func syncLocation(client: ConvexHTTPClient, lat: Double, lng: Double, source: String = "manual") async {
+    @discardableResult
+    func syncLocation(client: ConvexHTTPClient, lat: Double, lng: Double, source: String = "manual") async -> Bool {
         do {
             _ = try await client.mutation(
                 "users:updateLocation",
                 args: ["lat": lat, "lng": lng, "source": source]
             ) as ConvexID
+            return true
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to sync location")
+            return false
         }
     }
 
@@ -126,7 +181,7 @@ final class AppState {
         do {
             selectedTasker = try await client.query("taskers:getTaskerById", args: ["taskerId": taskerId])
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to load tasker details")
         }
     }
 
@@ -137,8 +192,16 @@ final class AppState {
                 args: ["conversationId": conversationId]
             )
         } catch {
-            lastError = error.localizedDescription
+            presentError(error, prefix: "Failed to load conversation")
         }
+    }
+
+    func openConversation(client: ConvexHTTPClient, conversationId: ConvexID, role: String) async {
+        conversationRole = role
+        selectedConversation = nil
+        selectedTab = .messages
+        await loadConversation(client: client, conversationId: conversationId)
+        await refreshConversations(client: client, role: role)
     }
 
     func searchTaskers(
@@ -148,9 +211,13 @@ final class AppState {
         excludeCurrentUserWhenTasker: Bool
     ) async {
         do {
+            guard let currentCoordinates = currentUser?.location?.coordinates else {
+                taskers = []
+                return
+            }
             var args: [String: Any] = [
-                "lat": AppConfig.defaultLatitude,
-                "lng": AppConfig.defaultLongitude,
+                "lat": currentCoordinates.lat,
+                "lng": currentCoordinates.lng,
                 "radiusKm": radiusKm,
                 "limit": 50,
             ]
@@ -165,7 +232,52 @@ final class AppState {
 
             taskers = try await client.query("search:searchTaskers", args: args)
         } catch {
-            lastError = error.localizedDescription
+            if isCancellationError(error) {
+                return
+            }
+            presentError(error, prefix: "Failed to search taskers")
         }
+    }
+
+    func refreshTaskers(
+        client: ConvexHTTPClient,
+        categorySlug: String? = nil,
+        radiusKm: Int? = nil,
+        excludeCurrentUserWhenTasker: Bool = true
+    ) async {
+        await searchTaskers(
+            client: client,
+            categorySlug: categorySlug ?? activeCategorySlug,
+            radiusKm: radiusKm ?? searchRadius,
+            excludeCurrentUserWhenTasker: excludeCurrentUserWhenTasker
+        )
+    }
+
+    func refreshFavouriteTaskers(client: ConvexHTTPClient) async {
+        do {
+            favouriteTaskers = try await client.query(
+                "taskers:listFavouriteTaskers",
+                args: ["limit": 50]
+            )
+        } catch {
+            if isCancellationError(error) {
+                return
+            }
+            presentError(error, prefix: "Failed to load favourites")
+        }
+    }
+
+    func resetForSignedOutSession() {
+        selectedTab = .home
+        isBootstrapped = false
+        taskers = []
+        favouriteTaskers = []
+        conversations = []
+        jobs = []
+        currentUser = nil
+        taskerProfile = nil
+        selectedTasker = nil
+        selectedConversation = nil
+        lastError = nil
     }
 }

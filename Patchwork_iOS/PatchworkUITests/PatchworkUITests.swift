@@ -1,6 +1,8 @@
+import Foundation
 import XCTest
 
 final class PatchworkUITests: XCTestCase {
+    private let convexSiteURL = URL(string: "https://vibrant-caribou-150.convex.site")!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
@@ -27,6 +29,23 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(emailField.waitForExistence(timeout: 5))
     }
 
+    func testCreateAccountEntryRoutesToEmailFlow() throws {
+        let getStarted = app.buttons["Auth.getStartedButton"]
+        XCTAssertTrue(getStarted.waitForExistence(timeout: 5))
+        getStarted.tap()
+
+        let skipButton = app.buttons["Auth.onboardingSkipButton"]
+        XCTAssertTrue(skipButton.waitForExistence(timeout: 5))
+        skipButton.tap()
+
+        let createAccountButton = app.buttons["Auth.createAccountButton"]
+        XCTAssertTrue(createAccountButton.waitForExistence(timeout: 5))
+        createAccountButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["Auth.emailField"].waitForExistence(timeout: 5))
+    }
+
     func testAccessibilitySelectorsPresent() throws {
         XCTAssertTrue(app.buttons["Auth.getStartedButton"].waitForExistence(timeout: 5))
         app.buttons["Auth.getStartedButton"].tap()
@@ -35,10 +54,455 @@ final class PatchworkUITests: XCTestCase {
         app.buttons["Auth.onboardingSkipButton"].tap()
 
         XCTAssertTrue(app.buttons["Auth.emailSignInButton"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Auth.createAccountButton"].exists)
         app.buttons["Auth.emailSignInButton"].tap()
 
         XCTAssertTrue(app.textFields["Auth.emailField"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Auth.sendCodeButton"].exists)
+    }
+
+    func testEmailAuthCompletesProfileSetup() throws {
+        let email = uniqueTestEmail(prefix: "ios-auth")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "iOS Auth Tester", city: "Toronto", province: "ON")
+
+        XCTAssertTrue(tabButton(named: "Profile").waitForExistence(timeout: 10))
+        XCTAssertTrue(tabButton(named: "Messages").exists)
+    }
+
+    func testTaskerSubscriptionLifecycle() throws {
+        let email = uniqueTestEmail(prefix: "ios-tasker")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "iOS Tasker Tester", city: "Toronto", province: "ON")
+        saveScreenshot(named: "ios-tasker-post-profile-setup")
+
+        openProfileTab()
+        let primaryAction = app.buttons["Profile.primaryActionLink"]
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
+        saveScreenshot(named: "ios-tasker-profile-tab")
+
+        primaryAction.tap()
+        completeTaskerOnboarding(
+            displayName: "Local Tasker",
+            categoryBio: "Professional, responsive, and ready for local Patchwork jobs.",
+            hourlyRate: "60"
+        )
+        saveScreenshot(named: "ios-tasker-after-complete")
+
+        XCTAssertTrue(app.staticTexts["No active plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Subscription.basicButton"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Subscription.premiumButton"].exists)
+        XCTAssertTrue(app.buttons["Subscription.restoreButton"].exists)
+    }
+
+    func testBackgroundResumeDoesNotShowProfileSetupForAuthenticatedUser() throws {
+        let email = uniqueTestEmail(prefix: "ios-resume")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "Resume Tester", city: "Toronto", province: "ON")
+
+        XCTAssertTrue(tabButton(named: "Profile").waitForExistence(timeout: 10))
+
+        backgroundAndRestoreApp()
+
+        XCTAssertTrue(tabButton(named: "Profile").waitForExistence(timeout: 10))
+        XCTAssertFalse(app.textFields["ProfileSetup.nameField"].exists)
+
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertFalse(app.textFields["ProfileSetup.nameField"].exists)
+    }
+
+    func testTaskerProfileManagementPersistsDisplayNameAndCategoryEdits() throws {
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-manage")
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-manage")
+        cleanupTestData(for: taskerEmail)
+        cleanupTestData(for: seekerEmail)
+
+        let initialDisplayName = "Managed Tasker"
+        let updatedDisplayName = "Managed Tasker Pro"
+        let updatedCategoryBio = "Detailed cabinet refinishing, trim painting, and touch-ups for busy households."
+
+        launchToEmailEntry()
+        completeEmailAuth(email: taskerEmail)
+        completeProfileSetup(name: "Tasker Manager", city: "Toronto", province: "ON")
+
+        openProfileTab()
+        let primaryAction = app.buttons["Profile.primaryActionLink"]
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
+        primaryAction.tap()
+
+        completeTaskerOnboarding(
+            displayName: initialDisplayName,
+            categoryBio: "Fast, reliable painting help for local Patchwork jobs.",
+            hourlyRate: "60"
+        )
+
+        XCTAssertTrue(app.staticTexts["No active plan"].waitForExistence(timeout: 10))
+
+        openTaskerProfileManagement()
+
+        let displayNameField = app.textFields["TaskerProfile.displayNameField"]
+        replaceText(in: displayNameField, with: updatedDisplayName)
+        app.buttons["TaskerProfile.saveButton"].tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["TaskerProfile.statusBanner"].waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForTaskerProfile(email: taskerEmail) { profile in
+            (profile["displayName"] as? String) == updatedDisplayName
+        })
+
+        guard let profile: [String: Any] = testProxy(action: "getTaskerProfileByEmail", args: ["email": taskerEmail]),
+              let taskerProfileId = profile["_id"] as? String,
+              let categories = profile["categories"] as? [[String: Any]],
+              let categoryId = categories.first?["categoryId"] as? String else {
+            XCTFail("Missing tasker profile after management save")
+            return
+        }
+
+        let categoryRow = app.buttons["TaskerProfile.category.\(categoryId)"]
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 10))
+        categoryRow.tap()
+
+        let categoryBioField = app.textViews["TaskerProfileCategorySheet.bioField"]
+        XCTAssertTrue(categoryBioField.waitForExistence(timeout: 10))
+        replaceText(in: categoryBioField, with: updatedCategoryBio)
+
+        let rateTypeControl = app.segmentedControls["TaskerProfileCategorySheet.rateTypePicker"]
+        XCTAssertTrue(rateTypeControl.waitForExistence(timeout: 10))
+        rateTypeControl.buttons["Fixed"].tap()
+
+        let fixedRateField = app.textFields["TaskerProfileCategorySheet.fixedRateField"]
+        XCTAssertTrue(fixedRateField.waitForExistence(timeout: 10))
+        replaceText(in: fixedRateField, with: "145")
+
+        let radiusStepper = app.steppers["TaskerProfileCategorySheet.radiusStepper"]
+        XCTAssertTrue(radiusStepper.waitForExistence(timeout: 10))
+        for _ in 0 ..< 5 {
+            radiusStepper.buttons["Increment"].tap()
+        }
+
+        app.buttons["TaskerProfile.categorySaveButton"].tap()
+
+        XCTAssertTrue(waitForTaskerProfile(email: taskerEmail) { profile in
+            guard let categories = profile["categories"] as? [[String: Any]],
+                  let updatedCategory = categories.first(where: { ($0["categoryId"] as? String) == categoryId }) else {
+                return false
+            }
+
+            return (updatedCategory["bio"] as? String) == updatedCategoryBio
+                && (updatedCategory["rateType"] as? String) == "fixed"
+                && (updatedCategory["fixedRate"] as? Int) == 14500
+                && updatedCategory["hourlyRate"] == nil
+                && (updatedCategory["serviceRadius"] as? Int) == 30
+        })
+
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 10))
+        categoryRow.tap()
+
+        XCTAssertEqual(categoryBioField.value as? String, updatedCategoryBio)
+        XCTAssertEqual(fixedRateField.value as? String, "145")
+        XCTAssertTrue(radiusStepper.label.contains("30 km"))
+
+        app.buttons["TaskerProfile.categoryCloseButton"].tap()
+
+        let discoverableTasker = ensureDiscoverableTasker(
+            email: taskerEmail,
+            name: "Tasker Manager",
+            displayName: updatedDisplayName,
+            categoryBio: updatedCategoryBio,
+            rateType: "fixed",
+            hourlyRate: nil,
+            fixedRate: 14500,
+            serviceRadius: 30
+        )
+        XCTAssertEqual(discoverableTasker["taskerProfileId"] as? String, taskerProfileId)
+
+        let backButton = app.navigationBars.buttons.element(boundBy: 0)
+        if backButton.waitForExistence(timeout: 5) {
+            backButton.tap()
+        }
+
+        signOutToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: "Seeking Manager", city: "Toronto", province: "ON")
+
+        let listButton = app.buttons["Home.layout.listButton"]
+        XCTAssertTrue(listButton.waitForExistence(timeout: 10))
+        listButton.tap()
+
+        let providerButton = identifiedElement("Home.viewTaskerButton.\(taskerProfileId)")
+        XCTAssertTrue(providerButton.waitForExistence(timeout: 20))
+        providerButton.tap()
+
+        XCTAssertTrue(app.staticTexts[updatedCategoryBio].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["$145.00 flat"].waitForExistence(timeout: 20))
+    }
+
+    func testSeekerDiscoveryStartsConversation() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-visible-tasker")
+        let displayName = "Nearby Cleaner \(Int(Date().timeIntervalSince1970))"
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        let tasker = ensureDiscoverableTasker(
+            email: taskerEmail,
+            name: "Nearby Cleaner",
+            displayName: displayName
+        )
+        let taskerProfileId = tasker["taskerProfileId"] as? String
+        XCTAssertNotNil(taskerProfileId)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: "Nearby Seeker", city: "Toronto", province: "ON")
+        saveScreenshot(named: "ios-seeker-after-profile-setup")
+
+        openSpotlightTaskerProfile()
+        saveScreenshot(named: "ios-seeker-after-view-profile")
+
+        startChatFromProviderDetail()
+        saveScreenshot(named: "ios-seeker-after-start-chat")
+        Thread.sleep(forTimeInterval: 3)
+        saveScreenshot(named: "ios-seeker-after-start-chat-delay")
+
+        let proposeTermsButton = app.buttons["Propose terms"]
+        XCTAssertTrue(proposeTermsButton.waitForExistence(timeout: 10))
+    }
+
+    func testTaskerSendsProposal() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-send-proposal")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-send-proposal")
+        let taskerName = "Proposal Tasker \(Int(Date().timeIntervalSince1970))"
+        let seekerName = "Proposal Seeker \(Int(Date().timeIntervalSince1970))"
+
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: taskerEmail)
+        completeProfileSetup(name: taskerName, city: "Toronto", province: "ON")
+        _ = ensureDiscoverableTasker(email: taskerEmail, name: taskerName, displayName: taskerName)
+        _ = ensureConversation(
+            seekerEmail: seekerEmail,
+            seekerName: seekerName,
+            taskerEmail: taskerEmail
+        )
+        signOutToEmailEntry()
+        completeEmailAuth(email: taskerEmail)
+
+        openMessagesTaskerConversation(named: seekerName)
+        let proposeTermsButton = app.buttons["Propose terms"]
+        XCTAssertTrue(proposeTermsButton.waitForExistence(timeout: 15))
+        proposeTermsButton.tap()
+
+        submitProposal(rate: "75", date: "2026-03-15", time: "09:30", notes: "Can arrive with supplies and start at 9:30 AM.")
+
+        XCTAssertTrue(app.staticTexts["Pending"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
+            proposal["status"] as? String == "pending"
+        })
+    }
+
+    func testSeekerAcceptsProposalCreatesJob() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-accept-proposal")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-accept-proposal")
+        let taskerName = "Accept Tasker \(Int(Date().timeIntervalSince1970))"
+        let seekerName = "Accept Seeker \(Int(Date().timeIntervalSince1970))"
+
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: seekerName, city: "Toronto", province: "ON")
+
+        _ = ensurePendingProposal(
+            seekerEmail: seekerEmail,
+            taskerEmail: taskerEmail,
+            taskerName: taskerName,
+            taskerDisplayName: taskerName
+        )
+
+        openMessagesConversation(named: taskerName)
+
+        let acceptButton = app.buttons["Accept"]
+        XCTAssertTrue(acceptButton.waitForExistence(timeout: 15))
+        acceptButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Accepted"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Job in progress"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
+            proposal["status"] as? String == "accepted"
+        })
+        XCTAssertTrue(waitForConversation(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { conversation in
+            conversation["jobId"] as? String != nil
+        })
+        let conversation = conversationByEmails(seekerEmail: seekerEmail, taskerEmail: taskerEmail)
+        let jobId = conversation?["jobId"] as? String
+        XCTAssertNotNil(jobId)
+
+        let jobsTab = tabButton(named: "Jobs")
+        XCTAssertTrue(jobsTab.waitForExistence(timeout: 10))
+        jobsTab.tap()
+        if let jobId {
+            XCTAssertTrue(identifiedElement("Jobs.row.\(jobId)").waitForExistence(timeout: 15))
+        }
+    }
+
+    func testSeekerDeclinesProposalDoesNotCreateJob() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-decline-proposal")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-decline-proposal")
+        let taskerName = "Decline Tasker \(Int(Date().timeIntervalSince1970))"
+        let seekerName = "Decline Seeker \(Int(Date().timeIntervalSince1970))"
+
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: seekerName, city: "Toronto", province: "ON")
+
+        _ = ensurePendingProposal(
+            seekerEmail: seekerEmail,
+            taskerEmail: taskerEmail,
+            taskerName: taskerName,
+            taskerDisplayName: taskerName
+        )
+
+        openMessagesConversation(named: taskerName)
+
+        let declineButton = app.buttons["Decline"]
+        XCTAssertTrue(declineButton.waitForExistence(timeout: 15))
+        declineButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Declined"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
+            proposal["status"] as? String == "declined"
+        })
+        XCTAssertTrue(waitForConversation(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { conversation in
+            conversation["jobId"] as? String == nil
+        })
+
+        let jobsTab = tabButton(named: "Jobs")
+        XCTAssertTrue(jobsTab.waitForExistence(timeout: 10))
+        jobsTab.tap()
+        XCTAssertFalse(app.staticTexts[taskerName].waitForExistence(timeout: 5))
+    }
+
+    func testCompleteJobMovesAcceptedJobToCompleted() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-complete-job")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-complete-job")
+        let taskerName = "Complete Tasker \(Int(Date().timeIntervalSince1970))"
+        let seekerName = "Complete Seeker \(Int(Date().timeIntervalSince1970))"
+
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: seekerName, city: "Toronto", province: "ON")
+
+        let acceptedJob = ensureAcceptedJob(
+            seekerEmail: seekerEmail,
+            taskerEmail: taskerEmail,
+            taskerName: taskerName,
+            taskerDisplayName: taskerName
+        )
+        guard let jobId = acceptedJob["jobId"] as? String else {
+            XCTFail("Failed to seed accepted job")
+            return
+        }
+
+        let jobsTab = tabButton(named: "Jobs")
+        XCTAssertTrue(jobsTab.waitForExistence(timeout: 10))
+        jobsTab.tap()
+
+        let activeRow = identifiedElement("Jobs.row.\(jobId)")
+        XCTAssertTrue(activeRow.waitForExistence(timeout: 15))
+        activeRow.tap()
+
+        let completeButton = app.buttons["JobDetail.completeButton"]
+        XCTAssertTrue(completeButton.waitForExistence(timeout: 15))
+        completeButton.tap()
+
+        XCTAssertTrue(waitForJob(jobId: jobId) { job in
+            job["status"] as? String == "completed"
+        })
+
+        let backButton = app.buttons["JobDetail.backButton"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 10))
+        backButton.tap()
+
+        let completedTab = identifiedElement("Jobs.statusTab.completed")
+        XCTAssertTrue(completedTab.waitForExistence(timeout: 10))
+        completedTab.tap()
+
+        XCTAssertTrue(identifiedElement("Jobs.row.\(jobId)").waitForExistence(timeout: 15))
+    }
+
+    func testLeaveReviewOnCompletedJob() throws {
+        let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-review-job")
+        let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-review-job")
+        let taskerName = "Review Tasker \(Int(Date().timeIntervalSince1970))"
+        let seekerName = "Review Seeker \(Int(Date().timeIntervalSince1970))"
+
+        cleanupTestData(for: seekerEmail)
+        cleanupTestData(for: taskerEmail)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: seekerEmail)
+        completeProfileSetup(name: seekerName, city: "Toronto", province: "ON")
+
+        let completedJob = ensureCompletedJob(
+            seekerEmail: seekerEmail,
+            taskerEmail: taskerEmail,
+            taskerName: taskerName,
+            taskerDisplayName: taskerName
+        )
+        guard let jobId = completedJob["jobId"] as? String else {
+            XCTFail("Failed to seed completed job")
+            return
+        }
+
+        let jobsTab = tabButton(named: "Jobs")
+        XCTAssertTrue(jobsTab.waitForExistence(timeout: 10))
+        jobsTab.tap()
+
+        let completedTab = identifiedElement("Jobs.statusTab.completed")
+        XCTAssertTrue(completedTab.waitForExistence(timeout: 10))
+        completedTab.tap()
+
+        let completedRow = identifiedElement("Jobs.row.\(jobId)")
+        XCTAssertTrue(completedRow.waitForExistence(timeout: 15))
+        completedRow.tap()
+
+        let leaveReviewButton = app.buttons["JobDetail.leaveReviewButton"]
+        XCTAssertTrue(leaveReviewButton.waitForExistence(timeout: 15))
+        leaveReviewButton.tap()
+
+        let reviewField = app.textViews["LeaveReview.textField"]
+        XCTAssertTrue(reviewField.waitForExistence(timeout: 15))
+        app.buttons["LeaveReview.star.5"].tap()
+        replaceText(in: reviewField, with: "Excellent work, clear communication, and everything was completed on time.")
+
+        let submitButton = app.buttons["LeaveReview.submitButton"]
+        XCTAssertTrue(submitButton.waitForExistence(timeout: 10))
+        submitButton.tap()
+
+        XCTAssertTrue(waitForReview(jobId: jobId, reviewerEmail: seekerEmail) { review in
+            (review["rating"] as? Int) == 5
+        })
+        XCTAssertTrue(waitForJob(jobId: jobId) { job in
+            job["seekerReviewId"] as? String != nil
+        })
     }
 
     func testCaptureScreenshotsForParityReview() throws {
@@ -72,5 +536,564 @@ final class PatchworkUITests: XCTestCase {
         guard let data = image.pngData() else { return }
         let path = "/tmp/patchwork-parity/\(name).png"
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+
+    private func launchToEmailEntry() {
+        XCTAssertTrue(app.buttons["Auth.getStartedButton"].waitForExistence(timeout: 5))
+        app.buttons["Auth.getStartedButton"].tap()
+
+        XCTAssertTrue(app.buttons["Auth.onboardingSkipButton"].waitForExistence(timeout: 5))
+        app.buttons["Auth.onboardingSkipButton"].tap()
+
+        XCTAssertTrue(app.buttons["Auth.emailSignInButton"].waitForExistence(timeout: 5))
+        app.buttons["Auth.emailSignInButton"].tap()
+
+        XCTAssertTrue(app.textFields["Auth.emailField"].waitForExistence(timeout: 5))
+    }
+
+    private func signOutToEmailEntry() {
+        openProfileTab()
+        let signOutButton = app.buttons["Profile.signOutButton"]
+        XCTAssertTrue(signOutButton.waitForExistence(timeout: 10))
+        signOutButton.tap()
+        launchToEmailEntry()
+    }
+
+    private func completeEmailAuth(email: String) {
+        let emailField = app.textFields["Auth.emailField"]
+        replaceText(in: emailField, with: email)
+        app.buttons["Auth.sendCodeButton"].tap()
+
+        let codeField = app.textFields["Auth.codeField"]
+        if !codeField.waitForExistence(timeout: 10) {
+            saveScreenshot(named: "ios-auth-code-field-missing")
+            XCTFail("Verification code field did not appear for \(email)")
+        }
+        codeField.tap()
+        codeField.typeText(fetchOTP(email: email))
+        app.buttons["Auth.verifyButton"].tap()
+    }
+
+    private func completeProfileSetup(name: String, city: String, province: String) {
+        let nameField = app.textFields["ProfileSetup.nameField"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        replaceText(in: nameField, with: name, shouldClearExisting: false)
+
+        let cityField = app.textFields["ProfileSetup.cityField"]
+        replaceText(in: cityField, with: city)
+
+        let provinceField = app.textFields["ProfileSetup.provinceField"]
+        replaceText(in: provinceField, with: province)
+
+        app.buttons["ProfileSetup.continueButton"].tap()
+
+        let locationSkip = app.buttons["ProfileSetup.locationSkipButton"]
+        XCTAssertTrue(locationSkip.waitForExistence(timeout: 10))
+        locationSkip.tap()
+
+        let notificationsSkip = app.buttons["ProfileSetup.notificationsSkipButton"]
+        XCTAssertTrue(notificationsSkip.waitForExistence(timeout: 10))
+        notificationsSkip.tap()
+
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
+    }
+
+    private func openProfileTab() {
+        let profileTab = tabButton(named: "Profile")
+        XCTAssertTrue(profileTab.waitForExistence(timeout: 5))
+        profileTab.tap()
+        XCTAssertTrue(app.buttons["Profile.signOutButton"].waitForExistence(timeout: 10))
+    }
+
+    private func dismissLocationPromptIfNeeded() {
+        let skipButton = app.buttons["LocationPrompt.skipButton"]
+        if skipButton.waitForExistence(timeout: 3) {
+            skipButton.tap()
+        }
+    }
+
+    private func openSpotlightTaskerProfile() {
+        let viewButton = app.buttons["Home.spotlightViewProfileButton"]
+        XCTAssertTrue(viewButton.waitForExistence(timeout: 10))
+        viewButton.tap()
+    }
+
+    private func openMessagesConversation(named participantName: String) {
+        let messagesTab = tabButton(named: "Messages")
+        XCTAssertTrue(messagesTab.waitForExistence(timeout: 10))
+        messagesTab.tap()
+
+        let conversationName = app.staticTexts[participantName]
+        XCTAssertTrue(conversationName.waitForExistence(timeout: 15))
+        conversationName.tap()
+    }
+
+    private func startChatFromProviderDetail() {
+        let startChatButton = app.buttons["ProviderDetail.startChatButton"]
+        XCTAssertTrue(startChatButton.waitForExistence(timeout: 15))
+        startChatButton.tap()
+    }
+
+    private func openMessagesTaskerConversation(named participantName: String) {
+        let messagesTab = tabButton(named: "Messages")
+        XCTAssertTrue(messagesTab.waitForExistence(timeout: 10))
+        messagesTab.tap()
+
+        let taskerRoleButton = identifiedElement("Messages.roleTab.tasker")
+        XCTAssertTrue(taskerRoleButton.waitForExistence(timeout: 10))
+        taskerRoleButton.tap()
+
+        let conversationName = app.staticTexts[participantName]
+        XCTAssertTrue(conversationName.waitForExistence(timeout: 15))
+        conversationName.tap()
+    }
+
+    private func openTaskerProfileManagement() {
+        openProfileTab()
+        let manageLink = app.buttons["Profile.taskerOnboardingLink"]
+        XCTAssertTrue(manageLink.waitForExistence(timeout: 10))
+        manageLink.tap()
+        XCTAssertTrue(app.textFields["TaskerProfile.displayNameField"].waitForExistence(timeout: 10))
+    }
+
+    private func completeTaskerOnboarding(
+        displayName: String,
+        categoryRowIdentifier: String = "Categories.row.cleaning",
+        categoryBio: String,
+        hourlyRate: String
+    ) {
+        let displayNameField = app.textFields["TaskerOnboarding1.displayNameField"]
+        XCTAssertTrue(displayNameField.waitForExistence(timeout: 10))
+        replaceText(in: displayNameField, with: displayName)
+
+        app.buttons["TaskerOnboarding1.categoryPicker"].tap()
+        let categoryRow = app.buttons[categoryRowIdentifier]
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 10))
+        categoryRow.tap()
+
+        app.buttons["TaskerOnboarding1.continueButton"].tap()
+
+        let bioField = app.textViews["TaskerOnboarding2.bioField"]
+        XCTAssertTrue(bioField.waitForExistence(timeout: 10))
+        replaceText(in: bioField, with: categoryBio)
+
+        let hourlyRateField = app.textFields["TaskerOnboarding2.hourlyRateField"]
+        XCTAssertTrue(hourlyRateField.waitForExistence(timeout: 10))
+        replaceText(in: hourlyRateField, with: hourlyRate)
+
+        app.buttons["TaskerOnboarding2.continueButton"].tap()
+
+        let termsToggle = app.buttons["TaskerOnboarding4.acceptTermsToggle"]
+        XCTAssertTrue(termsToggle.waitForExistence(timeout: 10))
+        termsToggle.tap()
+
+        app.buttons["TaskerOnboarding4.completeButton"].tap()
+    }
+
+    private func backgroundAndRestoreApp() {
+        XCUIDevice.shared.press(.home)
+        app.activate()
+    }
+
+    private func uniqueTestEmail(prefix: String) -> String {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        return "\(prefix).\(timestamp)@test.com"
+    }
+
+    private func tabButton(named name: String) -> XCUIElement {
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 10))
+        let namedButton = tabBar.buttons[name]
+        XCTAssertTrue(namedButton.waitForExistence(timeout: 10), "Missing tab button: \(name)")
+        return namedButton
+    }
+
+    private func identifiedElement(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
+    }
+
+    private func fetchOTP(email: String) -> String {
+        for _ in 0 ..< 30 {
+            if let otp: String = testProxy(action: "getOtp", args: ["email": email]), !otp.isEmpty {
+                return otp
+            }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        XCTFail("Failed to fetch OTP for \(email)")
+        return ""
+    }
+
+    private func cleanupTestData(for email: String) {
+        _ = testProxy(action: "cleanupConversations", args: ["userEmail": email]) as Optional<[String: Int]>
+        _ = testProxy(action: "deleteTestUser", args: ["email": email]) as Optional<[String: Any]>
+    }
+
+    private func ensureDiscoverableTasker(
+        email: String,
+        name: String,
+        displayName: String,
+        city: String = "Toronto",
+        province: String = "ON",
+        lat: Double = 43.6532,
+        lng: Double = -79.3832,
+        categoryBio: String = "Reliable local cleaning help for homes and apartments.",
+        rateType: String = "hourly",
+        hourlyRate: Int? = 5500,
+        fixedRate: Int? = nil,
+        serviceRadius: Int = 25,
+        subscriptionPlan: String = "tasker"
+    ) -> [String: Any] {
+        var args: [String: Any] = [
+            "email": email,
+            "name": name,
+            "displayName": displayName,
+            "city": city,
+            "province": province,
+            "lat": lat,
+            "lng": lng,
+            "categorySlug": "cleaning",
+            "categoryName": "Cleaning",
+            "categoryBio": categoryBio,
+            "rateType": rateType,
+            "serviceRadius": serviceRadius,
+            "verified": true,
+            "subscriptionPlan": subscriptionPlan,
+        ]
+        if let hourlyRate {
+            args["hourlyRate"] = hourlyRate
+        }
+        if let fixedRate {
+            args["fixedRate"] = fixedRate
+        }
+
+        let result: [String: Any]? = testProxy(action: "ensureDiscoverableTasker", args: args)
+        return result ?? [:]
+    }
+
+    private func ensurePendingProposal(
+        seekerEmail: String,
+        taskerEmail: String,
+        taskerName: String,
+        taskerDisplayName: String,
+        city: String = "Toronto",
+        province: String = "ON",
+        lat: Double = 43.6532,
+        lng: Double = -79.3832
+    ) -> [String: Any] {
+        let result: [String: Any]? = testProxy(
+            action: "ensurePendingProposalBetweenEmails",
+            args: [
+                "seekerEmail": seekerEmail,
+                "taskerEmail": taskerEmail,
+                "taskerName": taskerName,
+                "taskerDisplayName": taskerDisplayName,
+                "city": city,
+                "province": province,
+                "lat": lat,
+                "lng": lng,
+                "categorySlug": "cleaning",
+                "categoryName": "Cleaning",
+                "categoryBio": "Reliable local cleaning help for homes and apartments.",
+                "rate": 7500,
+                "rateType": "hourly",
+                "startDateTime": "2026-03-16T10:00:00-04:00",
+                "notes": "Can arrive with supplies and start at 10:00 AM.",
+            ]
+        )
+        return result ?? [:]
+    }
+
+    private func ensureAcceptedJob(
+        seekerEmail: String,
+        taskerEmail: String,
+        taskerName: String,
+        taskerDisplayName: String,
+        city: String = "Toronto",
+        province: String = "ON",
+        lat: Double = 43.6532,
+        lng: Double = -79.3832
+    ) -> [String: Any] {
+        let result: [String: Any]? = testProxy(
+            action: "ensureAcceptedJobBetweenEmails",
+            args: [
+                "seekerEmail": seekerEmail,
+                "taskerEmail": taskerEmail,
+                "taskerName": taskerName,
+                "taskerDisplayName": taskerDisplayName,
+                "city": city,
+                "province": province,
+                "lat": lat,
+                "lng": lng,
+                "categorySlug": "cleaning",
+                "categoryName": "Cleaning",
+                "categoryBio": "Reliable local cleaning help for homes and apartments.",
+                "rate": 7500,
+                "rateType": "hourly",
+                "startDateTime": "2026-03-16T10:00:00-04:00",
+                "notes": "Can arrive with supplies and start at 10:00 AM.",
+            ]
+        )
+        return result ?? [:]
+    }
+
+    private func ensureCompletedJob(
+        seekerEmail: String,
+        taskerEmail: String,
+        taskerName: String,
+        taskerDisplayName: String,
+        city: String = "Toronto",
+        province: String = "ON",
+        lat: Double = 43.6532,
+        lng: Double = -79.3832
+    ) -> [String: Any] {
+        let result: [String: Any]? = testProxy(
+            action: "ensureCompletedJobBetweenEmails",
+            args: [
+                "seekerEmail": seekerEmail,
+                "taskerEmail": taskerEmail,
+                "taskerName": taskerName,
+                "taskerDisplayName": taskerDisplayName,
+                "city": city,
+                "province": province,
+                "lat": lat,
+                "lng": lng,
+                "categorySlug": "cleaning",
+                "categoryName": "Cleaning",
+                "categoryBio": "Reliable local cleaning help for homes and apartments.",
+                "rate": 7500,
+                "rateType": "hourly",
+                "startDateTime": "2026-03-16T10:00:00-04:00",
+                "notes": "Can arrive with supplies and start at 10:00 AM.",
+            ]
+        )
+        return result ?? [:]
+    }
+
+    private func ensureConversation(
+        seekerEmail: String,
+        seekerName: String,
+        taskerEmail: String,
+        city: String = "Toronto",
+        province: String = "ON",
+        lat: Double = 43.6532,
+        lng: Double = -79.3832
+    ) -> [String: Any] {
+        let result: [String: Any]? = testProxy(
+            action: "ensureConversationBetweenEmails",
+            args: [
+                "seekerEmail": seekerEmail,
+                "seekerName": seekerName,
+                "taskerEmail": taskerEmail,
+                "city": city,
+                "province": province,
+                "lat": lat,
+                "lng": lng,
+                "initialMessage": "Hi, I’d like help with a cleaning job.",
+            ]
+        )
+        return result ?? [:]
+    }
+
+    private func waitForConversation(
+        seekerEmail: String,
+        taskerEmail: String,
+        timeout: TimeInterval = 15,
+        predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let conversation: [String: Any] = testProxy(
+                action: "getConversationByEmails",
+                args: [
+                    "seekerEmail": seekerEmail,
+                    "taskerEmail": taskerEmail,
+                ]
+            ), predicate(conversation) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    private func waitForJob(
+        jobId: String,
+        timeout: TimeInterval = 15,
+        predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let job: [String: Any] = testProxy(action: "getJobById", args: ["jobId": jobId]),
+               predicate(job) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    private func waitForReview(
+        jobId: String,
+        reviewerEmail: String,
+        timeout: TimeInterval = 15,
+        predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let review: [String: Any] = testProxy(
+                action: "getReviewByJobAndReviewer",
+                args: [
+                    "jobId": jobId,
+                    "reviewerEmail": reviewerEmail,
+                ]
+            ), predicate(review) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    private func conversationByEmails(seekerEmail: String, taskerEmail: String) -> [String: Any]? {
+        testProxy(
+            action: "getConversationByEmails",
+            args: [
+                "seekerEmail": seekerEmail,
+                "taskerEmail": taskerEmail,
+            ]
+        )
+    }
+
+    private func waitForLatestProposal(
+        seekerEmail: String,
+        taskerEmail: String,
+        timeout: TimeInterval = 15,
+        predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let proposal: [String: Any] = testProxy(
+                action: "getLatestProposalByEmails",
+                args: [
+                    "seekerEmail": seekerEmail,
+                    "taskerEmail": taskerEmail,
+                ]
+            ), predicate(proposal) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    private func submitProposal(rate: String, date: String, time: String, notes: String) {
+        let rateField = app.textFields["ProposalForm.rateField"]
+        XCTAssertTrue(rateField.waitForExistence(timeout: 10))
+        replaceText(in: rateField, with: rate, shouldClearExisting: false)
+
+        let dateField = app.textFields["ProposalForm.dateField"]
+        XCTAssertTrue(dateField.waitForExistence(timeout: 10))
+        replaceText(in: dateField, with: date)
+
+        let timeField = app.textFields["ProposalForm.timeField"]
+        XCTAssertTrue(timeField.waitForExistence(timeout: 10))
+        replaceText(in: timeField, with: time)
+
+        let notesField = app.textViews["ProposalForm.notesField"]
+        XCTAssertTrue(notesField.waitForExistence(timeout: 10))
+        replaceText(in: notesField, with: notes)
+
+        let submitButton = app.buttons["ProposalForm.submitButton"]
+        XCTAssertTrue(submitButton.waitForExistence(timeout: 10))
+        submitButton.tap()
+    }
+
+    private func waitForTaskerProfile(
+        email: String,
+        timeout: TimeInterval = 15,
+        predicate: ([String: Any]) -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let profile: [String: Any] = testProxy(action: "getTaskerProfileByEmail", args: ["email": email]),
+               predicate(profile) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    private func testProxy<T>(action: String, args: [String: Any]) -> T? {
+        var request = URLRequest(url: convexSiteURL.appending(path: "/test-proxy"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "action": action,
+            "args": args,
+        ])
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: T?
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            defer { semaphore.signal() }
+            guard let data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let rawResult = object["result"] else {
+                return
+            }
+
+            if T.self == String.self, let value = rawResult as? String {
+                result = value as? T
+                return
+            }
+
+            if let value = rawResult as? T {
+                result = value
+            }
+        }.resume()
+
+        semaphore.wait()
+        return result
+    }
+
+    private func replaceText(in element: XCUIElement, with text: String, shouldClearExisting: Bool = true) {
+        focusForTyping(element)
+        if shouldClearExisting,
+           let existingValue = element.value as? String,
+           !existingValue.isEmpty {
+            element.press(forDuration: 1.0)
+            let selectAll = app.menuItems["Select All"]
+            if selectAll.waitForExistence(timeout: 1) {
+                selectAll.tap()
+                element.typeText(text)
+                return
+            }
+
+            let deleteString = String(repeating: XCUIKeyboardKey.delete.rawValue, count: existingValue.count + 4)
+            element.typeText(deleteString)
+        }
+        element.typeText(text)
+    }
+
+    private func focusForTyping(_ element: XCUIElement) {
+        XCTAssertTrue(element.waitForExistence(timeout: 10))
+
+        for _ in 0 ..< 5 {
+            element.tap()
+            _ = app.keyboards.firstMatch.waitForExistence(timeout: 1)
+            if elementHasKeyboardFocus(element) {
+                return
+            }
+
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+
+        XCTFail("Keyboard focus did not reach element \(element)")
+    }
+
+    private func elementHasKeyboardFocus(_ element: XCUIElement) -> Bool {
+        (element.value(forKey: "hasKeyboardFocus") as? Bool) == true
     }
 }

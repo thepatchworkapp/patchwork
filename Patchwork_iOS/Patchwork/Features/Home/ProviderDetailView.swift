@@ -1,0 +1,431 @@
+import SwiftUI
+
+struct ProviderDetailView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(SessionStore.self) private var sessionStore
+
+    let taskerId: ConvexID
+
+    @State private var selectedCategoryID: ConvexID?
+    @State private var isStartingChat = false
+    @State private var chatError: String?
+    @State private var hasLoadedTasker = false
+
+    var body: some View {
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brand)
+
+            if let tasker {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        heroSection(tasker)
+                        categorySelector(tasker)
+                        aboutSection(tasker)
+                        pricingSection(tasker)
+                        reviewsSection(tasker)
+                        bottomCTA(tasker)
+                    }
+                    .padding(16)
+                    .padding(.bottom, 28)
+                }
+            } else {
+                VStack(spacing: 14) {
+                    ProgressView()
+                    Text("Loading profile...")
+                        .font(.patchworkBody)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                }
+                .accessibilityIdentifier("ProviderDetail.loading")
+            }
+        }
+        .navigationTitle("Provider")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .task {
+            await appState.loadTaskerDetail(client: sessionStore.client, taskerId: taskerId)
+            if !hasLoadedTasker {
+                selectedCategoryID = tasker?.categoryProfiles.first?.id
+                hasLoadedTasker = true
+            }
+        }
+        .onChange(of: tasker?.id) { _, _ in
+            selectedCategoryID = tasker?.categoryProfiles.first?.id
+            hasLoadedTasker = true
+        }
+        .accessibilityIdentifier("ProviderDetail.screen.\(taskerId)")
+    }
+
+    private var tasker: TaskerDetail? {
+        guard let selected = appState.selectedTasker, selected.id == taskerId else { return nil }
+        return selected
+    }
+
+    private var selectedProfile: TaskerCategoryProfile? {
+        guard let tasker else { return nil }
+        if let selectedCategoryID,
+           let selected = tasker.categoryProfiles.first(where: { $0.id == selectedCategoryID }) {
+            return selected
+        }
+        return tasker.categoryProfiles.first
+    }
+
+    private func heroSection(_ tasker: TaskerDetail) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            AsyncImage(url: heroImageURL(tasker)) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                ZStack {
+                    PatchworkTheme.brandSoft
+                    Image(systemName: "person.crop.square.fill")
+                        .font(.system(size: 44, weight: .medium))
+                        .foregroundStyle(PatchworkTheme.brand)
+                }
+            }
+            .frame(height: 320)
+            .clipped()
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.12), .black.opacity(0.5)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    if let categoryName = selectedProfile?.categoryName.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !categoryName.isEmpty {
+                        Text(categoryName)
+                            .font(.patchworkCaption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.16), in: Capsule())
+                    }
+
+                    if tasker.verified == true {
+                        Label("Verified", systemImage: "checkmark.seal.fill")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(PatchworkTheme.success.opacity(0.8), in: Capsule())
+                    }
+                }
+
+                Text(tasker.displayName)
+                    .font(.patchworkHeroTitle)
+                    .foregroundStyle(.white)
+
+                HStack(spacing: 12) {
+                    ratingSummary(tasker)
+
+                    if let completedJobs = selectedProfile?.completedJobs ?? tasker.completedJobs {
+                        Label("\(completedJobs) jobs", systemImage: "checkmark.circle.fill")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(.white.opacity(0.92))
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .clipShape(.rect(cornerRadius: 30))
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(PatchworkTheme.stroke.opacity(0.4), lineWidth: 1)
+        )
+        .shadow(color: PatchworkTheme.brand.opacity(0.12), radius: 26, y: 14)
+    }
+
+    @ViewBuilder
+    private func categorySelector(_ tasker: TaskerDetail) -> some View {
+        if tasker.categoryProfiles.count > 1 {
+            ScrollView(.horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(tasker.categoryProfiles) { profile in
+                        let isSelected = selectedProfile?.id == profile.id
+                        Button(profile.categoryName) {
+                            selectedCategoryID = profile.id
+                        }
+                        .buttonStyle(.plain)
+                        .font(.patchworkBodyStrong)
+                        .foregroundStyle(isSelected ? .white : PatchworkTheme.textSecondary)
+                        .padding(.horizontal, 16)
+                        .frame(height: 42)
+                        .background(
+                            isSelected ? PatchworkTheme.heroGradient : LinearGradient(colors: [PatchworkTheme.surface, PatchworkTheme.surface], startPoint: .top, endPoint: .bottom),
+                            in: Capsule()
+                        )
+                        .overlay(Capsule().stroke(PatchworkTheme.stroke, lineWidth: isSelected ? 0 : 1))
+                        .accessibilityIdentifier("ProviderDetail.serviceCategory.\(profile.id)")
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func aboutSection(_ tasker: TaskerDetail) -> some View {
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("About")
+                    .font(.patchworkCardTitle)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                Text(selectedProfile?.categoryBio ?? tasker.bio ?? "Profile details unavailable.")
+                    .font(.patchworkBody)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func pricingSection(_ tasker: TaskerDetail) -> some View {
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Pricing and service details")
+                    .font(.patchworkCardTitle)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                VStack(spacing: 10) {
+                    if let rateLabel = rateLabel(for: selectedProfile) {
+                        metricRow(
+                            title: selectedProfile?.rateType == "hourly" ? "Hourly rate" : "Fixed rate",
+                            value: rateLabel
+                        )
+                    }
+
+                    if let serviceRadius = selectedProfile?.serviceRadius {
+                        metricRow(title: "Service area", value: "\(serviceRadius) km radius")
+                    }
+
+                    if let completedJobs = selectedProfile?.completedJobs ?? tasker.completedJobs {
+                        metricRow(title: "Jobs completed", value: "\(completedJobs)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewsSection(_ tasker: TaskerDetail) -> some View {
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Recent reviews")
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                    Spacer()
+                    if (tasker.reviewCount ?? 0) > 0 {
+                        Text("\(tasker.reviewCount ?? 0) total")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+                }
+
+                if tasker.reviews.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundStyle(PatchworkTheme.brand)
+                        Text("No reviews yet")
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                        Text("This tasker is new to Patchwork or has not been reviewed on this category yet.")
+                            .font(.patchworkBody)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                } else {
+                    ForEach(tasker.reviews.prefix(3)) { review in
+                        ProviderReviewRow(review: review)
+                    }
+                }
+            }
+        }
+    }
+
+    private func bottomCTA(_ tasker: TaskerDetail) -> some View {
+        PatchworkSurfaceCard {
+            VStack(alignment: .leading, spacing: 8) {
+            if let chatError {
+                Text(chatError)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.danger)
+                    .accessibilityIdentifier("ProviderDetail.chatError")
+            }
+
+                Text("Ready to reach out?")
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                Button {
+                    Task { await startChat(with: tasker.userId) }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isStartingChat {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Opening chat...")
+                        } else {
+                            Image(systemName: "message.fill")
+                            Text("Start chat")
+                        }
+                    }
+                }
+                .buttonStyle(PatchworkPrimaryButtonStyle())
+                .disabled(isStartingChat)
+                .accessibilityLabel(isStartingChat ? "Opening chat" : "Start chat")
+                .accessibilityIdentifier("ProviderDetail.startChatButton")
+            }
+        }
+    }
+
+    private func metricRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.patchworkBody)
+                .foregroundStyle(PatchworkTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func ratingSummary(_ tasker: TaskerDetail) -> some View {
+        if let averageRating = tasker.averageRating,
+           let reviewCount = tasker.reviewCount,
+           reviewCount > 0 {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(Color(red: 251 / 255, green: 191 / 255, blue: 36 / 255))
+                Text(averageRating.formatted(.number.precision(.fractionLength(1))))
+                    .font(.patchworkCaption)
+                Text("(\(reviewCount))")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(.white.opacity(0.76))
+            }
+        } else {
+            Text("New on Patchwork")
+                .font(.patchworkCaption)
+                .foregroundStyle(.white.opacity(0.9))
+        }
+    }
+
+    private func heroImageURL(_ tasker: TaskerDetail) -> URL? {
+        if let photo = selectedProfile?.firstPhotoUrl, let url = URL(string: photo) {
+            return url
+        }
+        if let photo = tasker.userPhotoUrl, let url = URL(string: photo) {
+            return url
+        }
+        return nil
+    }
+
+    private func rateLabel(for profile: TaskerCategoryProfile?) -> String? {
+        guard let profile else { return nil }
+        if profile.rateType == "hourly", let hourlyRate = profile.hourlyRate {
+            let amount = Double(hourlyRate) / 100
+            return "\(amount.formatted(.currency(code: "USD")))/hr"
+        }
+        if let fixedRate = profile.fixedRate {
+            let amount = Double(fixedRate) / 100
+            return "\(amount.formatted(.currency(code: "USD"))) flat"
+        }
+        return nil
+    }
+
+    private func startChat(with taskerUserId: ConvexID) async {
+        guard !isStartingChat else { return }
+        isStartingChat = true
+        chatError = nil
+        defer { isStartingChat = false }
+        do {
+            let conversationId: ConvexID = try await sessionStore.client.mutation(
+                "conversations:startConversation",
+                args: ["taskerId": taskerUserId]
+            )
+            await appState.openConversation(
+                client: sessionStore.client,
+                conversationId: conversationId,
+                role: "seeker"
+            )
+        } catch {
+            chatError = "Unable to start chat right now. Please try again."
+            appState.lastError = error.localizedDescription
+        }
+    }
+}
+
+private struct ProviderReviewRow: View {
+    let review: TaskerReview
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            AsyncImage(url: avatarURL) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                PatchworkTheme.brandSoft
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(review.reviewerName)
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+
+                        Text("Verified hire")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.success)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(PatchworkTheme.success.opacity(0.12), in: Capsule())
+                    }
+
+                    Spacer()
+
+                    Text(reviewDate)
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textTertiary)
+                }
+
+                HStack(spacing: 2) {
+                    ForEach(0 ..< max(1, review.rating), id: \.self) { _ in
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(Color(red: 251 / 255, green: 191 / 255, blue: 36 / 255))
+                    }
+                }
+
+                Text(review.text)
+                    .font(.patchworkBody)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+            }
+        }
+        .padding(14)
+        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var avatarURL: URL? {
+        guard let urlString = review.reviewerPhotoUrl else { return nil }
+        return URL(string: urlString)
+    }
+
+    private var reviewDate: String {
+        let date = Date(timeIntervalSince1970: TimeInterval(review.createdAt) / 1000)
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+}

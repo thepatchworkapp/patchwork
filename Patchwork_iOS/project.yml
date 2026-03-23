@@ -6,10 +6,16 @@ options:
 configs:
   Debug: debug
   Release: release
+packages:
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios-spm.git
+    from: 5.0.0
 settings:
   base:
     SWIFT_VERSION: "5.10"
     PRODUCT_BUNDLE_IDENTIFIER: ltd.ddga.patchwork
+    DEVELOPMENT_TEAM: 6997N97HZD
+    CODE_SIGN_STYLE: Automatic
 targets:
   Patchwork:
     type: application
@@ -17,11 +23,12 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Patchwork
+    dependencies:
+      - package: RevenueCat
+        product: RevenueCat
     settings:
       base:
         PRODUCT_NAME: Patchwork
-        DEVELOPMENT_TEAM: 6997N97HZD
-        CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Patchwork/Info.plist
         MARKETING_VERSION: 3.2
