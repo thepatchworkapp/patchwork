@@ -135,6 +135,7 @@ export function Messages({ onNavigate, onOpenChat, isTasker = false }: { onNavig
                     type="button"
                     key={conv._id}
                     onClick={() => onOpenChat(conv._id)}
+                    aria-label={`Open conversation with ${name}`}
                     className="w-full px-4 py-4 bg-white active:bg-neutral-50 flex items-start gap-3 text-left"
                   >
                     <div className="relative">

@@ -1,28 +1,30 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { conversationValidator } from "../lib/convex/validators";
 
 export const startConversation = mutation({
   args: {
     taskerId: v.id("users"),
     initialMessage: v.optional(v.string()),
   },
+  returns: v.id("conversations"),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     if (user._id === args.taskerId) {
-      throw new Error("Cannot start conversation with yourself");
+      throw new ConvexError("Cannot start conversation with yourself");
     }
 
     // Input validation
     if (args.initialMessage && args.initialMessage.length > 5000) {
-      throw new Error("Initial message must be 5000 characters or less");
+      throw new ConvexError("Initial message must be 5000 characters or less");
     }
 
     const existingConversation = await ctx.db
@@ -74,6 +76,7 @@ export const listConversations = query({
     role: v.optional(v.union(v.literal("seeker"), v.literal("tasker"))),
     limit: v.optional(v.number()),
   },
+  returns: v.array(conversationValidator),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
@@ -180,6 +183,7 @@ export const getConversation = query({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.union(conversationValidator, v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -228,18 +232,19 @@ export const markAsRead = mutation({
   args: {
     conversationId: v.id("conversations"),
   },
+  returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     const now = Date.now();
 
@@ -256,7 +261,7 @@ export const markAsRead = mutation({
         updatedAt: now,
       });
     } else {
-      throw new Error("Not a participant in this conversation");
+      throw new ConvexError("Not a participant in this conversation");
     }
 
     return { success: true };

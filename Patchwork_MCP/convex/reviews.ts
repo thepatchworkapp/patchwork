@@ -1,5 +1,6 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { reviewDocValidator } from "../lib/convex/validators";
 
 /**
  * Internal function to update profile rating after review submission
@@ -21,7 +22,7 @@ async function updateProfileRating(
     .first();
 
   if (!profile) {
-    throw new Error(`${profileTable} not found for user`);
+    throw new ConvexError(`${profileTable} not found for user`);
   }
 
   const oldRating = profile.rating;
@@ -52,43 +53,44 @@ export const createReview = mutation({
     rating: v.number(),
     text: v.string(),
   },
+  returns: v.id("reviews"),
   handler: async (ctx, args) => {
     // 1. Auth check
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
 
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // 2. Validate rating range
     if (args.rating < 1 || args.rating > 5) {
-      throw new Error("Rating must be between 1 and 5");
+      throw new ConvexError("Rating must be between 1 and 5");
     }
 
     // Validate rating is a whole number
     if (!Number.isInteger(args.rating)) {
-      throw new Error("Rating must be a whole number");
+      throw new ConvexError("Rating must be a whole number");
     }
 
     // 3. Validate text length
     if (args.text.trim().length < 10) {
-      throw new Error("Review text must be at least 10 characters");
+      throw new ConvexError("Review text must be at least 10 characters");
     }
 
     if (args.text.length > 5000) {
-      throw new Error("Review text must be 5000 characters or less");
+      throw new ConvexError("Review text must be 5000 characters or less");
     }
 
     // 4. Get job and validate it exists and is completed
     const job = await ctx.db.get(args.jobId);
-    if (!job) throw new Error("Job not found");
+    if (!job) throw new ConvexError("Job not found");
 
     if (job.status !== "completed") {
-      throw new Error("Can only review completed jobs");
+      throw new ConvexError("Can only review completed jobs");
     }
 
     // 5. Validate caller is a participant
@@ -96,7 +98,7 @@ export const createReview = mutation({
     const isTasker = job.taskerId === user._id;
 
     if (!isSeeker && !isTasker) {
-      throw new Error("Only job participants can leave reviews");
+      throw new ConvexError("Only job participants can leave reviews");
     }
 
     // 6. Check if already reviewed
@@ -108,7 +110,7 @@ export const createReview = mutation({
       .first();
 
     if (existingReview) {
-      throw new Error("You have already reviewed this job");
+      throw new ConvexError("You have already reviewed this job");
     }
 
     // 7. Validate 30-day window (if completedDate exists)
@@ -121,7 +123,7 @@ export const createReview = mutation({
           : job.completedDate;
 
       if (now - completedDate > thirtyDaysInMs) {
-        throw new Error("Review window has expired (30 days)");
+        throw new ConvexError("Review window has expired (30 days)");
       }
     }
 
@@ -171,6 +173,7 @@ export const createReview = mutation({
  */
 export const getJobReviews = query({
   args: { jobId: v.id("jobs") },
+  returns: v.union(v.array(reviewDocValidator), v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -211,6 +214,7 @@ export const getUserReviews = query({
     userId: v.id("users"),
     limit: v.optional(v.number()),
   },
+  returns: v.array(reviewDocValidator),
   handler: async (ctx, args) => {
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
 
@@ -228,7 +232,11 @@ export const getUserReviews = query({
  * Check if current user can review a job
  */
 export const canReview = query({
-  args: { jobId: v.id("jobs") },
+  args: {
+    jobId: v.id("jobs"),
+    currentTimeMs: v.number(),
+  },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return false;
@@ -261,13 +269,13 @@ export const canReview = query({
     // Check 30-day window
     if (job.completedDate) {
       const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-      const now = Date.now();
       const completedDate =
         typeof job.completedDate === "string"
-          ? new Date(job.completedDate).getTime()
+          ? Date.parse(job.completedDate)
           : job.completedDate;
 
-      if (now - completedDate > thirtyDaysInMs) return false;
+      if (!Number.isFinite(completedDate)) return false;
+      if (args.currentTimeMs - completedDate > thirtyDaysInMs) return false;
     }
 
     return true;

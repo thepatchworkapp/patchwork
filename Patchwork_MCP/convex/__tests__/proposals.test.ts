@@ -170,6 +170,7 @@ describe("proposals", () => {
     // Check for system message
     const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
     
     const systemMessage = messages.page.find((m) => m.type === "system");
@@ -332,6 +333,7 @@ describe("proposals", () => {
     // Check for system message
     const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
     
     const acceptMessage = messages.page.find((m) => 
@@ -441,6 +443,7 @@ describe("proposals", () => {
     // Check for system message
     const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
     
     const declineMessage = messages.page.find((m) => 
@@ -569,6 +572,7 @@ describe("proposals", () => {
     // Check for system message
     const messages = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
     
     const counterMessage = messages.page.find((m) => 

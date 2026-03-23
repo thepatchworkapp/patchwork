@@ -307,6 +307,7 @@ function ChatContent({ onBack, conversationId }: { onBack: () => void; conversat
           />
           <button 
             onClick={handleSendMessage}
+            aria-label="Send message"
             className="p-3 bg-[#4F46E5] text-white rounded-lg disabled:opacity-50"
             disabled={!messageText.trim()}
           >

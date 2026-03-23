@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -11,27 +11,28 @@ export const sendProposal = mutation({
     startDateTime: v.string(),
     notes: v.optional(v.string()),
   },
+  returns: v.id("proposals"),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // Input validation
-    if (args.rate < 1 || args.rate > 100000000) throw new Error("Rate must be between 1 and 1,000,000 (in cents)");
-    if (args.startDateTime.length > 200) throw new Error("Start date/time must be 200 characters or less");
-    if (args.notes && args.notes.length > 2000) throw new Error("Notes must be 2000 characters or less");
+    if (args.rate < 1 || args.rate > 100000000) throw new ConvexError("Rate must be between 1 and 1,000,000 (in cents)");
+    if (args.startDateTime.length > 200) throw new ConvexError("Start date/time must be 200 characters or less");
+    if (args.notes && args.notes.length > 2000) throw new ConvexError("Notes must be 2000 characters or less");
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     // Verify caller is a participant in this conversation
     if (conversation.seekerId !== user._id && conversation.taskerId !== user._id) {
-      throw new Error("Not a participant in this conversation");
+      throw new ConvexError("Not a participant in this conversation");
     }
 
     const receiverId =
@@ -75,25 +76,26 @@ export const acceptProposal = mutation({
   args: {
     proposalId: v.id("proposals"),
   },
+  returns: v.object({ jobId: v.id("jobs") }),
   handler: async (ctx, args): Promise<{ jobId: Id<"jobs"> }> => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     const proposal = await ctx.db.get(args.proposalId);
-    if (!proposal) throw new Error("Proposal not found");
+    if (!proposal) throw new ConvexError("Proposal not found");
 
     if (proposal.receiverId !== user._id) {
-      throw new Error("Only the proposal receiver can accept");
+      throw new ConvexError("Only the proposal receiver can accept");
     }
 
     if (proposal.status !== "pending") {
-      throw new Error("Proposal is not in pending status");
+      throw new ConvexError("Proposal is not in pending status");
     }
 
     const now = Date.now();
@@ -120,21 +122,22 @@ export const declineProposal = mutation({
   args: {
     proposalId: v.id("proposals"),
   },
+  returns: v.id("proposals"),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     const proposal = await ctx.db.get(args.proposalId);
-    if (!proposal) throw new Error("Proposal not found");
+    if (!proposal) throw new ConvexError("Proposal not found");
 
     if (proposal.receiverId !== user._id) {
-      throw new Error("Only the proposal receiver can decline");
+      throw new ConvexError("Only the proposal receiver can decline");
     }
 
     const now = Date.now();
@@ -161,26 +164,27 @@ export const counterProposal = mutation({
     startDateTime: v.string(),
     notes: v.optional(v.string()),
   },
+  returns: v.id("proposals"),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // Input validation
-    if (args.rate < 1 || args.rate > 100000000) throw new Error("Rate must be between 1 and 1,000,000 (in cents)");
-    if (args.startDateTime.length > 200) throw new Error("Start date/time must be 200 characters or less");
-    if (args.notes && args.notes.length > 2000) throw new Error("Notes must be 2000 characters or less");
+    if (args.rate < 1 || args.rate > 100000000) throw new ConvexError("Rate must be between 1 and 1,000,000 (in cents)");
+    if (args.startDateTime.length > 200) throw new ConvexError("Start date/time must be 200 characters or less");
+    if (args.notes && args.notes.length > 2000) throw new ConvexError("Notes must be 2000 characters or less");
 
     const originalProposal = await ctx.db.get(args.proposalId);
-    if (!originalProposal) throw new Error("Proposal not found");
+    if (!originalProposal) throw new ConvexError("Proposal not found");
 
     if (originalProposal.receiverId !== user._id) {
-      throw new Error("Only the proposal receiver can counter");
+      throw new ConvexError("Only the proposal receiver can counter");
     }
 
     const now = Date.now();

@@ -269,6 +269,7 @@ describe("messages", () => {
 
     const result = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
 
     expect(result.page).toBeDefined();
@@ -314,6 +315,7 @@ describe("messages", () => {
 
     const firstPage = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
 
     expect(firstPage.page.length).toBe(25);
@@ -367,6 +369,7 @@ describe("messages", () => {
 
     const result = await asSeeker.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
 
     const systemMessage = result.page.find((m) => m._id === messageId);
@@ -532,6 +535,7 @@ describe("messages", () => {
 
     const result = await asStranger.query(api.messages.listMessages, {
       conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
     });
     expect(result.page).toHaveLength(0);
   });

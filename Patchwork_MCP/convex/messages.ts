@@ -1,6 +1,7 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { messagesPageValidator } from "../lib/convex/validators";
 
 type SystemMessageType =
   | "proposal_sent"
@@ -15,29 +16,30 @@ export const sendMessage = mutation({
     content: v.string(),
     attachments: v.optional(v.array(v.id("_storage"))),
   },
+  returns: v.id("messages"),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     if (args.attachments && args.attachments.length > 3) {
-      throw new Error("Maximum 3 attachments allowed");
+      throw new ConvexError("Maximum 3 attachments allowed");
     }
 
     // Input validation
-    if (args.content.length > 5000) throw new Error("Message must be 5000 characters or less");
-    if (args.content.trim().length === 0) throw new Error("Message cannot be empty");
+    if (args.content.length > 5000) throw new ConvexError("Message must be 5000 characters or less");
+    if (args.content.trim().length === 0) throw new ConvexError("Message cannot be empty");
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     if (conversation.seekerId !== user._id && conversation.taskerId !== user._id) {
-      throw new Error("Not a participant in this conversation");
+      throw new ConvexError("Not a participant in this conversation");
     }
 
     const now = Date.now();
@@ -77,6 +79,7 @@ export const sendProposalMessage = internalMutation({
     proposalId: v.id("proposals"),
     content: v.string(),
   },
+  returns: v.id("messages"),
   handler: async (ctx, args) => {
     const now = Date.now();
     
@@ -91,7 +94,7 @@ export const sendProposalMessage = internalMutation({
     });
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     const isSeeker = conversation.seekerId === args.senderId;
     const currentUnreadCount = isSeeker
@@ -114,8 +117,9 @@ export const sendProposalMessage = internalMutation({
 export const listMessages = query({
   args: {
     conversationId: v.id("conversations"),
-    paginationOpts: v.optional(paginationOptsValidator),
+    paginationOpts: paginationOptsValidator,
   },
+  returns: messagesPageValidator,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
@@ -138,26 +142,63 @@ export const listMessages = query({
       return { page: [], isDone: true, continueCursor: "" };
     }
 
-    const paginationOpts = args.paginationOpts ?? {
-      cursor: null,
-      numItems: 25,
-    };
-
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_conversation_time", (q) =>
         q.eq("conversationId", args.conversationId)
       )
       .order("desc")
-      .paginate(paginationOpts);
+      .paginate(args.paginationOpts);
 
     const pageWithProposals = await Promise.all(
       messages.page.map(async (msg) => {
         if (msg.proposalId) {
           const proposal = await ctx.db.get(msg.proposalId);
-          return { ...msg, proposal };
+          return {
+            _id: msg._id,
+            conversationId: msg.conversationId,
+            senderId: msg.senderId,
+            type: msg.type,
+            content: msg.content,
+            proposalId: msg.proposalId,
+            proposal: proposal
+              ? {
+                  _id: proposal._id,
+                  conversationId: proposal.conversationId,
+                  senderId: proposal.senderId,
+                  receiverId: proposal.receiverId,
+                  jobRequestId: proposal.jobRequestId,
+                  rate: proposal.rate,
+                  rateType: proposal.rateType,
+                  startDateTime: proposal.startDateTime,
+                  notes: proposal.notes,
+                  status: proposal.status,
+                  previousProposalId: proposal.previousProposalId,
+                  counterProposalId: proposal.counterProposalId,
+                  createdAt: proposal.createdAt,
+                  updatedAt: proposal.updatedAt,
+                  expiresAt: proposal.expiresAt,
+                }
+              : null,
+            attachments: msg.attachments,
+            readAt: msg.readAt,
+            createdAt: msg.createdAt,
+            updatedAt: msg.updatedAt,
+          };
         }
-        return { ...msg, proposal: null };
+        return {
+          _id: msg._id,
+          conversationId: msg.conversationId,
+          senderId: msg.senderId,
+          type: msg.type,
+          content: msg.content,
+          proposalId: msg.proposalId,
+          proposal: null,
+          attachments: msg.attachments,
+          readAt: msg.readAt,
+          createdAt: msg.createdAt,
+          updatedAt: msg.updatedAt,
+        };
       })
     );
 
@@ -180,6 +221,7 @@ export const sendSystemMessage = internalMutation({
       v.literal("job_completed")
     ),
   },
+  returns: v.id("messages"),
   handler: async (ctx, args) => {
     const systemTypeMessages: Record<SystemMessageType, string> = {
       proposal_sent: "A proposal was sent",
@@ -193,7 +235,7 @@ export const sendSystemMessage = internalMutation({
     const now = Date.now();
 
     const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     const messageId = await ctx.db.insert("messages", {
       conversationId: args.conversationId,

@@ -1,16 +1,18 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { jobValidator, listedJobValidator } from "../lib/convex/validators";
 
 type JobStatus = "pending" | "in_progress" | "completed" | "cancelled" | "disputed";
 
 export const createJob = internalMutation({
   args: { proposalId: v.id("proposals") },
+  returns: v.id("jobs"),
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);
-    if (!proposal) throw new Error("Proposal not found");
+    if (!proposal) throw new ConvexError("Proposal not found");
 
     const conversation = await ctx.db.get(proposal.conversationId);
-    if (!conversation) throw new Error("Conversation not found");
+    if (!conversation) throw new ConvexError("Conversation not found");
 
     let categoryId = null;
     let categoryName = "General";
@@ -28,7 +30,7 @@ export const createJob = internalMutation({
 
     if (!categoryId) {
       const fallbackCategory = await ctx.db.query("categories").first();
-      if (!fallbackCategory) throw new Error("No categories available");
+      if (!fallbackCategory) throw new ConvexError("No categories available");
       categoryId = fallbackCategory._id;
       categoryName = fallbackCategory.name;
     }
@@ -60,6 +62,7 @@ export const createJob = internalMutation({
 
 export const getJob = query({
   args: { jobId: v.id("jobs") },
+  returns: v.union(jobValidator, v.null()),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
@@ -91,6 +94,7 @@ export const listJobs = query({
     statusGroup: v.optional(v.union(v.literal("active"), v.literal("completed"))),
     limit: v.optional(v.number()),
   },
+  returns: v.array(listedJobValidator),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
@@ -195,25 +199,26 @@ export const listJobs = query({
 
 export const completeJob = mutation({
   args: { jobId: v.id("jobs") },
+  returns: v.object({ jobId: v.id("jobs") }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     const job = await ctx.db.get(args.jobId);
-    if (!job) throw new Error("Job not found");
+    if (!job) throw new ConvexError("Job not found");
 
     if (job.seekerId !== user._id) {
-      throw new Error("Only seeker can complete job");
+      throw new ConvexError("Only seeker can complete job");
     }
 
     if (job.status !== "in_progress") {
-      throw new Error("Job must be in_progress to complete");
+      throw new ConvexError("Job must be in_progress to complete");
     }
 
     await ctx.db.patch(args.jobId, {

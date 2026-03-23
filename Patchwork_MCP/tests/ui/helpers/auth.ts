@@ -1,115 +1,169 @@
-import { Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
-/**
- * Fetch OTP from Convex testing endpoint
- * @param email - Email address to fetch OTP for
- * @returns OTP code or undefined if not found
- */
-export async function fetchOtp(email: string): Promise<string | undefined> {
-  const convexSiteUrl = process.env.VITE_CONVEX_SITE_URL || process.env.VITE_CONVEX_URL?.replace(".convex.cloud", ".convex.site");
-  if (!convexSiteUrl) throw new Error("VITE_CONVEX_SITE_URL or VITE_CONVEX_URL must be set");
+const appUrl = process.env.PATCHWORK_APP_URL || "http://localhost:5173";
+const convexSiteUrl =
+  process.env.VITE_CONVEX_SITE_URL ||
+  process.env.VITE_CONVEX_URL?.replace(".convex.cloud", ".convex.site");
 
-  // Poll for OTP up to 10 seconds
-  for (let i = 0; i < 20; i++) {
-    const res = await fetch(`${convexSiteUrl}/test-proxy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getOtp", args: { email } }),
-    });
-    const data = await res.json();
-    if (data.result) {
-      return data.result;
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  return undefined;
+if (!convexSiteUrl) {
+  throw new Error("VITE_CONVEX_SITE_URL or VITE_CONVEX_URL must be set");
 }
 
-/**
- * Complete signup flow: enter email, get OTP, verify, create profile
- * @param page - Playwright page object
- * @param email - Email address for signup
- * @param firstName - First name for profile
- * @param lastName - Last name for profile
- * @param city - City for profile
- */
+async function isVisible(locator: Locator, timeout = 2000): Promise<boolean> {
+  try {
+    await locator.waitFor({ state: "visible", timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function testProxy(
+  action: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const res = await fetch(`${convexSiteUrl}/test-proxy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, args }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Test proxy call failed");
+  }
+  return data.result;
+}
+
+export async function fetchOtp(email: string): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const otp = await testProxy("getOtp", { email });
+    if (typeof otp === "string" && otp.length > 0) {
+      return otp;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error(`Failed to fetch OTP for ${email}`);
+}
+
 export async function signUpAndLogin(
   page: Page,
   email: string,
   firstName: string,
   lastName: string,
-  city: string
+  city: string,
+  province = "ON",
 ): Promise<void> {
-  // Navigate to app
-  await page.goto("http://localhost:5173");
+  await page.context().clearCookies();
+  await page.goto(appUrl);
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
 
-  // Click sign in button
-  await page.click('text=Sign in');
-
-  // Enter email
-  await page.fill('input[type="email"]', email);
-  await page.click('button:has-text("Continue")');
-
-  // Wait for OTP input to appear
-  await page.waitForSelector('input[placeholder*="OTP"]', { timeout: 5000 });
-
-  // Fetch OTP from testing endpoint
-  const otp = await fetchOtp(email);
-  if (!otp) {
-    throw new Error(`Failed to fetch OTP for ${email}`);
+  const getStartedButton = page.getByRole("button", { name: "Get Started" });
+  if (await isVisible(getStartedButton)) {
+    await getStartedButton.click();
   }
 
-  // Enter OTP
-  await page.fill('input[placeholder*="OTP"]', otp);
-  await page.click('button:has-text("Verify")');
+  const onboardingSkip = page.getByRole("button", { name: "Skip" });
+  if (await isVisible(onboardingSkip)) {
+    await onboardingSkip.click();
+  }
 
-  // Wait for profile creation screen
-  await page.waitForSelector('input[placeholder*="First name"]', {
-    timeout: 5000,
+  await expect(page.getByText("Sign in to continue")).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Continue with Email" }).click();
+
+  await page.getByPlaceholder("your@email.com").fill(email);
+  await page.getByRole("button", { name: "Send Code" }).click();
+
+  const otpInput = page.locator('input[autocomplete="one-time-code"]');
+  await expect(otpInput).toBeVisible({ timeout: 10000 });
+  await otpInput.fill(await fetchOtp(email));
+  await page.getByRole("button", { name: /Verify/ }).click();
+
+  const createProfileHeading = page.getByText("Create your profile");
+  if (await isVisible(createProfileHeading, 10000)) {
+    await page.getByPlaceholder("Jenny").fill(firstName);
+    await page.getByPlaceholder("Mabel").fill(lastName);
+    await page.getByPlaceholder("Toronto", { exact: true }).fill(city);
+    await page.getByPlaceholder("ON", { exact: true }).fill(province);
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+
+  const locationSkipButton = page.getByRole("button", { name: "Not Now" });
+  if (await isVisible(locationSkipButton, 10000)) {
+    await locationSkipButton.click();
+  }
+
+  const notificationsSkipButton = page.getByRole("button", { name: "Maybe Later" });
+  if (await isVisible(notificationsSkipButton, 10000)) {
+    await notificationsSkipButton.click();
+  }
+
+  await expect(page.getByRole("button", { name: "Messages", exact: true })).toBeVisible({
+    timeout: 10000,
   });
-
-  // Fill profile information
-  await page.fill('input[placeholder*="First name"]', firstName);
-  await page.fill('input[placeholder*="Last name"]', lastName);
-  await page.fill('input[placeholder*="City"]', city);
-
-  // Submit profile
-  await page.click('button:has-text("Complete Profile")');
-
-  // Wait for navigation to home screen
-  await page.waitForURL("http://localhost:5173", { timeout: 5000 });
 }
 
-/**
- * Login with existing user account
- * @param page - Playwright page object
- * @param email - Email address of existing user
- */
-export async function loginExisting(page: Page, email: string): Promise<void> {
-  // Navigate to app
-  await page.goto("http://localhost:5173");
+export async function completeTaskerOnboarding(
+  page: Page,
+  options?: {
+    category?: string;
+    displayName?: string;
+    bio?: string;
+    hourlyRate?: string;
+    plan?: "basic" | "premium" | "skip";
+  },
+): Promise<void> {
+  const {
+    category = "Cleaning",
+    displayName = "Pro Tasker",
+    bio = "Professional, responsive, and ready for local jobs.",
+    hourlyRate = "60",
+    plan = "basic",
+  } = options ?? {};
 
-  // Click sign in button
-  await page.click('text=Sign in');
+  await page.getByRole("button", { name: "Profile", exact: true }).click();
 
-  // Enter email
-  await page.fill('input[type="email"]', email);
-  await page.click('button:has-text("Continue")');
-
-  // Wait for OTP input to appear
-  await page.waitForSelector('input[placeholder*="OTP"]', { timeout: 5000 });
-
-  // Fetch OTP from testing endpoint
-  const otp = await fetchOtp(email);
-  if (!otp) {
-    throw new Error(`Failed to fetch OTP for ${email}`);
+  const signUpButton = page.getByRole("button", { name: "Sign up as a Tasker" });
+  if (!(await isVisible(signUpButton, 10000))) {
+    await expect(page.getByText("Tasker Profile")).toBeVisible({ timeout: 10000 });
+    return;
   }
 
-  // Enter OTP
-  await page.fill('input[placeholder*="OTP"]', otp);
-  await page.click('button:has-text("Verify")');
+  await signUpButton.click();
+  await expect(page.getByText("Business basics")).toBeVisible({ timeout: 10000 });
 
-  // Wait for navigation to home screen
-  await page.waitForURL("http://localhost:5173", { timeout: 5000 });
+  await page.getByPlaceholder("Your business or full name").fill(displayName);
+  await page.getByText(category, { exact: true }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByText("Service area & pricing")).toBeVisible({ timeout: 10000 });
+  await page.getByPlaceholder("0.00").first().fill(hourlyRate);
+  await page.locator("textarea").fill(bio);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByText("Review & accept")).toBeVisible({ timeout: 10000 });
+  await page.locator('input[type="checkbox"]').check();
+  await page.getByRole("button", { name: "Complete Setup" }).click();
+
+  await expect(page.getByText("Your Tasker profile is complete")).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Subscribe" }).click();
+
+  await expect(page.getByText("Subscription")).toBeVisible({ timeout: 10000 });
+  if (plan === "skip") {
+    await page.getByRole("button", { name: "Skip for now" }).click();
+    await page.getByRole("button", { name: "Ok" }).click();
+  } else {
+    await page.getByText(plan === "basic" ? "Basic" : "Premium", { exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: plan === "basic" ? "Subscribe to Basic" : "Subscribe to Premium",
+      })
+      .click();
+  }
+
+  await expect(page.getByText("Tasker Profile")).toBeVisible({ timeout: 10000 });
 }
