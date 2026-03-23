@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { AppBar } from "../components/patchwork/AppBar";
 import { Button } from "../components/patchwork/Button";
 import { Card } from "../components/patchwork/Card";
@@ -49,7 +50,7 @@ export function RequestStep4({ onBack, onSubmit, formData, onFormChange }: Reque
       } : undefined;
 
       await createJobRequest({
-        categoryId: formData.categoryId as any,
+        categoryId: formData.categoryId as Id<"categories">,
         categoryName: formData.categoryName,
         description: formData.description,
         location: {

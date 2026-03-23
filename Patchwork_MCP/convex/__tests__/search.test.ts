@@ -1,3 +1,5 @@
+"use node";
+
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import { readdirSync } from "node:fs";
@@ -99,6 +101,10 @@ describe("searchTaskers", () => {
       }
     );
 
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
+    });
+
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
       lng: -79.347015,
@@ -147,6 +153,10 @@ describe("searchTaskers", () => {
       serviceRadius: 10,
     });
 
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
+    });
+
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
       lng: -79.347015,
@@ -167,6 +177,48 @@ describe("searchTaskers", () => {
     });
 
     // Should not find the tasker with ghost mode enabled
+    expect(results.length).toBe(0);
+  });
+
+  test("excludes taskers without an active subscription", async () => {
+    const t = createTest();
+
+    await t.mutation(api.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker2b",
+      email: "tasker2b@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker 2B",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Tasker 2B Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    await asTasker.mutation(api.location.updateTaskerLocation, {
+      lat: 43.65107,
+      lng: -79.347015,
+    });
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlug: "cleaning",
+      lat: 43.65,
+      lng: -79.38,
+      radiusKm: 50,
+    });
+
     expect(results.length).toBe(0);
   });
 
@@ -198,7 +250,8 @@ describe("searchTaskers", () => {
         completedJobs: 0,
         verified: false,
         subscriptionPlan: "none",
-        ghostMode: false,
+        subscriptionStatus: "inactive",
+        ghostMode: true,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -287,6 +340,10 @@ describe("searchTaskers", () => {
       }
     );
 
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
+    });
+
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
       lng: -79.347015,
@@ -347,6 +404,10 @@ describe("searchTaskers", () => {
       serviceRadius: 10,
     });
 
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
+    });
+
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
       lng: -79.347015,
@@ -389,6 +450,10 @@ describe("searchTaskers", () => {
       rateType: "hourly",
       hourlyRate: 5000,
       serviceRadius: 200,
+    });
+
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
     });
 
     const seekerLat = 43.65;
@@ -434,6 +499,10 @@ describe("searchTaskers", () => {
       rateType: "hourly",
       hourlyRate: 5000,
       serviceRadius: 200,
+    });
+
+    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
+      plan: "tasker",
     });
 
     const seekerLat = 43.65;

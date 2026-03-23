@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Star, MapPin, SlidersHorizontal, List, Map, Loader2 } from "lucide-react";
+import { Star, MapPin, SlidersHorizontal, Loader2 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -16,12 +16,11 @@ interface BrowseProps {
 }
 
 export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
-  const [view, setView] = useState<"list" | "map">("list");
   const { location, isLoading: isLocationLoading, requestLocation, error: locationError } = useUserLocation();
 
   useEffect(() => {
     if (!location && !isLocationLoading && !locationError) {
-      requestLocation();
+      void requestLocation({ fallbackToProfileOnDeny: true });
     }
   }, [location, isLocationLoading, requestLocation, locationError]);
 
@@ -54,20 +53,6 @@ export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
           <p className="text-[#6B7280]">
             {isLoading ? "Finding Taskers..." : `${providers?.length || 0} Taskers near you`}
           </p>
-          <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
-            <button
-              onClick={() => setView("list")}
-              className={`p-2 rounded ${view === "list" ? "bg-white shadow-sm" : ""}`}
-            >
-              <List size={18} className={view === "list" ? "text-[#4F46E5]" : "text-[#6B7280]"} />
-            </button>
-            <button
-              onClick={() => setView("map")}
-              className={`p-2 rounded ${view === "map" ? "bg-white shadow-sm" : ""}`}
-            >
-              <Map size={18} className={view === "map" ? "text-[#4F46E5]" : "text-[#6B7280]"} />
-            </button>
-          </div>
         </div>
 
         <p className="text-[#6B7280] text-sm">
@@ -86,7 +71,7 @@ export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
           <p className="mb-2">Location access required</p>
           <p className="text-sm mb-4">{locationError}</p>
           <button 
-            onClick={() => requestLocation()}
+            onClick={() => void requestLocation({ fallbackToProfileOnDeny: true })}
             className="text-[#4F46E5] font-medium"
           >
             Try Again
@@ -96,10 +81,6 @@ export function Browse({ onNavigate, onBack, onViewTasker }: BrowseProps) {
         <div className="p-8 text-center text-[#6B7280]">
           <p>No Taskers found in your area.</p>
           <p className="text-sm mt-2">Try increasing your search radius.</p>
-        </div>
-      ) : view === "map" ? (
-        <div className="h-[400px] bg-neutral-200 flex items-center justify-center">
-          <p className="text-[#6B7280]">Map View coming soon</p>
         </div>
       ) : (
         <div className="p-4 space-y-3">

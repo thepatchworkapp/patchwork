@@ -15,7 +15,7 @@ export function AppBar({
     <div className="bg-white border-b border-neutral-200 px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-3">
         {onBack && (
-          <button onClick={onBack} className="p-1 -ml-1">
+          <button onClick={onBack} className="p-1 -ml-1" aria-label="Back">
             <ArrowLeft size={24} className="text-neutral-900" />
           </button>
         )}
@@ -23,7 +23,7 @@ export function AppBar({
       </div>
       {action && <div>{action}</div>}
       {onMenu && (
-        <button onClick={onMenu} className="p-1 -mr-1">
+        <button onClick={onMenu} className="p-1 -mr-1" aria-label="Menu">
           <Menu size={24} className="text-neutral-900" />
         </button>
       )}

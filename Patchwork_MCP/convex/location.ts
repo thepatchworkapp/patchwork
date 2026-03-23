@@ -1,6 +1,7 @@
 import { internalMutation, mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { taskerGeo } from "./geospatial";
+import { locationUpdateResultValidator } from "../lib/convex/validators";
 
 /**
  * Calculates the Haversine distance between two coordinates in meters
@@ -35,19 +36,20 @@ export const updateUserLocation = mutation({
       v.literal("network")
     ),
   },
+  returns: locationUpdateResultValidator,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // Coordinate validation
-    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
-    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
+    if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
 
     const currentCoords = user.location.coordinates;
     if (currentCoords) {
@@ -92,25 +94,26 @@ export const updateTaskerLocation = mutation({
     lat: v.number(),
     lng: v.number(),
   },
+  returns: locationUpdateResultValidator,
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    if (!identity) throw new ConvexError("Unauthorized");
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .first();
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // Coordinate validation
-    if (args.lat < -90 || args.lat > 90) throw new Error("Latitude must be between -90 and 90");
-    if (args.lng < -180 || args.lng > 180) throw new Error("Longitude must be between -180 and 180");
+    if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
+    if (args.lng < -180 || args.lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
 
     const taskerProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
       .first();
-    if (!taskerProfile) throw new Error("Tasker profile not found");
+    if (!taskerProfile) throw new ConvexError("Tasker profile not found");
 
     const currentLocation = taskerProfile.location;
     if (currentLocation) {

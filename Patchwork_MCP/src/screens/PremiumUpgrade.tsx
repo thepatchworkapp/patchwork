@@ -38,15 +38,15 @@ export function PremiumUpgrade({ onBack, onUpgrade }: PremiumUpgradeProps) {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-[#16A34A] mt-0.5">✓</span>
-              <span className="text-neutral-900">Priority placement in search results</span>
+              <span className="text-neutral-900">Manage more than one service category</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-[#16A34A] mt-0.5">✓</span>
-              <span className="text-neutral-900">Advanced analytics and insights</span>
+              <span className="text-neutral-900">Receive a premium-only profile PIN</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-[#16A34A] mt-0.5">✓</span>
-              <span className="text-neutral-900">Verified badge on your profile</span>
+              <span className="text-neutral-900">Keep all of your service categories on one plan</span>
             </li>
           </ul>
         </div>

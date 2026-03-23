@@ -1,3 +1,5 @@
+"use node";
+
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import { readdirSync } from "node:fs";

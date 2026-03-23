@@ -1,8 +1,9 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 export const forceGenerateUploadUrl = internalMutation({
+  args: {},
   handler: async (ctx) => {
     return await ctx.storage.generateUploadUrl();
   },
@@ -29,7 +30,7 @@ export const forceCreateTaskerProfile = internalMutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     
-    if (!user) throw new Error(`User not found: ${args.email}`);
+    if (!user) throw new ConvexError(`User not found: ${args.email}`);
     
     const existingProfile = await ctx.db
       .query("taskerProfiles")
@@ -37,7 +38,7 @@ export const forceCreateTaskerProfile = internalMutation({
       .first();
     
     if (existingProfile) {
-      throw new Error("Tasker profile already exists");
+      throw new ConvexError("Tasker profile already exists");
     }
     
     const now = Date.now();
@@ -52,7 +53,8 @@ export const forceCreateTaskerProfile = internalMutation({
       completedJobs: 0,
       verified: false,
       subscriptionPlan: "none",
-      ghostMode: false,
+      subscriptionStatus: "inactive",
+      ghostMode: true,
       createdAt: now,
       updatedAt: now,
     });

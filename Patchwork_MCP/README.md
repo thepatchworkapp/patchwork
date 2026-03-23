@@ -82,14 +82,13 @@ Still mock / placeholder data:
 Subscriptions are wired to real Convex data but bypass actual payment processing. This is intentional - real payments will use RevenueCat when the mobile app goes to production.
 
 **Current behavior:**
-- User selects Basic ($7/mo) or Premium ($15/mo) plan
+- User selects weekly or lifetime tasker access
 - Clicks "Subscribe" → mutation immediately succeeds (no payment)
 - Subscription persists to database
 - Ghost mode toggle requires active subscription
-- Premium subscribers get a unique 6-digit PIN
 
 **Mutations:**
-- `updateSubscriptionPlan({ plan: "basic" | "premium" })` - Subscribe to a plan
+- `updateSubscriptionPlan({ plan: "tasker", accessType?: "weekly" | "lifetime" })` - Activate tasker access
 - `setGhostMode({ ghostMode: boolean })` - Toggle visibility (requires subscription)
 
 ## Tests

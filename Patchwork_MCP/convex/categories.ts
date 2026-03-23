@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { categoryValidator } from "../lib/convex/validators";
 
 function toSlug(name: string): string {
   return name
@@ -93,6 +94,11 @@ const ALL_CATEGORIES: {
 ];
 
 export const seedCategories = mutation({
+  args: {},
+  returns: v.object({
+    total: v.number(),
+    inserted: v.number(),
+  }),
   handler: async (ctx) => {
     let inserted = 0;
 
@@ -127,21 +133,52 @@ export const seedCategories = mutation({
 });
 
 export const listCategories = query({
+  args: {},
+  returns: v.array(categoryValidator),
   handler: async (ctx) => {
-    return await ctx.db
+    const categories = await ctx.db
       .query("categories")
       .withIndex("by_active", (q) => q.eq("isActive", true))
       .order("asc")
       .take(200);
+
+    return categories.map((category) => ({
+      _id: category._id,
+      name: category.name,
+      slug: category.slug,
+      icon: category.icon,
+      emoji: category.emoji,
+      group: category.group,
+      description: category.description,
+      isActive: category.isActive,
+      sortOrder: category.sortOrder,
+    }));
   },
 });
 
 export const getCategoryBySlug = query({
   args: { slug: v.string() },
+  returns: v.union(categoryValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db
+    const category = await ctx.db
       .query("categories")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first();
+
+    if (!category) {
+      return null;
+    }
+
+    return {
+      _id: category._id,
+      name: category.name,
+      slug: category.slug,
+      icon: category.icon,
+      emoji: category.emoji,
+      group: category.group,
+      description: category.description,
+      isActive: category.isActive,
+      sortOrder: category.sortOrder,
+    };
   },
 });

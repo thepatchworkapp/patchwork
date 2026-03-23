@@ -49,7 +49,7 @@ export function HomeSwipe({ onNavigate, onViewTasker, onStartChat, currentUserId
 
   useEffect(() => {
     if (!location && !locationLoading && !locationError) {
-      requestLocation();
+      void requestLocation({ fallbackToProfileOnDeny: true });
     }
   }, [location, locationLoading, locationError, requestLocation]);
 
@@ -87,7 +87,7 @@ export function HomeSwipe({ onNavigate, onViewTasker, onStartChat, currentUserId
         <p className="text-neutral-600 text-sm mb-4">{locationError}</p>
         <button
           type="button"
-          onClick={() => requestLocation()}
+          onClick={() => void requestLocation({ fallbackToProfileOnDeny: true })}
           className="text-[#4F46E5] font-medium"
         >
           Try Again

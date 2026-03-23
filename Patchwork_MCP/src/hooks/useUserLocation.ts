@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 /**
@@ -18,9 +18,13 @@ export interface UseUserLocationReturn {
   location: LocationData | null;
   isLoading: boolean;
   error: string | null;
-  requestLocation: () => Promise<void>;
+  requestLocation: (options?: { fallbackToProfileOnDeny?: boolean }) => Promise<void>;
   setManualCity: (city: string) => Promise<void>;
 }
+
+type LocationRequestOptions = {
+  fallbackToProfileOnDeny?: boolean;
+};
 
 /**
  * Haversine formula to calculate distance between two coordinates in meters
@@ -92,12 +96,15 @@ export function useUserLocation(): UseUserLocationReturn {
   const [location, setLocation] = useState<LocationData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingProfileFallback, setPendingProfileFallback] = useState(false);
   
   // Track last server update to implement 500m threshold
   const lastServerUpdate = useRef<{ lat: number; lng: number } | null>(null);
   const pollingInterval = useRef<number | null>(null);
 
   const updateLocationMutation = useMutation(api.users.updateLocation);
+  const { isAuthenticated: convexAuth } = useConvexAuth();
+  const currentUser = useQuery(api.users.getCurrentUser, convexAuth ? {} : "skip");
 
   /**
    * Update server location if user has moved >500m
@@ -107,6 +114,10 @@ export function useUserLocation(): UseUserLocationReturn {
     lng: number,
     source: 'gps' | 'manual'
   ) => {
+    if (!convexAuth || currentUser === undefined || currentUser === null) {
+      return;
+    }
+
     try {
       // Check if we need to update server (500m threshold)
       if (lastServerUpdate.current) {
@@ -136,7 +147,49 @@ export function useUserLocation(): UseUserLocationReturn {
       console.error('Failed to update server location:', err);
       // Don't throw - this is a background update
     }
-  }, [updateLocationMutation]);
+  }, [convexAuth, currentUser, updateLocationMutation]);
+
+  const useProfileLocationFallback = useCallback(async (): Promise<boolean> => {
+    if (!currentUser?.location) {
+      return false;
+    }
+
+    const fallbackCoordinates = currentUser.location.coordinates;
+
+    if (fallbackCoordinates) {
+      const newLocation: LocationData = {
+        lat: fallbackCoordinates.lat,
+        lng: fallbackCoordinates.lng,
+        source: "manual",
+      };
+      setLocation(newLocation);
+      await updateServerLocation(newLocation.lat, newLocation.lng, "manual");
+      return true;
+    }
+
+    const city = currentUser.location.city?.trim();
+    const province = currentUser.location.province?.trim();
+    const query = [city, province].filter(Boolean).join(", ");
+
+    if (!query) {
+      return false;
+    }
+
+    const coords = await geocodeCity(query);
+    if (!coords) {
+      return false;
+    }
+
+    const newLocation: LocationData = {
+      lat: coords.lat,
+      lng: coords.lng,
+      source: "manual",
+    };
+
+    setLocation(newLocation);
+    await updateServerLocation(newLocation.lat, newLocation.lng, "manual");
+    return true;
+  }, [currentUser, updateServerLocation]);
 
   /**
    * Get current position from browser geolocation API
@@ -163,9 +216,10 @@ export function useUserLocation(): UseUserLocationReturn {
   /**
    * Request location from GPS
    */
-  const requestLocation = useCallback(async () => {
+  const requestLocation = useCallback(async (options?: LocationRequestOptions) => {
     setIsLoading(true);
     setError(null);
+    setPendingProfileFallback(false);
 
     try {
       const position = await getCurrentPosition();
@@ -179,16 +233,34 @@ export function useUserLocation(): UseUserLocationReturn {
       await updateServerLocation(newLocation.lat, newLocation.lng, 'gps');
     } catch (err) {
       let errorMessage = 'Failed to get your location';
+      const geolocationError = typeof err === "object" && err !== null && "code" in err
+        ? err as GeolocationPositionError
+        : null;
+      const permissionDeniedCode =
+        typeof GeolocationPositionError !== "undefined"
+          ? GeolocationPositionError.PERMISSION_DENIED
+          : 1;
+      const positionUnavailableCode =
+        typeof GeolocationPositionError !== "undefined"
+          ? GeolocationPositionError.POSITION_UNAVAILABLE
+          : 2;
+      const timeoutCode =
+        typeof GeolocationPositionError !== "undefined"
+          ? GeolocationPositionError.TIMEOUT
+          : 3;
+      const shouldFallbackToProfile =
+        options?.fallbackToProfileOnDeny === true &&
+        geolocationError?.code === permissionDeniedCode;
 
-      if (err instanceof GeolocationPositionError) {
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
+      if (geolocationError) {
+        switch (geolocationError.code) {
+          case permissionDeniedCode:
             errorMessage = 'Location permission denied. Please enter your city manually.';
             break;
-          case err.POSITION_UNAVAILABLE:
+          case positionUnavailableCode:
             errorMessage = 'Location information unavailable. Please try again or enter your city.';
             break;
-          case err.TIMEOUT:
+          case timeoutCode:
             errorMessage = 'Location request timed out. Please try again.';
             break;
         }
@@ -196,12 +268,24 @@ export function useUserLocation(): UseUserLocationReturn {
         errorMessage = err.message;
       }
 
+      if (shouldFallbackToProfile) {
+        if (currentUser === undefined) {
+          setPendingProfileFallback(true);
+          return;
+        }
+
+        const usedProfileFallback = await useProfileLocationFallback();
+        if (usedProfileFallback) {
+          return;
+        }
+      }
+
       setError(errorMessage);
       console.error('Location error:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentPosition, updateServerLocation]);
+  }, [currentUser, getCurrentPosition, updateServerLocation, useProfileLocationFallback]);
 
   /**
    * Set location from city name (fallback when GPS denied)
@@ -236,6 +320,52 @@ export function useUserLocation(): UseUserLocationReturn {
       setIsLoading(false);
     }
   }, [updateServerLocation]);
+
+  useEffect(() => {
+    if (!location || !convexAuth || currentUser === undefined || currentUser === null) {
+      return;
+    }
+
+    if (lastServerUpdate.current) {
+      return;
+    }
+
+    void updateServerLocation(location.lat, location.lng, location.source);
+  }, [convexAuth, currentUser, location, updateServerLocation]);
+
+  useEffect(() => {
+    if (!pendingProfileFallback || currentUser === undefined) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveFallback = async () => {
+      if (currentUser === null) {
+        if (!cancelled) {
+          setPendingProfileFallback(false);
+          setError("Location permission denied. Please enter your city manually.");
+        }
+        return;
+      }
+
+      const usedProfileFallback = await useProfileLocationFallback();
+      if (cancelled) {
+        return;
+      }
+
+      setPendingProfileFallback(false);
+      if (!usedProfileFallback) {
+        setError("Location permission denied. Please enter your city manually.");
+      }
+    };
+
+    void resolveFallback();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, pendingProfileFallback, useProfileLocationFallback]);
 
   /**
    * Setup 15-minute polling for GPS location
@@ -282,7 +412,7 @@ export function useUserLocation(): UseUserLocationReturn {
 
   return {
     location,
-    isLoading,
+    isLoading: isLoading || pendingProfileFallback,
     error,
     requestLocation,
     setManualCity,

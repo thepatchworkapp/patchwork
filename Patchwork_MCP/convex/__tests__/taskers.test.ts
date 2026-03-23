@@ -70,7 +70,9 @@ describe("taskers", () => {
     expect(profile?.completedJobs).toBe(0);
     expect(profile?.verified).toBe(false);
     expect(profile?.subscriptionPlan).toBe("none");
-    expect(profile?.ghostMode).toBe(false);
+    expect(profile?.subscriptionStatus).toBe("inactive");
+    expect(profile?.hasActiveSubscription).toBe(false);
+    expect(profile?.ghostMode).toBe(true);
     expect(profile?.categories).toHaveLength(1);
     expect(profile?.categories[0].categoryId).toBe(plumbingCategory!._id);
     expect(profile?.categories[0].bio).toBe("Specialized in residential plumbing");
@@ -490,7 +492,7 @@ describe("taskers", () => {
      expect(profile?.categories[0].categoryId).toBe(electrical!._id);
    });
 
-   test("updateSubscriptionPlan sets plan to basic correctly", async () => {
+   test("updateSubscriptionPlan activates weekly tasker access", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
@@ -519,19 +521,33 @@ describe("taskers", () => {
        serviceRadius: 20,
      });
 
-     // Update to basic plan
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "basic",
+     // Update to weekly tasker access
+     const result = await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "tasker",
+       accessType: "weekly",
+       endsAt: 1_900_000_000_000,
      });
+
+     expect(result.subscriptionPlan).toBe("tasker");
+     expect(result.subscriptionAccessType).toBe("weekly");
+     expect(result.subscriptionStatus).toBe("active");
+     expect(result.subscriptionEndsAt).toBe(1_900_000_000_000);
+     expect(result.hasActiveSubscription).toBe(true);
+     expect(result.ghostMode).toBe(false);
+     expect(result.premiumPin).toBeUndefined();
 
      // Verify plan was set correctly
      const profile = await asUser.query(api.taskers.getTaskerProfile);
-     expect(profile?.subscriptionPlan).toBe("basic");
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("weekly");
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
+     expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
      expect(profile?.premiumPin).toBeUndefined();
    });
 
-   test("updateSubscriptionPlan sets plan to premium and generates premiumPin", async () => {
+   test("updateSubscriptionPlan activates lifetime tasker access", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
@@ -560,17 +576,28 @@ describe("taskers", () => {
        serviceRadius: 25,
      });
 
-     // Update to premium plan
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "premium",
+     // Update to lifetime tasker access
+     const result = await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "tasker",
+       accessType: "lifetime",
      });
 
-     // Verify plan was set correctly and premiumPin was generated
+     expect(result.subscriptionPlan).toBe("tasker");
+     expect(result.subscriptionAccessType).toBe("lifetime");
+     expect(result.subscriptionStatus).toBe("active");
+     expect(result.subscriptionEndsAt).toBeUndefined();
+     expect(result.hasActiveSubscription).toBe(true);
+     expect(result.ghostMode).toBe(false);
+     expect(result.premiumPin).toBeUndefined();
+
+     // Verify plan was set correctly
      const profile = await asUser.query(api.taskers.getTaskerProfile);
-     expect(profile?.subscriptionPlan).toBe("premium");
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("lifetime");
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
-     expect(profile?.premiumPin).toBeDefined();
-     expect(profile?.premiumPin).toMatch(/^\d{6}$/); // 6-digit string
+     expect(profile?.premiumPin).toBeUndefined();
    });
 
    test("updateSubscriptionPlan clears ghostMode when activating subscription", async () => {
@@ -602,23 +629,121 @@ describe("taskers", () => {
        serviceRadius: 15,
      });
 
-     // First set to basic plan
+     // First set to weekly tasker access
      await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "basic",
+       plan: "tasker",
+       accessType: "weekly",
+       endsAt: 1_900_000_000_000,
      });
 
      // Verify ghostMode is false
      let profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.ghostMode).toBe(false);
 
-     // Update to premium plan
+     // Update to lifetime tasker access
      await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "premium",
+       plan: "tasker",
+       accessType: "lifetime",
      });
 
      // Verify ghostMode is still false
      profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("cancelSubscription schedules term-end without immediately hiding the tasker", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|603a",
+       email: "cancel@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Cancel Test",
+       city: "Calgary",
+       province: "AB",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "handyman",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Cancelable Tasker",
+       categoryId: category!._id,
+       categoryBio: "General handyman",
+       rateType: "hourly",
+       hourlyRate: 6500,
+       serviceRadius: 15,
+     });
+
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "tasker",
+       accessType: "weekly",
+       endsAt: 1_900_000_000_000,
+     });
+
+     const result = await asUser.mutation(api.taskers.cancelSubscription, {});
+     expect(result.subscriptionStatus).toBe("cancel_at_period_end");
+     expect(result.hasActiveSubscription).toBe(true);
+     expect(result.ghostMode).toBe(false);
+     expect(typeof result.subscriptionEndsAt).toBe("number");
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionStatus).toBe("cancel_at_period_end");
+     expect(profile?.hasActiveSubscription).toBe(true);
+     expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("expired subscriptions become inactive and force ghost mode", async () => {
+     const t = convexTest(schema, modules);
+     
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|603b",
+       email: "expired@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Expired Test",
+       city: "Calgary",
+       province: "AB",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "handyman",
+     });
+
+     const profileId = await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Expired Tasker",
+       categoryId: category!._id,
+       categoryBio: "General handyman",
+       rateType: "hourly",
+       hourlyRate: 6500,
+       serviceRadius: 15,
+     });
+
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "tasker",
+       accessType: "weekly",
+       endsAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+     });
+
+     await t.run(async (ctx) => {
+       await ctx.db.patch(profileId, {
+         subscriptionStatus: "cancel_at_period_end",
+         subscriptionEndsAt: Date.now() - 1_000,
+         ghostMode: false,
+       });
+     });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("none");
+     expect(profile?.subscriptionStatus).toBe("expired");
+     expect(profile?.hasActiveSubscription).toBe(false);
+     expect(profile?.ghostMode).toBe(true);
    });
 
    test("setGhostMode fails without active subscription", async () => {
@@ -687,27 +812,69 @@ describe("taskers", () => {
        serviceRadius: 30,
      });
 
-     // Set subscription to basic
+     // Set subscription to weekly tasker access
      await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "basic",
+       plan: "tasker",
+       accessType: "weekly",
+       endsAt: 1_900_000_000_000,
      });
 
      // Enable ghost mode
-     await asUser.mutation(api.taskers.setGhostMode, {
+     let result = await asUser.mutation(api.taskers.setGhostMode, {
        ghostMode: true,
      });
+     expect(result.ghostMode).toBe(true);
 
      // Verify ghost mode is enabled
      let profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.ghostMode).toBe(true);
 
      // Disable ghost mode
-     await asUser.mutation(api.taskers.setGhostMode, {
+     result = await asUser.mutation(api.taskers.setGhostMode, {
        ghostMode: false,
      });
+     expect(result.ghostMode).toBe(false);
 
      // Verify ghost mode is disabled
      profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("cancelSubscription rejects lifetime access", async () => {
+     const t = convexTest(schema, modules);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|605b",
+       email: "lifetimecancel@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Lifetime Cancel Test",
+       city: "Ottawa",
+       province: "ON",
+     });
+
+     await t.mutation(api.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "hvac",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Lifetime Tasker",
+       categoryId: category!._id,
+       categoryBio: "HVAC services",
+       rateType: "hourly",
+       hourlyRate: 9000,
+       serviceRadius: 30,
+     });
+
+     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
+       plan: "tasker",
+       accessType: "lifetime",
+     });
+
+     await expect(
+       asUser.mutation(api.taskers.cancelSubscription, {}),
+     ).rejects.toThrow("Lifetime access does not renew and cannot be cancelled");
    });
 });

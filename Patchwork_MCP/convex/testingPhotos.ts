@@ -1,5 +1,5 @@
 import { internalQuery, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 export const checkUserPhotos = internalQuery({
   args: { email: v.string() },
@@ -62,7 +62,7 @@ export const forceUpdateUserPhoto = internalMutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     
-    if (!user) throw new Error(`User not found: ${args.email}`);
+    if (!user) throw new ConvexError(`User not found: ${args.email}`);
     
     await ctx.db.patch(user._id, {
       photo: args.photoStorageId,

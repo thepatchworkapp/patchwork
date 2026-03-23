@@ -94,12 +94,12 @@ export default function App() {
   const [categoryHourlyRate, setCategoryHourlyRate] = useState("");
   const [categoryFixedRate, setCategoryFixedRate] = useState("");
   const [categoryServiceRadius, setCategoryServiceRadius] = useState(50);
-  const [categoryPhotos, setCategoryPhotos] = useState<string[]>([]);
+  const [categoryPhotos, setCategoryPhotos] = useState<Id<"_storage">[]>([]);
   const [pendingNewCategory, setPendingNewCategory] = useState<string | null>(null);
    const [verificationEmail, setVerificationEmail] = useState("");
    
    // Subscription tracking
-   const [subscriptionPlan, setSubscriptionPlan] = useState<"none" | "basic" | "premium">("none"); // Mock: no subscription
+  const [subscriptionPlan, setSubscriptionPlan] = useState<"none" | "tasker" | "basic" | "premium">("none"); // Mock: no subscription
    const [pendingCategories, setPendingCategories] = useState<string[]>([]);
 
    // Request form state (shared across RequestStep1-4)
@@ -168,7 +168,7 @@ export default function App() {
         displayName,
         categoryId: category._id,
         categoryBio,
-        photos: categoryPhotos.length > 0 ? categoryPhotos as any : undefined,
+        photos: categoryPhotos.length > 0 ? categoryPhotos : undefined,
         rateType: categoryRateType,
         hourlyRate: hourlyRateCents,
         fixedRate: fixedRateCents,
@@ -187,6 +187,11 @@ export default function App() {
        setSubscriptionPlan(taskerProfile.subscriptionPlan);
      }
    }, [taskerProfile?.subscriptionPlan]);
+
+   // Keep tasker UI state aligned with backend auth/profile state across reloads.
+   useEffect(() => {
+     setIsTasker(Boolean(convexUser?.roles?.isTasker || taskerProfile));
+   }, [convexUser?.roles?.isTasker, taskerProfile]);
 
    // Smart redirect based on auth state
    useEffect(() => {
@@ -392,20 +397,9 @@ export default function App() {
           <Profile
             onNavigate={navigate}
             onSwitchToTasker={() => navigate("tasker-onboarding1")}
-            isTasker={isTasker}
             userPhoto={userPhoto}
-            taskerCategories={selectedCategories}
-            taskerCategoryBio={categoryBio}
-            taskerCategoryRateType={categoryRateType}
-            taskerCategoryHourlyRate={categoryHourlyRate}
-            taskerCategoryFixedRate={categoryFixedRate}
-            taskerCategoryServiceRadius={categoryServiceRadius}
-            taskerCategoryPhotos={categoryPhotos}
             pendingNewCategory={pendingNewCategory}
             onCategoryModalClosed={() => setPendingNewCategory(null)}
-            onCategoryRemoved={(category) => {
-              setSelectedCategories(selectedCategories.filter(c => c !== category));
-            }}
             subscriptionPlan={subscriptionPlan}
           />
         );
@@ -459,9 +453,9 @@ export default function App() {
         return (
           <Subscriptions
             onBack={goBack}
-            onSubscribe={(plan) => {
+            onSubscribe={() => {
               // Update subscription plan
-              setSubscriptionPlan(plan);
+              setSubscriptionPlan("tasker");
               setIsTasker(true);
               
               // Apply pending categories if any
