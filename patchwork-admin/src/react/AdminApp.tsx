@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ConvexReactClient, useQuery } from "convex/react";
+import { ConvexReactClient, useMutation, useQuery } from "convex/react";
 import { anyApi } from "convex/server";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 
@@ -136,128 +136,184 @@ function LoginCard() {
   };
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[1100px] flex-col px-4 py-10">
-      <div className="mb-8 flex items-center justify-between">
-        <div className="pw-fade-up">
-          <div className="pw-display text-xl tracking-tight">Patchwork Admin</div>
-          <div className="text-sm text-kumo-muted">
-            Cold Archive build. OTP only. Convex-backed.
-          </div>
-        </div>
-        <div className="pw-fade-up pw-mono text-xs text-kumo-muted" style={{ animationDelay: "80ms" }}>
-          {new Date().toLocaleString()}
-        </div>
+    <div className="mx-auto flex min-h-dvh w-full max-w-[640px] flex-col items-center justify-center px-4 py-10">
+      <div className="mb-6 text-center">
+        <div className="pw-display text-2xl tracking-tight">Patchwork</div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Surface className="pw-card pw-fade-up relative overflow-hidden rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-6 shadow-[var(--pw-shadow)]">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="pw-display text-base tracking-tight">Access</div>
-            <Badge variant="outline">OTP</Badge>
-          </div>
+      <Surface className="pw-card pw-fade-up w-full rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-6 shadow-[var(--pw-shadow)]">
+        <div className="grid gap-3">
+          <Input
+            label="Admin email"
+            placeholder="you@domain.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            spellCheck={false}
+          />
 
-          <div className="grid gap-3">
+          {stage === "otp" && (
             <Input
-              label="Admin email"
-              placeholder="you@domain.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              label="Verification code"
+              placeholder="6 digits"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              inputMode="numeric"
+              autoComplete="one-time-code"
               spellCheck={false}
             />
+          )}
 
-            {stage === "otp" && (
-              <Input
-                label="Verification code"
-                placeholder="6 digits"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                spellCheck={false}
-              />
-            )}
+          {status.kind === "error" && (
+            <div className="rounded-xl border border-kumo-danger/30 bg-kumo-danger/5 p-3 text-sm text-kumo-strong">
+              {status.message}
+            </div>
+          )}
 
-            {status.kind === "error" && (
-              <div className="rounded-xl border border-kumo-danger/30 bg-kumo-danger/5 p-3 text-sm text-kumo-strong">
-                {status.message}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2">
-              {stage === "email" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {stage === "email" ? (
+              <Button
+                variant="primary"
+                onClick={onSend}
+                loading={status.kind === "sending"}
+                icon={<ArrowRight className="size-4" />}
+              >
+                Send code
+              </Button>
+            ) : (
+              <>
                 <Button
                   variant="primary"
-                  onClick={onSend}
-                  loading={status.kind === "sending"}
+                  onClick={onVerify}
+                  loading={status.kind === "verifying"}
                   icon={<ArrowRight className="size-4" />}
                 >
-                  Send code
+                  Verify
                 </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="primary"
-                    onClick={onVerify}
-                    loading={status.kind === "verifying"}
-                    icon={<ArrowRight className="size-4" />}
-                  >
-                    Verify
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setStage("email");
-                      setOtp("");
-                      setOtpRequestedAt(null);
-                      setStatus({ kind: "idle" });
-                    }}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={onSend}
-                    loading={status.kind === "sending"}
-                  >
-                    Resend
-                  </Button>
-                </>
-              )}
-            </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setStage("email");
+                    setOtp("");
+                    setOtpRequestedAt(null);
+                    setStatus({ kind: "idle" });
+                  }}
+                >
+                  Back
+                </Button>
+                <Button variant="ghost" onClick={onSend} loading={status.kind === "sending"}>
+                  Resend
+                </Button>
+              </>
+            )}
           </div>
-        </Surface>
-
-        <Surface
-          className="pw-card pw-fade-up relative overflow-hidden rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-6 shadow-[var(--pw-shadow)]"
-          style={{ animationDelay: "90ms" }}
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <div className="pw-display text-base tracking-tight">Wiring</div>
-            <Badge variant="beta">{import.meta.env.DEV ? "dev-friendly" : "locked down"}</Badge>
-          </div>
-          <p className="text-sm text-kumo-muted">
-            This admin uses Better Auth (email OTP) talking directly to the backend’s HTTP
-            actions domain. Convex queries/mutations use the matching websocket domain.
-          </p>
-
-          <div className="mt-4 grid gap-3">
-            <div className="pw-subcard">
-              <div className="pw-mono mb-1 text-xs text-kumo-muted">Backend websocket URL</div>
-              <div className="pw-mono text-sm break-all text-kumo-strong">
-                {safeEnvValueForUI(getConvexCloudUrl() || undefined)}
-              </div>
-            </div>
-            <div className="pw-subcard">
-              <div className="pw-mono mb-1 text-xs text-kumo-muted">Backend HTTP actions URL</div>
-              <div className="pw-mono text-sm break-all text-kumo-strong">
-                {safeEnvValueForUI(getConvexSiteUrl() || undefined)}
-              </div>
-            </div>
-          </div>
-        </Surface>
-      </div>
+        </div>
+      </Surface>
     </div>
+  );
+}
+
+type ResetDatabaseResult = {
+  resetAt: number;
+  deletedMessages: number;
+  deletedReviews: number;
+  deletedJobs: number;
+  deletedProposals: number;
+  deletedConversations: number;
+  deletedJobRequests: number;
+  deletedTaskerCategories: number;
+  deletedTaskerProfiles: number;
+  deletedSeekerProfiles: number;
+  deletedReviewAccess: number;
+  deletedOtps: number;
+  deletedAdminOtps: number;
+  deletedUsers: number;
+  deletedStorageFiles: number;
+  preservedAdminEmails: string[];
+};
+
+function AdminMaintenanceCard() {
+  const resetDatabase = useMutation(api.admin.resetDatabase);
+  const reseedReviewerAccounts = useMutation(api.admin.reseedReviewerAccounts);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isReseeding, setIsReseeding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const onReset = async () => {
+    const confirmed = window.confirm(
+      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records."
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsResetting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = (await resetDatabase({})) as ResetDatabaseResult;
+      setNotice(
+        `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, and ${result.deletedStorageFiles} files.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? redactBackendUrls(err.message) : "Failed to reset database.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const onReseed = async () => {
+    setIsReseeding(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = (await reseedReviewerAccounts({})) as ReviewAccessStatus;
+      setNotice(
+        `Reviewer accounts reseeded at ${formatDate(result.updatedAt)} and review access is ${result.enabled ? "enabled" : "disabled"}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? redactBackendUrls(err.message) : "Failed to reseed reviewer accounts.");
+    } finally {
+      setIsReseeding(false);
+    }
+  };
+
+  return (
+    <Surface className="pw-card pw-fade-up rounded-[var(--pw-radius)] border border-kumo-danger/25 bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="pw-display text-base tracking-tight">Admin Tools</div>
+            <Badge variant="outline">production</Badge>
+          </div>
+          <div className="mt-1 text-sm text-kumo-muted">
+            Database reset is destructive. Reseed restores the Apple reviewer accounts after a reset.
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="destructive" onClick={onReset} disabled={isResetting || isReseeding}>
+          {isResetting ? "Resetting..." : "Reset database"}
+        </Button>
+        <Button variant="secondary" onClick={onReseed} disabled={isResetting || isReseeding}>
+          {isReseeding ? "Reseeding..." : "Reseed Apple reviewer accounts"}
+        </Button>
+      </div>
+
+      {notice && (
+        <div className="mt-4">
+          <Banner text={notice} />
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4">
+          <Banner variant="error" icon={<ShieldAlert className="size-4" />} text={error} />
+        </div>
+      )}
+    </Surface>
   );
 }
 
@@ -292,6 +348,17 @@ type AdminUserDetail = {
   jobsAsTasker: any[];
   reviewsGiven: any[];
   reviewsReceived: any[];
+};
+
+type ReviewAccessStatus = {
+  allowedEmails?: string[];
+  email: string;
+  enabled: boolean;
+  betterAuthUserId?: string | null;
+  appUserId?: string | null;
+  lastEnabledAt?: number | null;
+  lastDisabledAt?: number | null;
+  updatedAt?: number | null;
 };
 
 function shortId(id: string, start = 10, end = 6): string {
@@ -393,10 +460,96 @@ function UserAvatar({
   );
 }
 
+function AppReviewAccessCard({ status }: { status: ReviewAccessStatus | null | undefined }) {
+  const setReviewAccess = useMutation(api.admin.setReviewAccess);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const enabled = !!status?.enabled;
+  const allowedEmails = status?.allowedEmails?.length
+    ? status.allowedEmails
+    : ["review@apple.com", "seeker@apple.com"];
+
+  const onToggle = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await setReviewAccess({ enabled: !enabled });
+    } catch (err) {
+      setError(err instanceof Error ? redactBackendUrls(err.message) : "Failed to update app review access.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Surface className="pw-card pw-fade-up rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="pw-display text-base tracking-tight">App Review Access</div>
+            <Badge variant={enabled ? "secondary" : "outline"} className="pw-badge-tight">
+              {enabled ? "enabled" : "disabled"}
+            </Badge>
+          </div>
+          <div className="mt-1 text-sm text-kumo-muted">Reviewer emails</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {allowedEmails.map((email) => (
+              <span
+                key={email}
+                className="pw-mono inline-flex items-center rounded-full border border-kumo-fill bg-kumo-tint px-2.5 py-1 text-xs text-kumo-strong"
+              >
+                {email}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <Button variant={enabled ? "secondary" : "primary"} onClick={onToggle} disabled={isSaving || status === undefined}>
+          {isSaving ? "Saving..." : enabled ? "Disable" : "Enable"}
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="pw-microcard">
+          <div className="pw-mono text-xs text-kumo-muted">Last enabled</div>
+          <div className="text-sm text-kumo-strong">{formatDate(status?.lastEnabledAt)}</div>
+        </div>
+        <div className="pw-microcard">
+          <div className="pw-mono text-xs text-kumo-muted">Last disabled</div>
+          <div className="text-sm text-kumo-strong">{formatDate(status?.lastDisabledAt)}</div>
+        </div>
+        <div className="pw-microcard">
+          <div className="pw-mono text-xs text-kumo-muted">Updated</div>
+          <div className="text-sm text-kumo-strong">{formatDate(status?.updatedAt)}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div>
+          <div className="pw-mono mb-1 text-xs text-kumo-muted">Auth user</div>
+          <ClipboardText size="sm" text={status?.betterAuthUserId || "Not provisioned"} />
+        </div>
+        <div>
+          <div className="pw-mono mb-1 text-xs text-kumo-muted">App user</div>
+          <ClipboardText size="sm" text={status?.appUserId || "Not provisioned"} />
+        </div>
+      </div>
+
+      {error && (
+        <div className="mt-4">
+          <Banner variant="error" icon={<ShieldAlert className="size-4" />} text={error} />
+        </div>
+      )}
+    </Surface>
+  );
+}
+
 function DashboardShell({ email }: { email: string }) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(80);
+  const reviewAccess = useQuery(api.admin.getReviewAccess, {}) as ReviewAccessStatus | null | undefined;
 
   const data = useQuery(api.admin.listAllUsers, { limit }) as
     | { users: UserRow[]; cursor: string | null }
@@ -438,6 +591,14 @@ function DashboardShell({ email }: { email: string }) {
           </Button>
         </div>
       </Surface>
+
+      <div className="mb-6">
+        <AppReviewAccessCard status={reviewAccess} />
+      </div>
+
+      <div className="mb-6">
+        <AdminMaintenanceCard />
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
         <Surface className="pw-card pw-fade-up rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">

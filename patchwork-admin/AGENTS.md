@@ -5,6 +5,14 @@ This folder contains the **Patchwork admin** frontend deployed to Cloudflare Pag
 - `https://admin.ddga.ltd` (custom domain)
 - `https://patchwork-admin-staging.pages.dev` (Pages default domain)
 
+## Backend Target
+
+- The admin frontend should always be wired to the production Convex deployment unless the user explicitly says otherwise.
+- Production backend:
+  - `PUBLIC_CONVEX_URL=https://vibrant-caribou-150.convex.cloud`
+  - `PUBLIC_CONVEX_SITE_URL=https://vibrant-caribou-150.convex.site`
+- Treat this as the default for local builds, deploys, and debugging. Do not point the hosted admin site at a staging or dev backend by accident.
+
 ## Stack
 
 - Astro (static output) + React islands
@@ -59,7 +67,8 @@ Notes:
 ```bash
 cd patchwork-admin
 
-PUBLIC_CONVEX_URL="https://<deployment>.convex.cloud" \
+PUBLIC_CONVEX_URL="https://vibrant-caribou-150.convex.cloud" \
+PUBLIC_CONVEX_SITE_URL="https://vibrant-caribou-150.convex.site" \
   npm run dev
 ```
 
@@ -70,7 +79,8 @@ This repo deploys via **direct upload** (no Git integration). Env vars are baked
 ```bash
 cd patchwork-admin
 
-PUBLIC_CONVEX_URL="https://<deployment>.convex.cloud" \
+PUBLIC_CONVEX_URL="https://vibrant-caribou-150.convex.cloud" \
+PUBLIC_CONVEX_SITE_URL="https://vibrant-caribou-150.convex.site" \
   npm run build
 
 npx wrangler pages deploy dist \
