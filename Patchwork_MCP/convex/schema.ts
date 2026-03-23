@@ -157,6 +157,7 @@ export default defineSchema({
     sortOrder: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
+    .index("by_name", ["name"])
     .index("by_active", ["isActive"]),
 
   // ============================================
@@ -413,5 +414,15 @@ export default defineSchema({
     createdAt: v.number(),
     expiresAt: v.number(),
     verifyAttempts: v.number(),
+  }).index("by_email", ["email"]),
+
+  reviewAccess: defineTable({
+    email: v.string(),
+    enabled: v.boolean(),
+    betterAuthUserId: v.optional(v.string()),
+    appUserId: v.optional(v.id("users")),
+    lastEnabledAt: v.optional(v.number()),
+    lastDisabledAt: v.optional(v.number()),
+    updatedAt: v.number(),
   }).index("by_email", ["email"]),
 });
