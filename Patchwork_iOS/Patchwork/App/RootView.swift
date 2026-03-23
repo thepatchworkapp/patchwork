@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppState.self) private var appState
     @Environment(LocationManager.self) private var locationManager
+    @State private var isForegroundRefreshPending = false
 
     var body: some View {
         Group {
@@ -13,6 +15,12 @@ struct RootView: View {
                         .task {
                             await appState.loadBootstrapData(client: sessionStore.client)
                         }
+                } else if isForegroundRefreshPending {
+                    if appState.currentUser == nil {
+                        ProgressView("Loading Patchwork...")
+                    } else {
+                        MainTabView()
+                    }
                 } else if appState.currentUser == nil {
                     ProfileSetupView()
                 } else if needsLocationPrompt {
@@ -39,6 +47,20 @@ struct RootView: View {
                 .accessibilityIdentifier("Root.errorAlertOKButton")
         } message: {
             Text(appState.lastError ?? "Unknown error")
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else {
+                return
+            }
+            guard sessionStore.isAuthenticated, appState.isBootstrapped else {
+                return
+            }
+
+            isForegroundRefreshPending = true
+            Task { @MainActor in
+                defer { isForegroundRefreshPending = false }
+                await appState.refreshAuthedData(client: sessionStore.client)
+            }
         }
     }
 
