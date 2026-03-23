@@ -38,6 +38,17 @@ Before starting development, ensure you have accounts with the following service
 6.  Generate a **Private Key** (AuthKey) and download it.
 7.  Note your **Team ID**, **Client ID** (Services ID identifier), and **Key ID**.
 
+### App Store Connect App Record (iOS)
+
+Recorded on 2026-02-17:
+
+| Field | Value |
+| :--- | :--- |
+| App Name | `Patchwork: Freelance` |
+| Apple ID | `6759272540` |
+| Bundle Identifier | `ltd.ddga.patchwork` |
+| Bundle ID Resource ID | `3G58PN9G4W` |
+
 ---
 
 ## Section 3: Stripe Configuration

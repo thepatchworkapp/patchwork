@@ -325,6 +325,36 @@ npx convex dev     # Start Convex backend
 Notes:
 - Vitest is scoped to `convex/__tests__/**` and excludes `tests/ui/**` (Playwright)
 
+## Deployment (CRITICAL: Dual Convex Deployments)
+
+This project has **two** Convex deployments. The client staging site talks to the **dev** deployment, not prod:
+
+| Deployment | Name | Used By |
+|-----------|------|---------|
+| **Dev** | `aware-meerkat-572` | Client staging site (`patchwork-client-staging.pages.dev`) |
+| **Prod** | `vibrant-caribou-150` | Production (not yet live) |
+
+**You MUST push Convex functions to BOTH deployments** when deploying backend changes. If you only run `npx convex deploy`, only prod gets updated and the staging client will break with validator errors.
+
+```bash
+# 1. Push to dev deployment (what the staging client uses)
+npx convex dev --until-success
+
+# 2. Push to prod deployment
+npx convex deploy --yes
+
+# 3. Build and deploy client site
+npm run build
+npx wrangler@latest pages deploy build --project-name patchwork-client-staging --branch main
+
+# 4. Build and deploy admin site (only if admin code changed)
+cd ../patchwork-admin
+PUBLIC_CONVEX_URL="https://aware-meerkat-572.convex.cloud" npm run build
+npx wrangler@latest pages deploy dist --project-name patchwork-admin-staging --branch main
+```
+
+**Why this matters**: `VITE_CONVEX_URL` in `.env.local` points to `aware-meerkat-572` (dev). The Vite build bakes this URL into the client bundle. `npx convex deploy` only pushes to `vibrant-caribou-150` (prod). If you add a new query arg or change a validator, the client will send args the dev backend doesn't recognize, causing `ArgumentValidationError`.
+
 ## Environment Variables
 
 Required in `.env.local`:

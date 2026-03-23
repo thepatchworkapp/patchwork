@@ -14,13 +14,12 @@ Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keep
    - `AppState` for app data and flow state.
 3. **UI layer**
    - `NavigationStack` + `TabView`.
-   - Feature groups: Auth, Home/Browse, Messages/Chat, Jobs, Profile, Request wizard.
+   - Feature groups: Auth, Home/Browse, Messages/Chat, Jobs, Profile.
 
 ## PoC Flow Mapping
 
 - `Splash/Onboarding/SignIn/EmailEntry/EmailVerify` -> `AuthFlowView`
 - `HomeSwipe + Browse + ProviderDetail` -> `HomeView`, `BrowseView`, `ProviderDetailView`
-- `RequestStep1-4` -> `RequestWizardView`
 - `Messages + Chat` -> `MessagesView`, `ChatView`
 - `Jobs` -> `JobsView`
 - `Profile + TaskerOnboarding + Subscriptions` -> `ProfileView`, `TaskerOnboardingView`, `SubscriptionsView`
@@ -36,7 +35,6 @@ Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keep
 - `messages:listMessages`
 - `messages:sendMessage`
 - `jobs:listJobs`
-- `jobRequests:createJobRequest`
 - `taskers:createTaskerProfile`
 - `taskers:updateSubscriptionPlan`
 
