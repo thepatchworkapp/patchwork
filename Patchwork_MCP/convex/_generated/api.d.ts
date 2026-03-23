@@ -22,6 +22,7 @@ import type * as location from "../location.js";
 import type * as messages from "../messages.js";
 import type * as proposals from "../proposals.js";
 import type * as resend from "../resend.js";
+import type * as reviewAccess from "../reviewAccess.js";
 import type * as reviews from "../reviews.js";
 import type * as search from "../search.js";
 import type * as taskers from "../taskers.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   proposals: typeof proposals;
   resend: typeof resend;
+  reviewAccess: typeof reviewAccess;
   reviews: typeof reviews;
   search: typeof search;
   taskers: typeof taskers;

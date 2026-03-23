@@ -24,6 +24,11 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
   return betterAuth({
     trustedOrigins,
     database: authComponent.adapter(ctx),
+    session: {
+      // Match the native app's persistent-login UX instead of Better Auth's 7-day default.
+      expiresIn: 60 * 60 * 24 * 90,
+      updateAge: 60 * 60 * 24,
+    },
     
     socialProviders: {
       google: {

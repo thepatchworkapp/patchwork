@@ -1,5 +1,5 @@
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 
 function getAdminEmailAllowlist(): Set<string> {
@@ -33,13 +33,13 @@ async function hashOtp(otp: string) {
     .join("");
 }
 
-export const sendOTP = mutation({
+export const sendOTP = internalMutation({
   args: {
     email: v.string(),
   },
   handler: async (ctx, args) => {
     if (!ADMIN_EMAILS.has(args.email.toLowerCase())) {
-      throw new Error("Invalid email. Not authorized.");
+      throw new ConvexError("Invalid email. Not authorized.");
     }
 
     const otp = generateOtp();
@@ -56,7 +56,7 @@ export const sendOTP = mutation({
       .at(0);
 
     if (latestExisting && now - latestExisting.createdAt < OTP_RESEND_COOLDOWN_MS) {
-      throw new Error("Please wait before requesting a new OTP.");
+      throw new ConvexError("Please wait before requesting a new OTP.");
     }
 
     // Delete any existing OTP for this email
@@ -83,14 +83,14 @@ export const sendOTP = mutation({
   },
 });
 
-export const verifyOTP = mutation({
+export const verifyOTP = internalMutation({
   args: {
     email: v.string(),
     otp: v.string(),
   },
   handler: async (ctx, args) => {
     if (!ADMIN_EMAILS.has(args.email.toLowerCase())) {
-      throw new Error("Invalid email. Not authorized.");
+      throw new ConvexError("Invalid email. Not authorized.");
     }
 
     const otpHash = await hashOtp(args.otp);
@@ -102,25 +102,25 @@ export const verifyOTP = mutation({
       .first();
 
     if (!record) {
-      throw new Error("No OTP found. Please request a new one.");
+      throw new ConvexError("No OTP found. Please request a new one.");
     }
 
     const now = Date.now();
     if (now > record.expiresAt) {
       await ctx.db.delete(record._id);
-      throw new Error("OTP has expired. Please request a new one.");
+      throw new ConvexError("OTP has expired. Please request a new one.");
     }
 
     if (record.verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
       await ctx.db.delete(record._id);
-      throw new Error("Too many failed attempts. Please request a new OTP.");
+      throw new ConvexError("Too many failed attempts. Please request a new OTP.");
     }
 
     if (record.otpHash !== otpHash) {
       await ctx.db.patch(record._id, {
         verifyAttempts: record.verifyAttempts + 1,
       });
-      throw new Error("Invalid OTP");
+      throw new ConvexError("Invalid OTP");
     }
 
     await ctx.db.delete(record._id);
