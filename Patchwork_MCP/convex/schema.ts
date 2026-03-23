@@ -64,9 +64,22 @@ export default defineSchema({
     // Subscription state
     subscriptionPlan: v.union(
       v.literal("none"),
+      v.literal("tasker"),
       v.literal("basic"),
       v.literal("premium")
     ),
+    subscriptionAccessType: v.optional(
+      v.union(v.literal("weekly"), v.literal("lifetime"))
+    ),
+    subscriptionStatus: v.optional(
+      v.union(
+        v.literal("inactive"),
+        v.literal("active"),
+        v.literal("cancel_at_period_end"),
+        v.literal("expired")
+      )
+    ),
+    subscriptionEndsAt: v.optional(v.number()),
     ghostMode: v.boolean(), // true = not discoverable
 
     // Premium features
@@ -126,6 +139,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_taskerProfile", ["taskerProfileId"])
+    .index("by_taskerProfile_category", ["taskerProfileId", "categoryId"])
     .index("by_userId", ["userId"])
     .index("by_category", ["categoryId"]),
 

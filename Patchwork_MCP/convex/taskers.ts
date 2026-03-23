@@ -1,6 +1,42 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+function validateTaskerCategoryInput(args: {
+  categoryBio: string;
+  rateType: "hourly" | "fixed";
+  hourlyRate?: number;
+  fixedRate?: number;
+  serviceRadius: number;
+}) {
+  if (args.categoryBio.length > 2000) throw new Error("Category bio must be 2000 characters or less");
+  if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius must be between 1 and 250 km");
+  if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new Error("Hourly rate must be between 1 and 1,000,000 (in cents)");
+  if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new Error("Fixed rate must be between 1 and 1,000,000 (in cents)");
+}
+
+async function buildTaskerProfileResponse(ctx: any, profile: any) {
+  const taskerCategories = await ctx.db
+    .query("taskerCategories")
+    .withIndex("by_taskerProfile", (q: any) => q.eq("taskerProfileId", profile._id))
+    .take(20);
+
+  const categoriesWithNames = await Promise.all(
+    taskerCategories.map(async (tc: any) => {
+      const category = await ctx.db.get(tc.categoryId);
+      return {
+        ...tc,
+        categoryName: category?.name ?? "Unknown",
+        categorySlug: category?.slug ?? "unknown",
+      };
+    })
+  );
+
+  return {
+    ...profile,
+    categories: categoriesWithNames,
+  };
+}
+
 export const createTaskerProfile = mutation({
   args: {
     displayName: v.string(),
@@ -36,10 +72,7 @@ export const createTaskerProfile = mutation({
     // Input validation
     if (args.displayName.length > 100) throw new Error("Display name must be 100 characters or less");
     if (args.bio && args.bio.length > 2000) throw new Error("Bio must be 2000 characters or less");
-    if (args.categoryBio.length > 2000) throw new Error("Category bio must be 2000 characters or less");
-    if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius must be between 1 and 250 km");
-    if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new Error("Hourly rate must be between 1 and 1,000,000 (in cents)");
-    if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new Error("Fixed rate must be between 1 and 1,000,000 (in cents)");
+    validateTaskerCategoryInput(args);
 
     const now = Date.now();
 
@@ -106,26 +139,7 @@ export const getTaskerProfile = query({
 
     if (!profile) return null;
 
-    const taskerCategories = await ctx.db
-      .query("taskerCategories")
-      .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
-      .take(20);
-
-    const categoriesWithNames = await Promise.all(
-      taskerCategories.map(async (tc) => {
-        const category = await ctx.db.get(tc.categoryId);
-        return {
-          ...tc,
-          categoryName: category?.name ?? "Unknown",
-          categorySlug: category?.slug ?? "unknown",
-        };
-      })
-    );
-
-    return {
-      ...profile,
-      categories: categoriesWithNames,
-    };
+    return buildTaskerProfileResponse(ctx, profile);
   },
 });
 
@@ -169,6 +183,9 @@ export const updateTaskerProfile = mutation({
     }
 
     await ctx.db.patch(profile._id, updates);
+
+    const updatedProfile = await ctx.db.get(profile._id);
+    return buildTaskerProfileResponse(ctx, updatedProfile);
   },
 });
 
@@ -210,10 +227,7 @@ export const addTaskerCategory = mutation({
     }
 
     // Input validation
-    if (args.categoryBio.length > 2000) throw new Error("Category bio must be 2000 characters or less");
-    if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new Error("Service radius must be between 1 and 250 km");
-    if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new Error("Hourly rate must be between 1 and 1,000,000 (in cents)");
-    if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new Error("Fixed rate must be between 1 and 1,000,000 (in cents)");
+    validateTaskerCategoryInput(args);
 
     const now = Date.now();
 
@@ -233,6 +247,59 @@ export const addTaskerCategory = mutation({
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const updateTaskerCategory = mutation({
+  args: {
+    categoryId: v.id("categories"),
+    categoryBio: v.string(),
+    rateType: v.union(v.literal("hourly"), v.literal("fixed")),
+    hourlyRate: v.optional(v.number()),
+    fixedRate: v.optional(v.number()),
+    serviceRadius: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+
+    if (!user) throw new Error("User not found");
+
+    const profile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .first();
+
+    if (!profile) throw new Error("Tasker profile not found");
+
+    const category = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
+      .filter((q) => q.eq(q.field("categoryId"), args.categoryId))
+      .first();
+
+    if (!category) {
+      throw new Error("Category not found");
+    }
+
+    validateTaskerCategoryInput(args);
+
+    await ctx.db.patch(category._id, {
+      bio: args.categoryBio,
+      rateType: args.rateType,
+      hourlyRate: args.rateType == "hourly" ? args.hourlyRate : undefined,
+      fixedRate: args.rateType == "fixed" ? args.fixedRate : undefined,
+      serviceRadius: args.serviceRadius,
+      updatedAt: Date.now(),
+    });
+
+    const updatedProfile = await ctx.db.get(profile._id);
+    return buildTaskerProfileResponse(ctx, updatedProfile);
   },
 });
 

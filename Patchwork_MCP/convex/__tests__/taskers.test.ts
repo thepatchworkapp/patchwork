@@ -259,15 +259,130 @@ describe("taskers", () => {
     });
 
     // Update profile
-    await asUser.mutation(api.taskers.updateTaskerProfile, {
+    const updatedProfile = await asUser.mutation(api.taskers.updateTaskerProfile, {
       displayName: "New Name",
       bio: "New and improved bio",
     });
+
+    expect(updatedProfile.displayName).toBe("New Name");
+    expect(updatedProfile.bio).toBe("New and improved bio");
+    expect(updatedProfile.categories).toHaveLength(1);
+    expect(updatedProfile.categories[0].categoryId).toBe(category!._id);
 
     // Verify updates
     const profile = await asUser.query(api.taskers.getTaskerProfile);
     expect(profile?.displayName).toBe("New Name");
     expect(profile?.bio).toBe("New and improved bio");
+  });
+
+  test("updateTaskerCategory updates public service details and clears inactive price fields", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|353",
+      email: "update-category@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Update Category Test",
+      city: "Calgary",
+      province: "AB",
+    });
+
+    await t.mutation(api.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "painting",
+    });
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Fresh Coats",
+      categoryId: category!._id,
+      categoryBio: "Interior painting and trim touch-ups",
+      rateType: "hourly",
+      hourlyRate: 7000,
+      serviceRadius: 20,
+    });
+
+    const updatedProfile = await asUser.mutation(api.taskers.updateTaskerCategory, {
+      categoryId: category!._id,
+      categoryBio: "Premium interior painting and cabinet refinishing",
+      rateType: "fixed",
+      fixedRate: 22500,
+      serviceRadius: 35,
+    });
+
+    const updatedCategory = updatedProfile.categories.find((entry) => entry.categoryId === category!._id);
+    expect(updatedCategory).toBeDefined();
+    expect(updatedCategory?.bio).toBe("Premium interior painting and cabinet refinishing");
+    expect(updatedCategory?.rateType).toBe("fixed");
+    expect(updatedCategory?.fixedRate).toBe(22500);
+    expect(updatedCategory?.hourlyRate).toBeUndefined();
+    expect(updatedCategory?.serviceRadius).toBe(35);
+
+    const profile = await asUser.query(api.taskers.getTaskerProfile);
+    const persistedCategory = profile?.categories.find((entry) => entry.categoryId === category!._id);
+    expect(persistedCategory?.fixedRate).toBe(22500);
+    expect(persistedCategory?.hourlyRate).toBeUndefined();
+  });
+
+  test("updateTaskerCategory rejects edits to another tasker's category", async () => {
+    const t = convexTest(schema, modules);
+
+    const asOwner = t.withIdentity({
+      tokenIdentifier: "google|354",
+      email: "owner@example.com",
+    });
+    const asOther = t.withIdentity({
+      tokenIdentifier: "google|355",
+      email: "other@example.com",
+    });
+
+    await asOwner.mutation(api.users.createProfile, {
+      name: "Category Owner",
+      city: "Montreal",
+      province: "QC",
+    });
+    await asOther.mutation(api.users.createProfile, {
+      name: "Another Tasker",
+      city: "Montreal",
+      province: "QC",
+    });
+
+    await t.mutation(api.categories.seedCategories);
+    const plumbing = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumbing",
+    });
+    const electrical = await t.query(api.categories.getCategoryBySlug, {
+      slug: "electrical",
+    });
+
+    await asOwner.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Owner Profile",
+      categoryId: plumbing!._id,
+      categoryBio: "Plumbing services",
+      rateType: "hourly",
+      hourlyRate: 8000,
+      serviceRadius: 25,
+    });
+
+    await asOther.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Other Profile",
+      categoryId: electrical!._id,
+      categoryBio: "Backup electrical services",
+      rateType: "hourly",
+      hourlyRate: 8200,
+      serviceRadius: 20,
+    });
+
+    await expect(
+      asOther.mutation(api.taskers.updateTaskerCategory, {
+        categoryId: plumbing!._id,
+        categoryBio: "Trying to overwrite someone else's category",
+        rateType: "fixed",
+        fixedRate: 19000,
+        serviceRadius: 15,
+      })
+    ).rejects.toThrow("Category not found");
   });
 
   test("addTaskerCategory adds new category to existing profile", async () => {

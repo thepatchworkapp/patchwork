@@ -101,7 +101,6 @@ struct TaskerOnboardingView: View {
     @State private var serviceRadius = 25
 
     @State private var profileDisplayName = ""
-    @State private var profileBio = ""
     @State private var addCategorySheet = false
 
     var body: some View {
@@ -109,17 +108,16 @@ struct TaskerOnboardingView: View {
             if let profile = appState.taskerProfile {
                 TaskerProfileManageView(
                     profileDisplayName: $profileDisplayName,
-                    profileBio: $profileBio,
                     addCategorySheet: $addCategorySheet,
                     categories: appState.categories,
                     existingCategoryIDs: Set(profile.categories.map { $0.categoryId }),
-                    onSaveProfile: { Task { await updateTaskerProfile() } },
-                    onRemoveCategory: { categoryId in Task { await removeCategory(categoryId: categoryId) } },
-                    onAddCategory: { draft in Task { await addCategory(draft: draft) } }
+                    onSaveProfile: updateTaskerProfile,
+                    onRemoveCategory: removeCategory,
+                    onAddCategory: { draft in Task { await addCategory(draft: draft) } },
+                    onUpdateCategory: updateTaskerCategory
                 )
                 .onAppear {
                     profileDisplayName = profile.displayName
-                    profileBio = profile.bio ?? ""
                 }
             } else {
                 TaskerCreateFlowView(
@@ -170,36 +168,26 @@ struct TaskerOnboardingView: View {
         }
     }
 
-    private func updateTaskerProfile() async {
-        do {
-            struct EmptyResult: Decodable {}
-            _ = try await sessionStore.client.mutation(
-                "taskers:updateTaskerProfile",
-                args: [
-                    "displayName": profileDisplayName,
-                    "bio": profileBio,
-                ]
-            ) as EmptyResult
-            await appState.refreshAuthedData(client: sessionStore.client)
-        } catch {
-            appState.lastError = error.localizedDescription
-        }
+    private func updateTaskerProfile() async throws {
+        let updatedProfile: TaskerProfileSelf = try await sessionStore.client.mutation(
+            "taskers:updateTaskerProfile",
+            args: [
+                "displayName": profileDisplayName,
+            ]
+        )
+        appState.taskerProfile = updatedProfile
     }
 
-    private func removeCategory(categoryId: ConvexID) async {
-        do {
-            struct EmptyResult: Decodable {}
-            _ = try await sessionStore.client.mutation(
-                "taskers:removeTaskerCategory",
-                args: ["categoryId": categoryId]
-            ) as EmptyResult
-            await appState.refreshAuthedData(client: sessionStore.client)
-        } catch {
-            appState.lastError = error.localizedDescription
-        }
+    private func removeCategory(categoryId: ConvexID) async throws {
+        struct EmptyResult: Decodable {}
+        _ = try await sessionStore.client.mutation(
+            "taskers:removeTaskerCategory",
+            args: ["categoryId": categoryId]
+        ) as EmptyResult
+        await appState.refreshAuthedData(client: sessionStore.client)
     }
 
-    private func addCategory(draft: AddCategoryDraft) async {
+    private func addCategory(draft: TaskerCategoryDraft) async {
         do {
             struct EmptyResult: Decodable {}
             _ = try await sessionStore.client.mutation(
@@ -219,15 +207,60 @@ struct TaskerOnboardingView: View {
             appState.lastError = error.localizedDescription
         }
     }
+
+    private func updateTaskerCategory(draft: TaskerCategoryDraft) async throws {
+        let updatedProfile: TaskerProfileSelf = try await sessionStore.client.mutation(
+            "taskers:updateTaskerCategory",
+            args: [
+                "categoryId": draft.categoryId,
+                "categoryBio": draft.categoryBio,
+                "rateType": draft.rateType,
+                "hourlyRate": draft.rateType == "hourly" ? max(Int((Double(draft.hourlyRate) ?? 0) * 100), 1) : nil,
+                "fixedRate": draft.rateType == "fixed" ? max(Int((Double(draft.fixedRate) ?? 0) * 100), 1) : nil,
+                "serviceRadius": draft.serviceRadius,
+            ].compactMapValues { $0 }
+        )
+        appState.taskerProfile = updatedProfile
+    }
 }
 
-private struct AddCategoryDraft {
+private struct TaskerCategoryDraft {
     let categoryId: ConvexID
     let categoryBio: String
     let rateType: String
     let hourlyRate: String
     let fixedRate: String
     let serviceRadius: Int
+
+    init(
+        categoryId: ConvexID,
+        categoryBio: String,
+        rateType: String,
+        hourlyRate: String,
+        fixedRate: String,
+        serviceRadius: Int
+    ) {
+        self.categoryId = categoryId
+        self.categoryBio = categoryBio
+        self.rateType = rateType
+        self.hourlyRate = hourlyRate
+        self.fixedRate = fixedRate
+        self.serviceRadius = serviceRadius
+    }
+
+    init(category: TaskerManagedCategory) {
+        self.categoryId = category.categoryId
+        self.categoryBio = category.bio
+        self.rateType = category.rateType
+        self.hourlyRate = Self.priceString(from: category.hourlyRate)
+        self.fixedRate = Self.priceString(from: category.fixedRate)
+        self.serviceRadius = category.serviceRadius
+    }
+
+    private static func priceString(from cents: Int?) -> String {
+        guard let cents else { return "" }
+        return String(format: "%.2f", Double(cents) / 100)
+    }
 }
 
 private struct TaskerCreateFlowView: View {
@@ -368,26 +401,37 @@ private struct TaskerProfileManageView: View {
     @Environment(AppState.self) private var appState
 
     @Binding var profileDisplayName: String
-    @Binding var profileBio: String
     @Binding var addCategorySheet: Bool
     let categories: [Category]
     let existingCategoryIDs: Set<ConvexID>
-    let onSaveProfile: () -> Void
-    let onRemoveCategory: (ConvexID) -> Void
+    let onSaveProfile: () async throws -> Void
+    let onRemoveCategory: (ConvexID) async throws -> Void
+    let onAddCategory: (TaskerCategoryDraft) -> Void
+    let onUpdateCategory: (TaskerCategoryDraft) async throws -> Void
 
-    let onAddCategory: (AddCategoryDraft) -> Void
-
-    @State private var selectedCategory: TaskerManagedCategory?
+    @State private var selectedCategoryID: ConvexID?
+    @State private var isSavingProfile = false
+    @State private var profileStatusMessage: String?
+    @State private var profileStatusIsError = false
 
     var body: some View {
         Form {
             Section("Profile") {
                 TextField("Display name", text: $profileDisplayName)
                     .accessibilityIdentifier("TaskerProfile.displayNameField")
-                TextEditor(text: $profileBio)
-                    .frame(minHeight: 100)
-                    .accessibilityIdentifier("TaskerProfile.bioField")
-                Button("Save", action: onSaveProfile)
+                Text("Public bio, pricing, and service radius are managed per category below.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let profileStatusMessage {
+                    Text(profileStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(profileStatusIsError ? .red : .green)
+                        .accessibilityIdentifier("TaskerProfile.statusBanner")
+                }
+                Button(isSavingProfile ? "Saving..." : "Save") {
+                    Task { await saveProfile() }
+                }
+                .disabled(isSavingProfile || profileDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("TaskerProfile.saveButton")
             }
 
@@ -399,12 +443,12 @@ private struct TaskerProfileManageView: View {
 
                 ForEach(appState.taskerProfile?.categories ?? []) { category in
                     Button {
-                        selectedCategory = category
+                        selectedCategoryID = category.categoryId
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(category.categoryName)
-                                Text(category.rateType.capitalized)
+                                Text(categorySummary(category))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -436,15 +480,57 @@ private struct TaskerProfileManageView: View {
                 onAdd: onAddCategory
             )
         }
-        .sheet(item: $selectedCategory) { category in
-            CategoryDetailSheet(
-                category: category,
-                onRemove: {
-                    onRemoveCategory(category.categoryId)
-                    selectedCategory = nil
+        .sheet(
+            isPresented: Binding(
+                get: { selectedCategoryID != nil && selectedCategory != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        selectedCategoryID = nil
+                    }
                 }
             )
+        ) {
+            if let selectedCategory {
+                EditableTaskerCategorySheet(
+                    category: selectedCategory,
+                    onSave: onUpdateCategory,
+                    onRemove: onRemoveCategory
+                )
+            }
         }
+    }
+
+    private var selectedCategory: TaskerManagedCategory? {
+        guard let selectedCategoryID else { return nil }
+        return appState.taskerProfile?.categories.first(where: { $0.categoryId == selectedCategoryID })
+    }
+
+    private func saveProfile() async {
+        isSavingProfile = true
+        profileStatusMessage = nil
+        defer { isSavingProfile = false }
+
+        do {
+            profileDisplayName = profileDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            try await onSaveProfile()
+            profileStatusIsError = false
+            profileStatusMessage = "Display name saved."
+        } catch {
+            profileStatusIsError = true
+            profileStatusMessage = error.localizedDescription
+        }
+    }
+
+    private func categorySummary(_ category: TaskerManagedCategory) -> String {
+        let price: String
+        if category.rateType == "hourly", let hourlyRate = category.hourlyRate {
+            price = "$\(String(format: "%.2f", Double(hourlyRate) / 100))/hr"
+        } else if let fixedRate = category.fixedRate {
+            price = "$\(String(format: "%.2f", Double(fixedRate) / 100)) flat"
+        } else {
+            price = "Price unavailable"
+        }
+        return "\(category.rateType.capitalized) • \(price) • \(category.serviceRadius) km"
     }
 }
 
@@ -491,7 +577,7 @@ private struct AddCategorySheet: View {
 
     let categories: [Category]
     let existingCategoryIDs: Set<ConvexID>
-    let onAdd: (AddCategoryDraft) -> Void
+    let onAdd: (TaskerCategoryDraft) -> Void
 
     @State private var selectedCategoryId: ConvexID?
     @State private var categoryBio = ""
@@ -547,7 +633,7 @@ private struct AddCategorySheet: View {
                     Button("Add") {
                         guard let selectedCategoryId else { return }
                         onAdd(
-                            AddCategoryDraft(
+                            TaskerCategoryDraft(
                                 categoryId: selectedCategoryId,
                                 categoryBio: categoryBio,
                                 rateType: rateType,
@@ -588,25 +674,51 @@ private struct AddCategorySheet: View {
     }
 }
 
-private struct CategoryDetailSheet: View {
+private struct EditableTaskerCategorySheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let category: TaskerManagedCategory
-    let onRemove: () -> Void
+    let onSave: (TaskerCategoryDraft) async throws -> Void
+    let onRemove: (ConvexID) async throws -> Void
+
+    @State private var categoryBio: String
+    @State private var rateType: String
+    @State private var hourlyRate: String
+    @State private var fixedRate: String
+    @State private var serviceRadius: Int
+    @State private var isSaving = false
+    @State private var isRemoving = false
+    @State private var statusMessage: String?
+
+    init(
+        category: TaskerManagedCategory,
+        onSave: @escaping (TaskerCategoryDraft) async throws -> Void,
+        onRemove: @escaping (ConvexID) async throws -> Void
+    ) {
+        self.category = category
+        self.onSave = onSave
+        self.onRemove = onRemove
+
+        let draft = TaskerCategoryDraft(category: category)
+        _categoryBio = State(initialValue: draft.categoryBio)
+        _rateType = State(initialValue: draft.rateType)
+        _hourlyRate = State(initialValue: draft.hourlyRate)
+        _fixedRate = State(initialValue: draft.fixedRate)
+        _serviceRadius = State(initialValue: draft.serviceRadius)
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Rate") {
-                    LabeledContent("Type", value: category.rateType.capitalized)
-                    LabeledContent("Price", value: priceLabel)
-                    LabeledContent("Service Radius", value: "\(category.serviceRadius) km")
-                }
-
-                Section("Bio") {
-                    Text(category.bio)
-                        .foregroundStyle(.secondary)
-                }
+            Form {
+                CategoryServiceDetailsSection(
+                    title: "Service Details",
+                    bio: $categoryBio,
+                    rateType: $rateType,
+                    hourlyRate: $hourlyRate,
+                    fixedRate: $fixedRate,
+                    serviceRadius: $serviceRadius,
+                    accessibilityPrefix: "TaskerProfileCategorySheet"
+                )
 
                 Section("Performance") {
                     LabeledContent("Rating", value: ratingLabel)
@@ -614,15 +726,31 @@ private struct CategoryDetailSheet: View {
                     LabeledContent("Completed Jobs", value: "\(category.completedJobs ?? 0)")
                 }
 
+                if let statusMessage {
+                    Section {
+                        Text(statusMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+
                 Section {
                     Button("Remove Category", role: .destructive) {
-                        onRemove()
+                        Task { await removeCategory() }
                     }
                     .accessibilityIdentifier("TaskerProfile.removeCategoryButton")
+                    .disabled(isRemoving || isSaving)
                 }
             }
             .navigationTitle(category.categoryName)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Save") {
+                        Task { await saveChanges() }
+                    }
+                    .disabled(isSaving || isRemoving || !canSave)
+                    .accessibilityIdentifier("TaskerProfile.categorySaveButton")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") {
                         dismiss()
@@ -633,19 +761,54 @@ private struct CategoryDetailSheet: View {
         }
     }
 
-    private var priceLabel: String {
-        if category.rateType == "hourly", let hourlyRate = category.hourlyRate {
-            return "$\(String(format: "%.2f", Double(hourlyRate) / 100))/hr"
+    private var canSave: Bool {
+        guard !categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
         }
-        if let fixedRate = category.fixedRate {
-            return "$\(String(format: "%.2f", Double(fixedRate) / 100))"
+        if rateType == "hourly" {
+            return (Double(hourlyRate) ?? 0) > 0
         }
-        return "-"
+        return (Double(fixedRate) ?? 0) > 0
     }
 
     private var ratingLabel: String {
         guard let rating = category.rating else { return "0.0" }
         return String(format: "%.1f", rating)
+    }
+
+    private func saveChanges() async {
+        isSaving = true
+        statusMessage = nil
+        defer { isSaving = false }
+
+        do {
+            try await onSave(
+                TaskerCategoryDraft(
+                    categoryId: category.categoryId,
+                    categoryBio: categoryBio.trimmingCharacters(in: .whitespacesAndNewlines),
+                    rateType: rateType,
+                    hourlyRate: hourlyRate,
+                    fixedRate: fixedRate,
+                    serviceRadius: serviceRadius
+                )
+            )
+            dismiss()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func removeCategory() async {
+        isRemoving = true
+        statusMessage = nil
+        defer { isRemoving = false }
+
+        do {
+            try await onRemove(category.categoryId)
+            dismiss()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 }
 
