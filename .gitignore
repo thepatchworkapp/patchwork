@@ -9,10 +9,14 @@ node_modules/
 # Build output
 dist/
 build/
+.derivedData/
+.artifacts/
+Patchwork_iOS/builds/
 
 # Tooling
 .opencode/
 .codex/
+.agents/
 .astro/
 .wrangler/
 .vscode/
@@ -20,6 +24,11 @@ build/
 test-results/
 playwright-report/
 coverage/
+skills-lock.json
+Patchwork_iOS/.blitz/
+Patchwork_iOS/.claude/
+Patchwork_iOS/.mcp.json
+Patchwork_iOS/SubscriptionKey_*.p8
 
 # Wrangler
 wrangler.toml
