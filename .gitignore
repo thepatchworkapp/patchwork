@@ -29,6 +29,7 @@ Patchwork_iOS/.blitz/
 Patchwork_iOS/.claude/
 Patchwork_iOS/.mcp.json
 Patchwork_iOS/SubscriptionKey_*.p8
+.dev.vars
 
 # Wrangler
 wrangler.toml
