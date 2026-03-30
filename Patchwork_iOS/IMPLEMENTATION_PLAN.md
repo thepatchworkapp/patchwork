@@ -2,7 +2,7 @@
 
 ## Goal
 
-Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keeping the Convex backend unchanged.
+Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keeping it aligned with the live webhook-driven Convex billing backend.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keep
 - `HomeSwipe + Browse + ProviderDetail` -> `HomeView`, `BrowseView`, `ProviderDetailView`
 - `Messages + Chat` -> `MessagesView`, `ChatView`
 - `Jobs` -> `JobsView`
-- `Profile + TaskerOnboarding + Subscriptions` -> `ProfileView`, `TaskerOnboardingView`, `SubscriptionsView`
+- `Profile + TaskerOnboarding + Subscriptions` -> `ProfileView`, `TaskerOnboardingView`, `TaskerBillingSheet`
 
 ## Convex Functions Used
 
@@ -36,9 +36,27 @@ Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keep
 - `messages:sendMessage`
 - `jobs:listJobs`
 - `taskers:createTaskerProfile`
-- `taskers:updateSubscriptionPlan`
+- `taskers:setGhostMode`
+
+## Billing Contract
+
+- RevenueCat offering: `tasker_access_paywall`
+- RevenueCat entitlement: `tasker_access`
+- Product IDs:
+  - `ltd.ddga.patchwork.tasker.subscription.yearly`
+  - `ltd.ddga.patchwork.tasker.lifetime`
+- Backend access types:
+  - `subscription`
+  - `lifetime`
+- Backend status values:
+  - `inactive`
+  - `active`
+  - `cancel_at_period_end`
+  - `expired`
+
+RevenueCat/App Store events update tasker billing through the Convex webhook route. Direct client billing mutations are no longer part of the production contract.
 
 ## Verification
 
 - Build target: `Patchwork_iOS/Patchwork.xcodeproj` scheme `Patchwork` on iOS Simulator.
-- No backend code modifications.
+- Verify against the active Convex deployment configured in `Patchwork/Core/AppConfig.swift`.

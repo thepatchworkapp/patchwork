@@ -7,11 +7,6 @@ struct HomeView: View {
         static let topRhythm: CGFloat = 16
     }
 
-    private enum LayoutMode {
-        case spotlight
-        case list
-    }
-
     private struct TaskerRoute: Hashable, Identifiable {
         let id: ConvexID
     }
@@ -24,7 +19,6 @@ struct HomeView: View {
     @State private var showRadiusSheet = false
     @State private var isStartingChat = false
     @State private var currentCardIndex = 0
-    @State private var layoutMode: LayoutMode = .spotlight
     @State private var cardDragOffset: CGFloat = 0
     @State private var taskerRoute: TaskerRoute?
     private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
@@ -35,11 +29,7 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
                 header
-                if layoutMode == .spotlight {
-                    spotlightContent
-                } else {
-                    listContent
-                }
+                spotlightContent
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -89,48 +79,9 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("Home.radiusButton")
-
-                    HStack(spacing: 6) {
-                        layoutButton(mode: .spotlight, icon: "rectangle.portrait")
-                        layoutButton(mode: .list, icon: "list.bullet")
-                    }
-                    .padding(4)
-                    .background(PatchworkTheme.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
-                    )
                 }
 
-                Menu {
-                    Button("All categories") {
-                        selectedCategorySlug = nil
-                        Task { await reload() }
-                    }
-                    ForEach(appState.categories, id: \.id) { category in
-                        Button(category.name) {
-                            selectedCategorySlug = category.slug
-                            Task { await reload() }
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Text(selectedCategoryName)
-                            .foregroundStyle(PatchworkTheme.textPrimary)
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.subheadline)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .frame(height: 50)
-                    .background(PatchworkTheme.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
-                    )
-                }
-                .accessibilityIdentifier("Home.categoryMenu")
+                categoryPicker
             }
         }
         .padding(.horizontal, MainLayout.horizontalGutter)
@@ -138,21 +89,82 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var listContent: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if appState.taskers.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(appState.taskers) { tasker in
-                        taskerListRow(tasker)
-                            .accessibilityIdentifier("Home.taskerRow.\(tasker.id)")
+    @ViewBuilder
+    private var categoryPicker: some View {
+        if categoriesUnavailable {
+            Button {
+                Task { await retryCategories() }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Categories unavailable")
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+
+                        Text(categoryAvailabilityMessage)
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    if appState.isLoadingCategories {
+                        ProgressView()
+                            .tint(PatchworkTheme.brand)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(PatchworkTheme.brand)
                     }
                 }
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .frame(height: 60)
+                .background(PatchworkTheme.brandSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .padding(.horizontal, MainLayout.horizontalGutter)
-            .padding(.top, MainLayout.topRhythm)
-            .padding(.bottom, MainLayout.horizontalGutter)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Home.categoryRetryButton")
+        } else {
+            Menu {
+                Button("All categories") {
+                    selectedCategorySlug = nil
+                    Task { await reload() }
+                }
+                ForEach(appState.categories, id: \.id) { category in
+                    Button {
+                        selectedCategorySlug = category.slug
+                        Task { await reload() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Text(category.emoji ?? "📋")
+                            Text(category.name)
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedCategoryLabel)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.subheadline)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(PatchworkTheme.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+            }
+            .accessibilityIdentifier("Home.categoryMenu")
         }
     }
 
@@ -316,111 +328,11 @@ struct HomeView: View {
         .shadow(color: PatchworkTheme.brand.opacity(0.1), radius: 24, y: 14)
     }
 
-    private func taskerListRow(_ tasker: TaskerSummary) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: imageURL(tasker)) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                PatchworkTheme.stroke
-            }
-            .frame(width: 56, height: 56)
-            .clipShape(.rect(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(tasker.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(PatchworkTheme.textPrimary)
-                    if tasker.verified == true {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.caption)
-                            .foregroundStyle(PatchworkTheme.success)
-                    }
-                }
-
-                if let categoryName = tasker.categoryName?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !categoryName.isEmpty {
-                    Text(categoryName)
-                        .font(.footnote)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                }
-
-                HStack(spacing: 10) {
-                    reviewSummary(tasker)
-                    if let distance = tasker.distanceLabel {
-                        Label(distance, systemImage: "mappin")
-                            .font(.footnote)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    }
-                }
-
-                HStack {
-                    if let rateLabel = tasker.rateLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !rateLabel.isEmpty {
-                        Text(rateLabel)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(PatchworkTheme.brand)
-                    }
-
-                    Spacer()
-
-                    Button {
-                        taskerRoute = TaskerRoute(id: tasker.id)
-                    } label: {
-                        Text("View")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(PatchworkTheme.brand)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("Home.viewTaskerButton.\(tasker.id)")
-                    .accessibilityLabel("View \(tasker.displayName) profile")
-                }
-            }
-
-            VStack(spacing: 8) {
-                Button {
-                    Task { await startChat(with: tasker.userId) }
-                } label: {
-                    Label("Start chat", systemImage: isStartingChat ? "hourglass" : "message.fill")
-                        .labelStyle(.iconOnly)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(PatchworkTheme.surface)
-                        .frame(width: 34, height: 34)
-                        .background(PatchworkTheme.brand, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isStartingChat)
-                .accessibilityIdentifier("Home.listStartChatButton.\(tasker.userId)")
-                .accessibilityLabel("Start chat with \(tasker.displayName)")
-
-                Button {
-                    taskerRoute = TaskerRoute(id: tasker.id)
-                } label: {
-                    Label("View profile", systemImage: "chevron.right")
-                        .labelStyle(.iconOnly)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("Home.chevronTaskerButton.\(tasker.id)")
-            }
-        }
-        .padding(16)
-        .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(PatchworkTheme.stroke, lineWidth: 1)
-        )
-    }
-
     private var emptyState: some View {
         PatchworkEmptyStateCard(
             systemImage: hasSearchCoordinates ? "sparkles" : "location.slash",
             title: hasSearchCoordinates ? "No taskers found" : "Location unavailable",
-            message: hasSearchCoordinates ? "Try a broader radius or switch categories to surface more nearby professionals." : "Update your location to search nearby taskers."
+            message: hasSearchCoordinates ? "Try a broader radius or switch categories to discover more nearby professionals." : "Update your location to search nearby taskers."
         )
         .frame(maxWidth: .infinity)
         .accessibilityIdentifier("Home.emptyState")
@@ -470,12 +382,24 @@ struct HomeView: View {
         .padding(.top, 20)
     }
 
-    private var selectedCategoryName: String {
+    private var selectedCategoryLabel: String {
         if let selectedCategorySlug,
            let category = appState.categories.first(where: { $0.slug == selectedCategorySlug }) {
-            return category.name
+            let emoji = category.emoji.map { "\($0) " } ?? ""
+            return "\(emoji)\(category.name)"
         }
         return "All categories"
+    }
+
+    private var categoriesUnavailable: Bool {
+        appState.categories.isEmpty
+    }
+
+    private var categoryAvailabilityMessage: String {
+        if let errorMessage = appState.categoriesErrorMessage, !errorMessage.isEmpty {
+            return errorMessage
+        }
+        return "We could not load the category library. Try again."
     }
 
     private var locationDisplayLabel: String {
@@ -520,6 +444,13 @@ struct HomeView: View {
                     .font(.footnote)
                     .foregroundStyle(PatchworkTheme.textSecondary)
             }
+        }
+    }
+
+    private func retryCategories() async {
+        await appState.refreshCategories(client: sessionStore.client)
+        if appState.currentUser != nil {
+            await reload()
         }
     }
 
@@ -601,26 +532,6 @@ struct HomeView: View {
                 cardDragOffset = 0
             }
         }
-    }
-
-    private func layoutButton(mode: LayoutMode, icon: String) -> some View {
-        let isSelected = layoutMode == mode
-        let title = mode == .spotlight ? "Spotlight layout" : "List layout"
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                layoutMode = mode
-            }
-        } label: {
-            Label(title, systemImage: icon)
-                .labelStyle(.iconOnly)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isSelected ? PatchworkTheme.surface : PatchworkTheme.textSecondary)
-                .frame(width: 30, height: 30)
-                .background(isSelected ? PatchworkTheme.brand : PatchworkTheme.stroke, in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(mode == .spotlight ? "Home.layout.spotlightButton" : "Home.layout.listButton")
     }
 
     private func startChat(with taskerUserId: ConvexID) async {

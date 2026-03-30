@@ -2,13 +2,11 @@ import { v } from "convex/values";
 
 export const subscriptionPlanValidator = v.union(
   v.literal("none"),
-  v.literal("tasker"),
-  v.literal("basic"),
-  v.literal("premium")
+  v.literal("tasker")
 );
 
 export const subscriptionAccessTypeValidator = v.union(
-  v.literal("weekly"),
+  v.literal("subscription"),
   v.literal("lifetime")
 );
 
@@ -71,6 +69,14 @@ export const taskerCategoryRateTypeValidator = v.union(
   v.literal("fixed")
 );
 
+export const feedbackSubmissionValidator = v.object({
+  _id: v.id("feedbackSubmissions"),
+  userId: v.id("users"),
+  message: v.string(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const taskerCategorySummaryValidator = v.object({
   _id: v.id("taskerCategories"),
   taskerProfileId: v.id("taskerProfiles"),
@@ -107,7 +113,6 @@ export const taskerProfileResponseValidator = v.object({
   subscriptionStatus: v.optional(subscriptionStatusValidator),
   subscriptionEndsAt: v.optional(v.number()),
   ghostMode: v.boolean(),
-  premiumPin: v.optional(v.string()),
   foundersBadge: v.optional(
     v.object({
       categoryId: v.id("categories"),

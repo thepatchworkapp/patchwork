@@ -11,7 +11,9 @@
 		14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */; };
 		2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */; };
 		31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */; };
+		3F3BF22D0E9B935CD4FE040F /* TaskerPaywallArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */; };
 		451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */; };
+		466DF59B65C572F961448DC5 /* SubscriptionFeedbackMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */; };
 		474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */; };
 		48CD452FB3052C6976D36007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 729E33D4E7B681C1ABDBD69A /* RootView.swift */; };
 		4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDAD88D57BEC8C727115A6F /* MessagesView.swift */; };
@@ -21,6 +23,7 @@
 		686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */; };
 		73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA14B5338C5C33F540967A21 /* LocationManager.swift */; };
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
+		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
 		904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */; };
 		9159CA9BA57F8DDBC1796AFB /* PatchworkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */; };
 		9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */; };
@@ -29,6 +32,7 @@
 		AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */; };
 		B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */; };
 		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
+		BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
@@ -62,11 +66,13 @@
 
 /* Begin PBXFileReference section */
 		09019FECF835A15001917199 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
+		0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerPaywallOptionCard.swift; sourceTree = "<group>"; };
 		19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTopBar.swift; sourceTree = "<group>"; };
 		1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkInputFieldStyle.swift; sourceTree = "<group>"; };
 		1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSurfaceCard.swift; sourceTree = "<group>"; };
 		2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTests.swift; sourceTree = "<group>"; };
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionFeedbackMessage.swift; sourceTree = "<group>"; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
@@ -87,6 +93,7 @@
 		B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliationTests.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2FF7A5790E5506D5EF7226A /* JobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsView.swift; sourceTree = "<group>"; };
+		C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerPaywallArtworkView.swift; sourceTree = "<group>"; };
 		CCDAD88D57BEC8C727115A6F /* MessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesView.swift; sourceTree = "<group>"; };
 		CF104625A9E3F2BC20B0518E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		CFD2BD5E80A7F39881A464BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -96,6 +103,7 @@
 		DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaveReviewView.swift; sourceTree = "<group>"; };
 		E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkStateViews.swift; sourceTree = "<group>"; };
 		E8CE0A5718D2AC6132157B5B /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerBillingSheet.swift; sourceTree = "<group>"; };
 		F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		FA14B5338C5C33F540967A21 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -136,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				B810AFA2F7D8E281A10001B8 /* ProfileView.swift */,
+				BC9A4328C62186CAD5437E18 /* Subscriptions */,
 			);
 			path = Profile;
 			sourceTree = "<group>";
@@ -219,6 +228,17 @@
 				729E33D4E7B681C1ABDBD69A /* RootView.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		BC9A4328C62186CAD5437E18 /* Subscriptions */ = {
+			isa = PBXGroup;
+			children = (
+				2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */,
+				EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */,
+				C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */,
+				0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */,
+			);
+			path = Subscriptions;
 			sourceTree = "<group>";
 		};
 		BE901AEF2A31157915F1E50A /* Messages */ = {
@@ -336,7 +356,6 @@
 				};
 			};
 			buildConfigurationList = 0CF4F45FC44D20E9784E7DD4 /* Build configuration list for PBXProject "Patchwork" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -349,6 +368,7 @@
 				D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 9A88F4BFE0152202D1433ACF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -402,7 +422,11 @@
 				A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */,
 				48CD452FB3052C6976D36007 /* RootView.swift in Sources */,
 				14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */,
+				466DF59B65C572F961448DC5 /* SubscriptionFeedbackMessage.swift in Sources */,
 				607AB8F7707AD6EE1662A1CE /* SubscriptionReconciliation.swift in Sources */,
+				85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */,
+				3F3BF22D0E9B935CD4FE040F /* TaskerPaywallArtworkView.swift in Sources */,
+				BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */,
 				D60729C5F813CE8E8D1D26FE /* UITheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -571,7 +595,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -654,7 +678,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;

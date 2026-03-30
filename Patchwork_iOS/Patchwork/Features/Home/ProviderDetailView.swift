@@ -174,7 +174,7 @@ struct ProviderDetailView: View {
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
 
-                Text(selectedProfile?.categoryBio ?? tasker.bio ?? "Profile details unavailable.")
+                Text(selectedProfile?.categoryBio ?? "Profile details unavailable.")
                     .font(.patchworkBody)
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

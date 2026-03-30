@@ -83,7 +83,7 @@ final class PatchworkUITests: XCTestCase {
         saveScreenshot(named: "ios-tasker-post-profile-setup")
 
         openProfileTab()
-        let primaryAction = app.buttons["Profile.primaryActionLink"]
+        let primaryAction = app.buttons["Profile.taskerOnboardingLink"]
         XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
         saveScreenshot(named: "ios-tasker-profile-tab")
 
@@ -95,10 +95,22 @@ final class PatchworkUITests: XCTestCase {
         )
         saveScreenshot(named: "ios-tasker-after-complete")
 
-        XCTAssertTrue(app.staticTexts["No active plan"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Subscription.basicButton"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.buttons["Subscription.premiumButton"].exists)
-        XCTAssertTrue(app.buttons["Subscription.restoreButton"].exists)
+        XCTAssertTrue(app.otherElements["Subscription.customPaywall"].waitForExistence(timeout: 20))
+
+        if app.buttons["Close"].waitForExistence(timeout: 5) {
+            app.buttons["Close"].tap()
+        } else if app.buttons["Subscription.billingCloseButton"].exists {
+            app.buttons["Subscription.billingCloseButton"].tap()
+        }
+        XCTAssertTrue(app.buttons["TaskerOnboarding4.doneButton"].waitForExistence(timeout: 10))
+        app.buttons["TaskerOnboarding4.doneButton"].tap()
+
+        let subscriptionLink = app.buttons["Profile.visibilitySubscriptionLink"]
+        XCTAssertTrue(subscriptionLink.waitForExistence(timeout: 10))
+        subscriptionLink.tap()
+
+        XCTAssertTrue(app.otherElements["Subscription.customPaywall"].waitForExistence(timeout: 20))
+        saveScreenshot(named: "ios-tasker-paywall-profile")
     }
 
     func testBackgroundResumeDoesNotShowProfileSetupForAuthenticatedUser() throws {
@@ -135,7 +147,7 @@ final class PatchworkUITests: XCTestCase {
         completeProfileSetup(name: "Tasker Manager", city: "Toronto", province: "ON")
 
         openProfileTab()
-        let primaryAction = app.buttons["Profile.primaryActionLink"]
+        let primaryAction = app.buttons["Profile.taskerOnboardingLink"]
         XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
         primaryAction.tap()
 
@@ -145,7 +157,7 @@ final class PatchworkUITests: XCTestCase {
             hourlyRate: "60"
         )
 
-        XCTAssertTrue(app.staticTexts["No active plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Not active"].waitForExistence(timeout: 10))
 
         openTaskerProfileManagement()
 
@@ -182,10 +194,10 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(fixedRateField.waitForExistence(timeout: 10))
         replaceText(in: fixedRateField, with: "145")
 
-        let radiusStepper = app.steppers["TaskerProfileCategorySheet.radiusStepper"]
-        XCTAssertTrue(radiusStepper.waitForExistence(timeout: 10))
+        let radiusIncrementButton = app.buttons["TaskerProfileCategorySheet.radiusIncrementButton"]
+        XCTAssertTrue(radiusIncrementButton.waitForExistence(timeout: 10))
         for _ in 0 ..< 5 {
-            radiusStepper.buttons["Increment"].tap()
+            radiusIncrementButton.tap()
         }
 
         app.buttons["TaskerProfile.categorySaveButton"].tap()
@@ -208,7 +220,7 @@ final class PatchworkUITests: XCTestCase {
 
         XCTAssertEqual(categoryBioField.value as? String, updatedCategoryBio)
         XCTAssertEqual(fixedRateField.value as? String, "145")
-        XCTAssertTrue(radiusStepper.label.contains("30 km"))
+        XCTAssertEqual(identifiedElement("TaskerProfileCategorySheet.radiusValue").label, "30 km")
 
         app.buttons["TaskerProfile.categoryCloseButton"].tap()
 
@@ -233,11 +245,9 @@ final class PatchworkUITests: XCTestCase {
         completeEmailAuth(email: seekerEmail)
         completeProfileSetup(name: "Seeking Manager", city: "Toronto", province: "ON")
 
-        let listButton = app.buttons["Home.layout.listButton"]
-        XCTAssertTrue(listButton.waitForExistence(timeout: 10))
-        listButton.tap()
+        XCTAssertFalse(app.buttons["Home.layout.listButton"].exists)
 
-        let providerButton = identifiedElement("Home.viewTaskerButton.\(taskerProfileId)")
+        let providerButton = app.buttons["Home.spotlightViewProfileButton"]
         XCTAssertTrue(providerButton.waitForExistence(timeout: 20))
         providerButton.tap()
 

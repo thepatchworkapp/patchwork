@@ -17,14 +17,12 @@ export function Profile({
   userPhoto, 
   pendingNewCategory = null,
   onCategoryModalClosed = () => {},
-  subscriptionPlan = "none"
 }: { 
   onNavigate: (screen: string) => void; 
   onSwitchToTasker: () => void;
   userPhoto?: string; 
   pendingNewCategory?: string | null;
   onCategoryModalClosed?: () => void;
-  subscriptionPlan?: "none" | "tasker" | "basic" | "premium";
 }) {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -52,8 +50,6 @@ export function Profile({
   const taskerProfile = useQuery(api.taskers.getTaskerProfile);
   const jobs = useQuery(api.jobs.listJobs, { limit: 100 });
   const setGhostMode = useMutation(api.taskers.setGhostMode);
-  const cancelSubscription = useMutation(api.taskers.cancelSubscription);
-  const [isCancellingSubscription, setIsCancellingSubscription] = useState(false);
 
   // Show loading state while data is being fetched
   if (userData === undefined || taskerProfile === undefined) {
@@ -100,9 +96,8 @@ export function Profile({
         : selectedCategoryDetails.fixedRate
           ? `$${(selectedCategoryDetails.fixedRate / 100).toFixed(0)}`
           : "Rate on request";
-  const taskerSubscriptionPlan = taskerProfile?.subscriptionPlan ?? subscriptionPlan;
-  const hasActiveSubscription =
-    taskerProfile?.hasActiveSubscription ?? taskerSubscriptionPlan !== "none";
+  const taskerSubscriptionPlan = taskerProfile?.subscriptionPlan ?? "none";
+  const hasActiveSubscription = taskerProfile?.hasActiveSubscription ?? taskerSubscriptionPlan !== "none";
   const subscriptionStatus =
     taskerProfile?.subscriptionStatus ?? (hasActiveSubscription ? "active" : "inactive");
   const isCancellationScheduled = subscriptionStatus === "cancel_at_period_end";
@@ -111,15 +106,11 @@ export function Profile({
   const subscriptionPlanLabel =
     taskerSubscriptionPlan === "tasker"
       ? subscriptionAccessType === "lifetime"
-        ? "Lifetime access"
-        : subscriptionAccessType === "weekly"
-          ? "Weekly access"
+        ? "Founders Club"
+        : subscriptionAccessType === "subscription"
+          ? "Subscribe"
           : "Tasker access"
-      : taskerSubscriptionPlan === "premium"
-        ? "Premium plan"
-        : taskerSubscriptionPlan === "basic"
-          ? "Basic plan"
-          : "No active plan";
+      : "Tasker access inactive";
   const subscriptionEndsAtLabel = taskerProfile?.subscriptionEndsAt
     ? new Date(taskerProfile.subscriptionEndsAt).toLocaleDateString("en-US", {
         month: "long",
@@ -224,7 +215,7 @@ export function Profile({
                 <p className="text-neutral-900">{subscriptionPlanLabel}</p>
                 <p className="text-[#6B7280] text-sm">
                   {!hasActiveSubscription
-                    ? "Ghost Mode is locked on until you activate a paid plan."
+                    ? "Ghost Mode is locked on until tasker access is activated in the mobile app."
                     : isCancellationScheduled && subscriptionEndsAtLabel
                       ? `Cancellation is scheduled for ${subscriptionEndsAtLabel}. Ghost Mode turns back on automatically then.`
                       : "Your profile is discoverable and Ghost Mode can be toggled at any time."}
@@ -232,64 +223,12 @@ export function Profile({
               </div>
               <Badge variant={!hasActiveSubscription ? "neutral" : "primary"}>
                 {!hasActiveSubscription
-                  ? "Ghost Mode on"
+                  ? "Inactive"
                   : isCancellationScheduled
                     ? "Ending soon"
                     : "Active"}
               </Badge>
             </div>
-
-            {!hasActiveSubscription ? (
-              <Button
-                variant="primary"
-                fullWidth
-                onClick={() => onNavigate("subscriptions")}
-              >
-                Activate a subscription
-              </Button>
-            ) : (
-              <div className="flex gap-3">
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => onNavigate("subscriptions")}
-                >
-                  Manage access
-                </Button>
-                {subscriptionAccessType !== "lifetime" && (
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    disabled={isCancellationScheduled || isCancellingSubscription}
-                    onClick={async () => {
-                      if (isCancellationScheduled) {
-                        return;
-                      }
-
-                      const confirmed = window.confirm(
-                        "Cancel your subscription at the end of the current term?",
-                      );
-                      if (!confirmed) {
-                        return;
-                      }
-
-                      setIsCancellingSubscription(true);
-                      try {
-                        await cancelSubscription({});
-                      } finally {
-                        setIsCancellingSubscription(false);
-                      }
-                    }}
-                  >
-                    {isCancellationScheduled
-                      ? "Cancellation scheduled"
-                      : isCancellingSubscription
-                        ? "Cancelling..."
-                        : "Cancel subscription"}
-                  </Button>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -463,7 +402,7 @@ export function Profile({
                 <p className="text-neutral-900">Ghost Mode</p>
                 <p className="text-[#6B7280] text-sm">
                   {!hasActiveSubscription
-                    ? "Locked on without an active subscription"
+                    ? "Locked on without active tasker access"
                     : "Hide from Seeker search"}
                 </p>
               </div>

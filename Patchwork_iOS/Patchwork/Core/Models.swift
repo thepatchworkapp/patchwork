@@ -329,7 +329,6 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let subscriptionEndsAt: Int?
     let hasActiveSubscription: Bool?
     let ghostMode: Bool
-    let premiumPin: String?
     let rating: Double?
     let reviewCount: Int?
     let completedJobs: Int?
@@ -348,7 +347,6 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case subscriptionEndsAt
         case hasActiveSubscription
         case ghostMode
-        case premiumPin
         case rating
         case reviewCount
         case completedJobs

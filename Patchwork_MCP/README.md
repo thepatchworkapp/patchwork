@@ -77,19 +77,17 @@ Still mock / placeholder data:
 - Map view in Browse (list view is real)
 - Stripe/RevenueCat payment processing (subscriptions use mock bypass - always succeed)
 
-## Subscription System (Mock Payment Bypass)
+## Subscription System
 
-Subscriptions are wired to real Convex data but bypass actual payment processing. This is intentional - real payments will use RevenueCat when the mobile app goes to production.
+Tasker billing is normalized to RevenueCat plus App Store Connect. Convex is updated by RevenueCat webhook events, not by client-side purchase mutations.
 
 **Current behavior:**
-- User selects weekly or lifetime tasker access
-- Clicks "Subscribe" → mutation immediately succeeds (no payment)
-- Subscription persists to database
-- Ghost mode toggle requires active subscription
+- The only paid tasker access types are `subscription` and `lifetime`
+- RevenueCat webhooks activate, renew, restore, cancel-at-period-end, and expire tasker access
+- Ghost Mode toggle requires active paid tasker access
 
 **Mutations:**
-- `updateSubscriptionPlan({ plan: "tasker", accessType?: "weekly" | "lifetime" })` - Activate tasker access
-- `setGhostMode({ ghostMode: boolean })` - Toggle visibility (requires subscription)
+- `setGhostMode({ ghostMode: boolean })` - Toggle visibility (requires active paid tasker access)
 
 ## Tests
 

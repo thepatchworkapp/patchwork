@@ -3,7 +3,6 @@ import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { useAuth } from "./lib/auth";
 import { TaskerSuccess } from "./screens/TaskerSuccess";
-import { Subscriptions } from "./screens/Subscriptions";
 import { Splash } from "./screens/Splash";
 import { Onboarding } from "./screens/Onboarding";
 import { SignIn } from "./screens/SignIn";
@@ -35,7 +34,6 @@ import { Help } from "./screens/Help";
 import { Jobs } from "./screens/Jobs";
 import { CategorySelection } from "./screens/CategorySelection";
 import { AddCategory } from "./screens/AddCategory";
-import { PremiumUpgrade } from "./screens/PremiumUpgrade";
 
 type Screen = 
   | "splash"
@@ -62,7 +60,6 @@ type Screen =
   | "tasker-onboarding2"
   | "tasker-onboarding4"
   | "tasker-success"
-  | "subscriptions"
   | "job-detail"
   | "leave-review"
   | "help"
@@ -73,8 +70,7 @@ type Screen =
   | "addresses"
   | "add-category"
   | "email-entry"
-  | "email-verify"
-  | "premium-upgrade";
+  | "email-verify";
 
 import { Id } from "../convex/_generated/dataModel";
 
@@ -97,9 +93,6 @@ export default function App() {
   const [categoryPhotos, setCategoryPhotos] = useState<Id<"_storage">[]>([]);
   const [pendingNewCategory, setPendingNewCategory] = useState<string | null>(null);
    const [verificationEmail, setVerificationEmail] = useState("");
-   
-   // Subscription tracking
-  const [subscriptionPlan, setSubscriptionPlan] = useState<"none" | "tasker" | "basic" | "premium">("none"); // Mock: no subscription
    const [pendingCategories, setPendingCategories] = useState<string[]>([]);
 
    // Request form state (shared across RequestStep1-4)
@@ -180,13 +173,6 @@ export default function App() {
       console.error("Failed to create tasker profile:", error);
     }
   };
-
-   // Sync subscription plan from tasker profile
-   useEffect(() => {
-     if (taskerProfile && taskerProfile.subscriptionPlan) {
-       setSubscriptionPlan(taskerProfile.subscriptionPlan);
-     }
-   }, [taskerProfile?.subscriptionPlan]);
 
    // Keep tasker UI state aligned with backend auth/profile state across reloads.
    useEffect(() => {
@@ -400,7 +386,6 @@ export default function App() {
             userPhoto={userPhoto}
             pendingNewCategory={pendingNewCategory}
             onCategoryModalClosed={() => setPendingNewCategory(null)}
-            subscriptionPlan={subscriptionPlan}
           />
         );
       
@@ -445,30 +430,14 @@ export default function App() {
       case "tasker-success":
         return (
           <TaskerSuccess
-            onSubscribe={() => navigate("subscriptions")}
-          />
-        );
-      
-      case "subscriptions":
-        return (
-          <Subscriptions
-            onBack={goBack}
-            onSubscribe={() => {
-              // Update subscription plan
-              setSubscriptionPlan("tasker");
+            onContinue={() => {
               setIsTasker(true);
-              
-              // Apply pending categories if any
+
               if (pendingCategories.length > 0) {
                 setSelectedCategories(pendingCategories);
                 setPendingCategories([]);
               }
-              
-              // Exit ghost mode when activating subscription
-              navigate("profile");
-            }}
-            onSkip={() => {
-              setIsTasker(true);
+
               navigate("profile");
             }}
           />
@@ -505,16 +474,8 @@ export default function App() {
           <CategorySelection
             onBack={goBack}
             onConfirm={(categories) => {
-              // Check if user needs Premium subscription for multiple categories
-              if (categories.length > 1 && (subscriptionPlan === "none" || subscriptionPlan === "basic")) {
-                // Save pending categories and show upgrade modal
-                setPendingCategories(categories);
-                navigate("premium-upgrade");
-              } else {
-                // Premium or only 1 category - allow it
-                setSelectedCategories(categories);
-                goBack();
-              }
+              setSelectedCategories(categories);
+              goBack();
             }}
             preSelected={selectedCategories}
           />
@@ -575,17 +536,6 @@ export default function App() {
             }}
             onBackToSignIn={() => {
               navigate("sign-in");
-            }}
-          />
-        );
-      
-      case "premium-upgrade":
-        return (
-          <PremiumUpgrade
-            onBack={goBack}
-            onUpgrade={() => {
-              // Navigate to subscriptions page to complete premium upgrade
-              navigate("subscriptions");
             }}
           />
         );

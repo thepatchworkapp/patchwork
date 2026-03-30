@@ -7,15 +7,12 @@ import RevenueCat
 final class RevenueCatManager {
     private var isConfigured = false
     private var currentAppUserID: String?
-    private var packagesByPlan: [SubscriptionPlanChoice: Package] = [:]
 
-    private(set) var availablePackages: [SubscriptionPackageState] = []
+    private(set) var currentOffering: Offering?
     private(set) var storeState: StoreSubscriptionState = .empty
     private(set) var managementURL: URL?
     private(set) var isLoading = false
-    private(set) var isPurchasing = false
     private(set) var lastError: String?
-    private(set) var hasUnresolvedExpiryGap = false
 
     func configureIfNeeded() {
         guard !isConfigured else {
@@ -43,11 +40,9 @@ final class RevenueCatManager {
                     _ = try await Purchases.shared.logOut()
                 }
                 currentAppUserID = nil
-                packagesByPlan = [:]
-                availablePackages = []
+                currentOffering = nil
                 storeState = .empty
                 managementURL = nil
-                hasUnresolvedExpiryGap = false
                 return
             }
 
@@ -75,43 +70,12 @@ final class RevenueCatManager {
             let customerInfo = try await customerInfoCall
 
             apply(offerings: offerings, customerInfo: customerInfo)
-
-            if let appState, let client {
-                try await reconcile(appState: appState, client: client)
-            }
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    func purchase(
-        _ plan: SubscriptionPlanChoice,
-        appState: AppState,
-        client: ConvexHTTPClient
-    ) async {
-        configureIfNeeded()
-        guard let package = packagesByPlan[plan] else {
-            lastError = "Subscription option unavailable."
-            return
-        }
-
-        isPurchasing = true
-        defer { isPurchasing = false }
-
-        do {
-            let result = try await Purchases.shared.purchase(package: package)
-            apply(customerInfo: result.customerInfo)
-            try await reconcile(appState: appState, client: client)
-        } catch {
-            if let errorCode = error as? ErrorCode,
-               errorCode == .purchaseCancelledError {
-                return
-            }
-            lastError = error.localizedDescription
-        }
-    }
-
-    func restorePurchases(appState: AppState, client: ConvexHTTPClient) async {
+    func restorePurchases() async {
         configureIfNeeded()
         isLoading = true
         defer { isLoading = false }
@@ -119,37 +83,44 @@ final class RevenueCatManager {
         do {
             let customerInfo = try await Purchases.shared.restorePurchases()
             apply(customerInfo: customerInfo)
-            try await reconcile(appState: appState, client: client)
         } catch {
             lastError = error.localizedDescription
         }
     }
 
+    @discardableResult
+    func purchase(package: Package) async -> Bool {
+        configureIfNeeded()
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let result = try await Purchases.shared.purchase(package: package)
+            apply(customerInfo: result.customerInfo)
+
+            if result.userCancelled {
+                lastError = nil
+                return false
+            }
+
+            lastError = nil
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     private func apply(offerings: Offerings, customerInfo: CustomerInfo) {
-        let offering = offerings.offering(identifier: AppConfig.revenueCatOfferingLookupKey) ?? offerings.current
-        let packages = offering?.availablePackages ?? []
-
-        packagesByPlan = Dictionary(
-            uniqueKeysWithValues: packages.compactMap { package in
-                guard let plan = plan(for: package.storeProduct.productIdentifier) else {
-                    return nil
-                }
-                return (plan, package)
-            }
-        )
-
-        availablePackages = SubscriptionPlanChoice.allCases.compactMap { plan in
-            guard let package = packagesByPlan[plan] else {
-                return nil
-            }
-            return SubscriptionPackageState(
-                plan: plan,
-                title: plan.title,
-                subtitle: plan.subtitle,
-                priceLabel: package.storeProduct.localizedPriceString
-            )
+        guard let offering = offerings.offering(identifier: AppConfig.revenueCatOfferingLookupKey) else {
+            currentOffering = nil
+            apply(customerInfo: customerInfo)
+            lastError = "Required App Store offering is unavailable."
+            return
         }
 
+        currentOffering = offering
+        lastError = nil
         apply(customerInfo: customerInfo)
     }
 
@@ -163,44 +134,6 @@ final class RevenueCatManager {
             expiresAt: entitlement?.expirationDate.map { Int($0.timeIntervalSince1970 * 1000) }
         )
         managementURL = customerInfo.managementURL
-        hasUnresolvedExpiryGap = false
-    }
-
-    private func reconcile(appState: AppState, client: ConvexHTTPClient) async throws {
-        let action = determineSubscriptionSyncAction(
-            backend: makeBackendSubscriptionSnapshot(from: appState.taskerProfile),
-            store: storeState
-        )
-
-        switch action {
-        case .none:
-            hasUnresolvedExpiryGap = false
-
-        case let .activate(plan, endsAt):
-            var args: [String: Any] = [
-                "plan": "tasker",
-                "accessType": plan.backendAccessType,
-            ]
-            if let endsAt {
-                args["endsAt"] = endsAt
-            }
-            let updatedProfile = try await client.mutation(
-                "taskers:updateSubscriptionPlan",
-                args: args
-            ) as TaskerProfileSelf
-            appState.taskerProfile = updatedProfile
-            hasUnresolvedExpiryGap = false
-            await appState.refreshAuthedData(client: client, surfaceErrors: false)
-
-        case .scheduleCancellation:
-            let updatedProfile = try await client.mutation("taskers:cancelSubscription", args: [:]) as TaskerProfileSelf
-            appState.taskerProfile = updatedProfile
-            hasUnresolvedExpiryGap = false
-            await appState.refreshAuthedData(client: client, surfaceErrors: false)
-
-        case .unresolvedExpiryGap:
-            hasUnresolvedExpiryGap = true
-        }
     }
 
     private func plan(for productIdentifier: String) -> SubscriptionPlanChoice? {

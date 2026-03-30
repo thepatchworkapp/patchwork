@@ -123,6 +123,41 @@ final class PatchworkTests: XCTestCase {
         }
     }
 
+    func testSignOutUsesBetterAuthCookieForServerInvalidation() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/sign-out")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Origin"), "https://aware-meerkat-572.convex.site")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+            XCTAssertEqual(Self.requestBody(from: request), Data("{}".utf8))
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{}".utf8))
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            authToken: "jwt-token",
+            betterAuthCookie: "session=abc"
+        )
+
+        try await client.signOut()
+    }
+
     func testFetchConvexJWTFallsBackToTrustedOriginWhenFirstOriginRejected() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -658,7 +693,7 @@ final class PatchworkTests: XCTestCase {
         )
 
         _ = store.client
-        store.signOut()
+        await store.signOut()
         await refreshCallback?("fresh-token")
 
         XCTAssertFalse(store.isAuthenticated)
@@ -708,7 +743,11 @@ final class PatchworkTests: XCTestCase {
         let appState = AppState()
         appState.currentUser = expectedUser
 
-        await appState.refreshAuthedData(client: client, surfaceErrors: false)
+        await appState.refreshAuthedData(
+            client: client,
+            surfaceErrors: false,
+            shouldRefreshCategories: false
+        )
 
         XCTAssertEqual(appState.currentUser, expectedUser)
         XCTAssertNil(appState.lastError)
@@ -769,7 +808,11 @@ final class PatchworkTests: XCTestCase {
         let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
         let appState = AppState()
 
-        await appState.refreshAuthedData(client: client, surfaceErrors: false)
+        await appState.refreshAuthedData(
+            client: client,
+            surfaceErrors: false,
+            shouldRefreshCategories: false
+        )
 
         XCTAssertEqual(appState.currentUser?.id, "user_456")
         XCTAssertEqual(appState.currentUser?.location?.coordinates?.lat, 43.6532)

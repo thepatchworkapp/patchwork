@@ -1,9 +1,10 @@
 // convex/__tests__/taskers.test.ts
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as taskersModule from "../taskers";
+import * as taskersInternalModule from "../taskersInternal";
 import * as usersModule from "../users";
 import * as categoriesModule from "../categories";
 import * as filesModule from "../files";
@@ -12,6 +13,7 @@ import * as httpModule from "../http";
 
 const modules: Record<string, () => Promise<any>> = {
   "../taskers.ts": async () => taskersModule,
+  "../taskersInternal.ts": async () => taskersInternalModule,
   "../users.ts": async () => usersModule,
   "../categories.ts": async () => categoriesModule,
   "../files.ts": async () => filesModule,
@@ -20,6 +22,29 @@ const modules: Record<string, () => Promise<any>> = {
   "../_generated/api.ts": async () => ({ default: api }),
   "../schema.ts": async () => ({ default: schema }),
 };
+
+const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
+const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
+const PATCHWORK_LIFETIME_PRODUCT_ID = "ltd.ddga.patchwork.tasker.lifetime";
+
+async function applyRevenueCatEvent(
+  t: ReturnType<typeof convexTest>,
+  args: {
+    type: string;
+    userId: string;
+    productId: string;
+    expirationAtMs?: number | null;
+  },
+) {
+  return await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+    type: args.type,
+    appId: PATCHWORK_REVENUECAT_APP_ID,
+    productId: args.productId,
+    appUserId: args.userId,
+    aliases: [],
+    expirationAtMs: args.expirationAtMs ?? null,
+  });
+}
 
 describe("taskers", () => {
   test("createTaskerProfile creates taskerProfile + first taskerCategory", async () => {
@@ -38,7 +63,7 @@ describe("taskers", () => {
     });
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     // Get plumbing category
     const plumbingCategory = await t.query(api.categories.getCategoryBySlug, {
@@ -95,7 +120,7 @@ describe("taskers", () => {
       province: "BC",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "electrical",
     });
@@ -141,7 +166,7 @@ describe("taskers", () => {
     let user = await asUser.query(api.users.getCurrentUser);
     expect(user?.roles.isTasker).toBe(false);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "handyman",
     });
@@ -161,6 +186,37 @@ describe("taskers", () => {
     expect(user?.roles.isTasker).toBe(true);
   });
 
+  test("createTaskerProfile rejects category bios over 500 characters", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|790",
+      email: "longbio@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Long Bio Tasker",
+      city: "Regina",
+      province: "SK",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "cleaning",
+    });
+
+    await expect(
+      asUser.mutation(api.taskers.createTaskerProfile, {
+        displayName: "Over Limit",
+        categoryId: category!._id,
+        categoryBio: "x".repeat(501),
+        rateType: "hourly",
+        hourlyRate: 6000,
+        serviceRadius: 20,
+      })
+    ).rejects.toThrow("Category bio must be 500 characters or less");
+  });
+
   test("getTaskerProfile returns full profile with categories", async () => {
     const t = convexTest(schema, modules);
     
@@ -175,7 +231,7 @@ describe("taskers", () => {
       province: "AB",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
       slug: "plumbing",
     });
@@ -244,7 +300,7 @@ describe("taskers", () => {
       province: "AB",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "painting",
     });
@@ -291,7 +347,7 @@ describe("taskers", () => {
       province: "AB",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "painting",
     });
@@ -325,6 +381,58 @@ describe("taskers", () => {
     const persistedCategory = profile?.categories.find((entry) => entry.categoryId === category!._id);
     expect(persistedCategory?.fixedRate).toBe(22500);
     expect(persistedCategory?.hourlyRate).toBeUndefined();
+
+    await expect(
+      asUser.mutation(api.taskers.updateTaskerCategory, {
+        categoryId: category!._id,
+        categoryBio: "z".repeat(501),
+        rateType: "hourly",
+        hourlyRate: 21000,
+        serviceRadius: 30,
+      })
+    ).rejects.toThrow("Category bio must be 500 characters or less");
+  });
+
+  test("addTaskerCategory rejects category bios over 500 characters", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|791",
+      email: "add-longbio@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Add Long Bio Tasker",
+      city: "Kingston",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const plumbing = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumbing",
+    });
+    const electrical = await t.query(api.categories.getCategoryBySlug, {
+      slug: "electrical",
+    });
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Base Profile",
+      categoryId: plumbing!._id,
+      categoryBio: "Base category bio",
+      rateType: "hourly",
+      hourlyRate: 8000,
+      serviceRadius: 25,
+    });
+
+    await expect(
+      asUser.mutation(api.taskers.addTaskerCategory, {
+        categoryId: electrical!._id,
+        categoryBio: "y".repeat(501),
+        rateType: "fixed",
+        fixedRate: 18000,
+        serviceRadius: 20,
+      })
+    ).rejects.toThrow("Category bio must be 500 characters or less");
   });
 
   test("updateTaskerCategory rejects edits to another tasker's category", async () => {
@@ -350,7 +458,7 @@ describe("taskers", () => {
       province: "QC",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
       slug: "plumbing",
     });
@@ -401,7 +509,7 @@ describe("taskers", () => {
       province: "MB",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
       slug: "plumbing",
     });
@@ -453,7 +561,7 @@ describe("taskers", () => {
        province: "NS",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const plumbing = await t.query(api.categories.getCategoryBySlug, {
        slug: "plumbing",
      });
@@ -492,28 +600,28 @@ describe("taskers", () => {
      expect(profile?.categories[0].categoryId).toBe(electrical!._id);
    });
 
-   test("updateSubscriptionPlan activates weekly tasker access", async () => {
+   test("applyRevenueCatWebhookEvent activates subscription tasker access", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
        tokenIdentifier: "google|601",
-       email: "basic@example.com",
+       email: "subscription@example.com",
      });
 
      await asUser.mutation(api.users.createProfile, {
-       name: "Basic Plan Test",
+       name: "Subscription Plan Test",
        city: "Toronto",
        province: "ON",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "plumbing",
      });
 
      // Create tasker profile
      await asUser.mutation(api.taskers.createTaskerProfile, {
-       displayName: "Basic Subscriber",
+       displayName: "Subscription Subscriber",
        categoryId: category!._id,
        categoryBio: "Plumbing services",
        rateType: "hourly",
@@ -521,54 +629,50 @@ describe("taskers", () => {
        serviceRadius: 20,
      });
 
-     // Update to weekly tasker access
-     const result = await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "weekly",
-       endsAt: 1_900_000_000_000,
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
      });
 
-     expect(result.subscriptionPlan).toBe("tasker");
-     expect(result.subscriptionAccessType).toBe("weekly");
-     expect(result.subscriptionStatus).toBe("active");
-     expect(result.subscriptionEndsAt).toBe(1_900_000_000_000);
-     expect(result.hasActiveSubscription).toBe(true);
-     expect(result.ghostMode).toBe(false);
-     expect(result.premiumPin).toBeUndefined();
+     expect(result).toEqual({ applied: true, reason: "activated" });
 
      // Verify plan was set correctly
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionPlan).toBe("tasker");
-     expect(profile?.subscriptionAccessType).toBe("weekly");
+     expect(profile?.subscriptionAccessType).toBe("subscription");
      expect(profile?.subscriptionStatus).toBe("active");
      expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
-     expect(profile?.premiumPin).toBeUndefined();
    });
 
-   test("updateSubscriptionPlan activates lifetime tasker access", async () => {
+   test("applyRevenueCatWebhookEvent activates lifetime tasker access", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
        tokenIdentifier: "google|602",
-       email: "premium@example.com",
+       email: "lifetime@example.com",
      });
 
      await asUser.mutation(api.users.createProfile, {
-       name: "Premium Plan Test",
+       name: "Lifetime Plan Test",
        city: "Vancouver",
        province: "BC",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "electrical",
      });
 
      // Create tasker profile
      await asUser.mutation(api.taskers.createTaskerProfile, {
-       displayName: "Premium Subscriber",
+       displayName: "Lifetime Subscriber",
        categoryId: category!._id,
        categoryBio: "Electrical services",
        rateType: "hourly",
@@ -576,19 +680,16 @@ describe("taskers", () => {
        serviceRadius: 25,
      });
 
-     // Update to lifetime tasker access
-     const result = await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "lifetime",
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_LIFETIME_PRODUCT_ID,
      });
 
-     expect(result.subscriptionPlan).toBe("tasker");
-     expect(result.subscriptionAccessType).toBe("lifetime");
-     expect(result.subscriptionStatus).toBe("active");
-     expect(result.subscriptionEndsAt).toBeUndefined();
-     expect(result.hasActiveSubscription).toBe(true);
-     expect(result.ghostMode).toBe(false);
-     expect(result.premiumPin).toBeUndefined();
+     expect(result).toEqual({ applied: true, reason: "activated" });
 
      // Verify plan was set correctly
      const profile = await asUser.query(api.taskers.getTaskerProfile);
@@ -597,10 +698,9 @@ describe("taskers", () => {
      expect(profile?.subscriptionStatus).toBe("active");
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
-     expect(profile?.premiumPin).toBeUndefined();
    });
 
-   test("updateSubscriptionPlan clears ghostMode when activating subscription", async () => {
+   test("applyRevenueCatWebhookEvent clears ghostMode when activating subscription", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
@@ -614,7 +714,7 @@ describe("taskers", () => {
        province: "AB",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "handyman",
      });
@@ -629,11 +729,14 @@ describe("taskers", () => {
        serviceRadius: 15,
      });
 
-     // First set to weekly tasker access
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "weekly",
-       endsAt: 1_900_000_000_000,
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
      });
 
      // Verify ghostMode is false
@@ -641,9 +744,10 @@ describe("taskers", () => {
      expect(profile?.ghostMode).toBe(false);
 
      // Update to lifetime tasker access
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "lifetime",
+     await applyRevenueCatEvent(t, {
+       type: "PRODUCT_CHANGE",
+       userId: user!._id,
+       productId: PATCHWORK_LIFETIME_PRODUCT_ID,
      });
 
      // Verify ghostMode is still false
@@ -651,7 +755,7 @@ describe("taskers", () => {
      expect(profile?.ghostMode).toBe(false);
    });
 
-   test("cancelSubscription schedules term-end without immediately hiding the tasker", async () => {
+   test("applyRevenueCatWebhookEvent schedules term-end without immediately hiding the tasker", async () => {
      const t = convexTest(schema, modules);
      
      const asUser = t.withIdentity({
@@ -665,7 +769,7 @@ describe("taskers", () => {
        province: "AB",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "handyman",
      });
@@ -679,17 +783,23 @@ describe("taskers", () => {
        serviceRadius: 15,
      });
 
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "weekly",
-       endsAt: 1_900_000_000_000,
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
      });
 
-     const result = await asUser.mutation(api.taskers.cancelSubscription, {});
-     expect(result.subscriptionStatus).toBe("cancel_at_period_end");
-     expect(result.hasActiveSubscription).toBe(true);
-     expect(result.ghostMode).toBe(false);
-     expect(typeof result.subscriptionEndsAt).toBe("number");
+     const result = await applyRevenueCatEvent(t, {
+       type: "CANCELLATION",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
+     });
+     expect(result).toEqual({ applied: true, reason: "cancellation_scheduled" });
 
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionStatus).toBe("cancel_at_period_end");
@@ -711,12 +821,12 @@ describe("taskers", () => {
        province: "AB",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "handyman",
      });
 
-     const profileId = await asUser.mutation(api.taskers.createTaskerProfile, {
+     await asUser.mutation(api.taskers.createTaskerProfile, {
        displayName: "Expired Tasker",
        categoryId: category!._id,
        categoryBio: "General handyman",
@@ -725,19 +835,24 @@ describe("taskers", () => {
        serviceRadius: 15,
      });
 
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "weekly",
-       endsAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: Date.now() + 7 * 24 * 60 * 60 * 1000,
      });
 
-     await t.run(async (ctx) => {
-       await ctx.db.patch(profileId, {
-         subscriptionStatus: "cancel_at_period_end",
-         subscriptionEndsAt: Date.now() - 1_000,
-         ghostMode: false,
-       });
+     const result = await applyRevenueCatEvent(t, {
+       type: "EXPIRATION",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: Date.now() - 1_000,
      });
+
+     expect(result).toEqual({ applied: true, reason: "expired" });
 
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionPlan).toBe("none");
@@ -760,7 +875,7 @@ describe("taskers", () => {
        province: "QC",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "painting",
      });
@@ -797,7 +912,7 @@ describe("taskers", () => {
        province: "AB",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "hvac",
      });
@@ -812,11 +927,14 @@ describe("taskers", () => {
        serviceRadius: 30,
      });
 
-     // Set subscription to weekly tasker access
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "weekly",
-       endsAt: 1_900_000_000_000,
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
      });
 
      // Enable ghost mode
@@ -840,7 +958,7 @@ describe("taskers", () => {
      expect(profile?.ghostMode).toBe(false);
    });
 
-   test("cancelSubscription rejects lifetime access", async () => {
+   test("applyRevenueCatWebhookEvent expires lifetime access on cancellation", async () => {
      const t = convexTest(schema, modules);
 
      const asUser = t.withIdentity({
@@ -854,7 +972,7 @@ describe("taskers", () => {
        province: "ON",
      });
 
-     await t.mutation(api.categories.seedCategories);
+     await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
        slug: "hvac",
      });
@@ -868,13 +986,118 @@ describe("taskers", () => {
        serviceRadius: 30,
      });
 
-     await asUser.mutation(api.taskers.updateSubscriptionPlan, {
-       plan: "tasker",
-       accessType: "lifetime",
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await applyRevenueCatEvent(t, {
+       type: "CANCELLATION",
+       userId: user!._id,
+       productId: PATCHWORK_LIFETIME_PRODUCT_ID,
      });
 
-     await expect(
-       asUser.mutation(api.taskers.cancelSubscription, {}),
-     ).rejects.toThrow("Lifetime access does not renew and cannot be cancelled");
+     expect(result).toEqual({ applied: true, reason: "expired" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionStatus).toBe("expired");
+     expect(profile?.hasActiveSubscription).toBe(false);
+   });
+
+   test("applyRevenueCatWebhookEvent activates annual subscription access", async () => {
+     const t = convexTest(schema, modules);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|606",
+       email: "revenuecat-subscription@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "RevenueCat Subscription Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Webhook Tasker",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+       type: "INITIAL_PURCHASE",
+       appId: "app6be2ab0fb8",
+       productId: "ltd.ddga.patchwork.tasker.subscription.yearly",
+       appUserId: user!._id,
+       aliases: [],
+       expirationAtMs: 1_900_000_000_000,
+     });
+
+     expect(result).toEqual({ applied: true, reason: "activated" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("subscription");
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
+     expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("applyRevenueCatWebhookEvent ignores the retired weekly product", async () => {
+     const t = convexTest(schema, modules);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|607",
+       email: "revenuecat-weekly@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "RevenueCat Weekly Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Retired Weekly Tasker",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+       type: "INITIAL_PURCHASE",
+       appId: "app6be2ab0fb8",
+       productId: "ltd.ddga.patchwork.tasker.weekly",
+       appUserId: user!._id,
+       aliases: [],
+       expirationAtMs: 1_900_000_000_000,
+     });
+
+     expect(result).toEqual({ applied: false, reason: "legacy_weekly_ignored" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("none");
+     expect(profile?.subscriptionAccessType).toBeUndefined();
+     expect(profile?.subscriptionStatus).toBe("inactive");
+     expect(profile?.ghostMode).toBe(true);
    });
 });

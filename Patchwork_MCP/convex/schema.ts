@@ -64,12 +64,10 @@ export default defineSchema({
     // Subscription state
     subscriptionPlan: v.union(
       v.literal("none"),
-      v.literal("tasker"),
-      v.literal("basic"),
-      v.literal("premium")
+      v.literal("tasker")
     ),
     subscriptionAccessType: v.optional(
-      v.union(v.literal("weekly"), v.literal("lifetime"))
+      v.union(v.literal("subscription"), v.literal("lifetime"))
     ),
     subscriptionStatus: v.optional(
       v.union(
@@ -82,8 +80,6 @@ export default defineSchema({
     subscriptionEndsAt: v.optional(v.number()),
     ghostMode: v.boolean(), // true = not discoverable
 
-    // Premium features
-    premiumPin: v.optional(v.string()), // Unique searchable PIN
     foundersBadge: v.optional(
       v.object({
         categoryId: v.id("categories"),
@@ -104,10 +100,21 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_userId", ["userId"])
-    .index("by_ghostMode", ["ghostMode"])
-    .index("by_premiumPin", ["premiumPin"])
-    .index("by_location", ["location.lat", "location.lng"]),
+  .index("by_userId", ["userId"])
+  .index("by_ghostMode", ["ghostMode"])
+  .index("by_location", ["location.lat", "location.lng"]),
+
+  /**
+   * In-app feedback submissions
+   */
+  feedbackSubmissions: defineTable({
+    userId: v.id("users"),
+    message: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_userId_createdAt", ["userId", "createdAt"])
+    .index("by_createdAt", ["createdAt"]),
 
   /**
    * Tasker's category-specific settings
@@ -138,7 +145,6 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_taskerProfile", ["taskerProfileId"])
     .index("by_taskerProfile_category", ["taskerProfileId", "categoryId"])
     .index("by_userId", ["userId"])
     .index("by_category", ["categoryId"]),

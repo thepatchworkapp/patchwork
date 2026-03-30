@@ -6,17 +6,19 @@ import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import geospatialSchema from "../../node_modules/@convex-dev/geospatial/dist/component/schema.js";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as usersModule from "../users";
 import * as categoriesModule from "../categories";
 import * as taskersModule from "../taskers";
+import * as taskersInternalModule from "../taskersInternal";
 import * as filesModule from "../files";
 
 const modules: Record<string, () => Promise<any>> = {
   "../users.ts": async () => usersModule,
   "../categories.ts": async () => categoriesModule,
   "../taskers.ts": async () => taskersModule,
+  "../taskersInternal.ts": async () => taskersInternalModule,
   "../location.ts": async () => await import("../location"),
   "../search.ts": async () => await import("../search"),
   "../files.ts": async () => filesModule,
@@ -66,12 +68,30 @@ const createTest = () => {
   return t;
 };
 
+const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
+const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
+
+async function applyAnnualRevenueCatAccess(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  expirationAtMs?: number,
+) {
+  return await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+    type: "INITIAL_PURCHASE",
+    appId: PATCHWORK_REVENUECAT_APP_ID,
+    productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+    appUserId: userId,
+    aliases: [],
+    expirationAtMs: expirationAtMs ?? null,
+  });
+}
+
 describe("searchTaskers", () => {
   test("returns taskers in category", async () => {
     const t = createTest();
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
     expect(cleaningCategory).toBeDefined();
@@ -101,9 +121,9 @@ describe("searchTaskers", () => {
       }
     );
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
@@ -128,7 +148,7 @@ describe("searchTaskers", () => {
     const t = createTest();
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -153,9 +173,9 @@ describe("searchTaskers", () => {
       serviceRadius: 10,
     });
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
@@ -183,7 +203,7 @@ describe("searchTaskers", () => {
   test("excludes taskers without an active subscription", async () => {
     const t = createTest();
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -225,7 +245,7 @@ describe("searchTaskers", () => {
   test("excludes isOnboarded=false taskers", async () => {
     const t = createTest();
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -294,7 +314,7 @@ describe("searchTaskers", () => {
     const t = createTest();
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Search for taskers in a category with no taskers
     const results = await t.query(api.search.searchTaskers, {
@@ -312,7 +332,7 @@ describe("searchTaskers", () => {
     const t = createTest();
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -340,9 +360,9 @@ describe("searchTaskers", () => {
       }
     );
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
@@ -379,7 +399,7 @@ describe("searchTaskers", () => {
     const t = createTest();
 
     // Seed categories
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -404,9 +424,9 @@ describe("searchTaskers", () => {
       serviceRadius: 10,
     });
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     await asTasker.mutation(api.location.updateTaskerLocation, {
       lat: 43.65107,
@@ -428,7 +448,7 @@ describe("searchTaskers", () => {
   test("matches when service area overlaps seeker radius", async () => {
     const t = createTest();
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -452,9 +472,9 @@ describe("searchTaskers", () => {
       serviceRadius: 200,
     });
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     const seekerLat = 43.65;
     const seekerLng = -79.38;
@@ -477,7 +497,7 @@ describe("searchTaskers", () => {
   test("excludes when outside combined service areas", async () => {
     const t = createTest();
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
     const cleaningCategory = categories.find((c) => c.slug === "cleaning");
 
@@ -501,9 +521,9 @@ describe("searchTaskers", () => {
       serviceRadius: 200,
     });
 
-    await asTasker.mutation(api.taskers.updateSubscriptionPlan, {
-      plan: "tasker",
-    });
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     const seekerLat = 43.65;
     const seekerLng = -79.38;

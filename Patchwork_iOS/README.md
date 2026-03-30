@@ -17,7 +17,7 @@ Native SwiftUI client for the Patchwork PoC, wired to the existing Convex backen
 
 ## Backend Compatibility
 
-No backend changes required. This app calls existing functions such as:
+The app now depends on the webhook-backed RevenueCat billing path in addition to the existing query and mutation surface. Core app reads and writes still use functions such as:
 
 - `categories:listCategories`
 - `search:searchTaskers`
@@ -27,7 +27,14 @@ No backend changes required. This app calls existing functions such as:
 - `messages:listMessages`
 - `messages:sendMessage`
 - `taskers:createTaskerProfile`
-- `taskers:updateSubscriptionPlan`
+- `taskers:setGhostMode`
+
+Tasker billing truth is reconciled from:
+
+- RevenueCat offering `tasker_access_paywall`
+- RevenueCat entitlement `tasker_access`
+- Convex webhook route `/revenuecat/webhook`
+- Convex internal billing mutation `taskersInternal:applyRevenueCatWebhookEvent`
 
 ## Configure
 

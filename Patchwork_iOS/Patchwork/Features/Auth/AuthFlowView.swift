@@ -193,13 +193,24 @@ struct AuthFlowView: View {
 
     private var splashWordmark: some View {
         VStack(spacing: 16) {
-            Image("PatchworkLogo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 140, height: 140)
-                .clipShape(.rect(cornerRadius: 30))
-                .shadow(color: .black.opacity(0.16), radius: 28, y: 14)
-                .accessibilityHidden(true)
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.12))
+
+                Image("PatchworkLogo")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 128, height: 128)
+                    .clipped()
+            }
+            .frame(width: 140, height: 140)
+            .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.16), radius: 28, y: 14)
+            .accessibilityHidden(true)
 
             Text("patchwork")
                 .font(.system(size: 34, weight: .bold, design: .rounded))

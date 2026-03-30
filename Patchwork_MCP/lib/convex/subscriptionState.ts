@@ -1,5 +1,5 @@
-export type TaskerSubscriptionPlan = "none" | "tasker" | "basic" | "premium";
-export type TaskerSubscriptionAccessType = "weekly" | "lifetime";
+export type TaskerSubscriptionPlan = "none" | "tasker";
+export type TaskerSubscriptionAccessType = "subscription" | "lifetime";
 export type TaskerSubscriptionStatus =
   | "inactive"
   | "active"
@@ -14,17 +14,12 @@ type TaskerSubscriptionFields = {
   ghostMode: boolean;
 };
 
-export const DEFAULT_SUBSCRIPTION_TERM_MS = 7 * 24 * 60 * 60 * 1000;
-export const LEGACY_MONTHLY_SUBSCRIPTION_TERM_MS = 30 * 24 * 60 * 60 * 1000;
+export const DEFAULT_SUBSCRIPTION_TERM_MS = 365 * 24 * 60 * 60 * 1000;
 
 export function getDefaultSubscriptionTermMs(
-  profile: Pick<TaskerSubscriptionFields, "subscriptionPlan" | "subscriptionAccessType">,
+  _profile: Pick<TaskerSubscriptionFields, "subscriptionPlan" | "subscriptionAccessType">,
 ): number {
-  if (profile.subscriptionAccessType === "weekly" || profile.subscriptionPlan === "tasker") {
-    return DEFAULT_SUBSCRIPTION_TERM_MS;
-  }
-
-  return LEGACY_MONTHLY_SUBSCRIPTION_TERM_MS;
+  return DEFAULT_SUBSCRIPTION_TERM_MS;
 }
 
 export function getEffectiveSubscriptionStatus(

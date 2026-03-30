@@ -20,6 +20,7 @@ struct RootView: View {
         if debugVisualPreviewEnabled {
             MainTabView()
                 .task {
+                    revenueCatManager.configureIfNeeded()
                     applyDebugVisualPreviewIfNeeded()
                 }
         } else {
@@ -129,6 +130,7 @@ struct RootView: View {
 #if DEBUG
     private var debugVisualPreviewEnabled: Bool {
         ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
+        || ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_TASKER_BILLING_PREVIEW_UNPAID")
     }
 
     private func applyDebugVisualPreviewIfNeeded() {
@@ -139,7 +141,8 @@ struct RootView: View {
         didApplyVisualPreview = true
         appState.resetForSignedOutSession()
         appState.isBootstrapped = true
-        appState.selectedTab = .home
+        let showsBillingPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_TASKER_BILLING_PREVIEW_UNPAID")
+        appState.selectedTab = showsBillingPreview ? .profile : .home
         appState.searchRadius = 25
         appState.categories = [
             Category(id: "category-cleaning", name: "Cleaning", slug: "cleaning", emoji: nil, group: nil),
@@ -163,13 +166,12 @@ struct RootView: View {
             id: "debug-tasker-profile",
             displayName: "Preview User",
             bio: "Reliable local help for same-week household jobs.",
-            subscriptionPlan: "tasker",
-            subscriptionAccessType: "weekly",
-            subscriptionStatus: "active",
+            subscriptionPlan: showsBillingPreview ? "none" : "tasker",
+            subscriptionAccessType: showsBillingPreview ? nil : "subscription",
+            subscriptionStatus: showsBillingPreview ? "inactive" : "active",
             subscriptionEndsAt: nil,
-            hasActiveSubscription: true,
+            hasActiveSubscription: !showsBillingPreview,
             ghostMode: false,
-            premiumPin: nil,
             rating: 4.9,
             reviewCount: 28,
             completedJobs: 42,
@@ -905,7 +907,7 @@ private struct MainTabView: View {
             NavigationStack {
                 ProfileView(onSignOut: {
                     appState.resetForSignedOutSession()
-                    sessionStore.signOut()
+                    await sessionStore.signOut()
                 })
             }
             .accessibilityIdentifier("Tab.profile")

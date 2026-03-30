@@ -9,11 +9,20 @@ const http = httpRouter();
 authComponent.registerRoutes(http, createAuth, { cors: true });
 
 const adminAppOrigin = process.env.ADMIN_APP_ORIGIN;
+const revenueCatWebhookAuthorization = process.env.REVENUECAT_WEBHOOK_AUTHORIZATION;
 
 function validateAdminOrigin(request: Request) {
   if (!adminAppOrigin) return false;
   const origin = request.headers.get("origin");
   return origin === adminAppOrigin;
+}
+
+function validateRevenueCatAuthorization(request: Request) {
+  if (!revenueCatWebhookAuthorization) {
+    return false;
+  }
+
+  return request.headers.get("authorization") === revenueCatWebhookAuthorization;
 }
 
 function sanitizeErrorMessage(error: unknown): string {
@@ -43,6 +52,15 @@ function adminCorsHeaders() {
     "Access-Control-Allow-Origin": adminAppOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    Vary: "Origin",
+  });
+}
+
+function reviewCorsHeaders() {
+  return jsonHeaders({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
     Vary: "Origin",
   });
 }
@@ -140,18 +158,70 @@ const reviewSignInHandler = httpAction(async (ctx, request) => {
 
   try {
     const result = await createReviewSession(ctx, email);
-    return jsonResponse(result, 200);
+    return jsonResponse(result, 200, reviewCorsHeaders());
   } catch (error) {
     const message = sanitizeErrorMessage(error);
     const status = message === "Unknown review account" ? 403 : message === "App review access is disabled" ? 403 : 400;
-    return jsonResponse({ error: message }, status);
+    return jsonResponse({ error: message }, status, reviewCorsHeaders());
   }
+});
+
+const reviewSignInOptionsHandler = httpAction(async () => {
+  return new Response(null, {
+    status: 204,
+    headers: reviewCorsHeaders(),
+  });
 });
 
 http.route({
   path: "/review/sign-in",
   method: "POST",
   handler: reviewSignInHandler,
+});
+
+http.route({
+  path: "/review/sign-in",
+  method: "OPTIONS",
+  handler: reviewSignInOptionsHandler,
+});
+
+const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
+  if (!revenueCatWebhookAuthorization) {
+    return jsonResponse({ error: "RevenueCat webhook authorization is not configured" }, 500);
+  }
+
+  if (!validateRevenueCatAuthorization(request)) {
+    return jsonResponse({ error: "Forbidden" }, 403);
+  }
+
+  const body = await request.json().catch(() => null);
+  const event = body?.event;
+
+  if (!event || typeof event.type !== "string") {
+    return jsonResponse({ error: "Missing RevenueCat event payload" }, 400);
+  }
+
+  const result = await ctx.runMutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+    type: event.type,
+    appId: typeof event.app_id === "string" ? event.app_id : undefined,
+    productId: typeof event.product_id === "string" ? event.product_id : undefined,
+    appUserId: typeof event.app_user_id === "string" ? event.app_user_id : undefined,
+    originalAppUserId:
+      typeof event.original_app_user_id === "string" ? event.original_app_user_id : undefined,
+    aliases: Array.isArray(event.aliases)
+      ? event.aliases.filter((value: unknown): value is string => typeof value === "string")
+      : undefined,
+    expirationAtMs:
+      typeof event.expiration_at_ms === "number" ? event.expiration_at_ms : null,
+  });
+
+  return jsonResponse({ ok: true, result }, 200);
+});
+
+http.route({
+  path: "/revenuecat/webhook",
+  method: "POST",
+  handler: revenueCatWebhookHandler,
 });
 
 // ── Test helper proxy (gated by ENABLE_TESTING_HELPERS) ──────────────────

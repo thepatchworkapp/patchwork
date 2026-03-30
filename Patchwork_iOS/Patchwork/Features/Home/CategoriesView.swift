@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CategoriesView: View {
     @Environment(AppState.self) private var appState
+    @Environment(SessionStore.self) private var sessionStore
     @Environment(\.dismiss) private var dismiss
 
     let title: String
@@ -39,7 +40,38 @@ struct CategoriesView: View {
                     )
                     .padding(.top, 12)
 
-                    if filteredCategories.isEmpty {
+                    if categoriesUnavailable {
+                        PatchworkSurfaceCard {
+                            VStack(spacing: 16) {
+                                Circle()
+                                    .fill(PatchworkTheme.brandSoft)
+                                    .frame(width: 76, height: 76)
+                                    .overlay {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 28, weight: .semibold))
+                                            .foregroundStyle(PatchworkTheme.brand)
+                                    }
+
+                                Text("Categories unavailable")
+                                    .font(.patchworkCardTitle)
+                                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                Text(categoryAvailabilityMessage)
+                                    .font(.patchworkBody)
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+                                    .multilineTextAlignment(.center)
+
+                                Button("Retry categories") {
+                                    Task { await retryCategories() }
+                                }
+                                .buttonStyle(PatchworkPrimaryButtonStyle())
+                                .accessibilityIdentifier("Categories.retryButton")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+                        .accessibilityIdentifier("Categories.retryState")
+                    } else if filteredCategories.isEmpty {
                         PatchworkSurfaceCard {
                             VStack(spacing: 16) {
                                 Circle()
@@ -132,6 +164,21 @@ struct CategoriesView: View {
         return availableCategories.filter { category in
             category.name.localizedStandardContains(searchText)
         }
+    }
+
+    private var categoriesUnavailable: Bool {
+        appState.categories.isEmpty || appState.categoriesErrorMessage != nil
+    }
+
+    private var categoryAvailabilityMessage: String {
+        if let errorMessage = appState.categoriesErrorMessage, !errorMessage.isEmpty {
+            return errorMessage
+        }
+        return "We could not load the category library. Try again."
+    }
+
+    private func retryCategories() async {
+        await appState.refreshCategories(client: sessionStore.client)
     }
 
     private var groupedCategories: [(key: String, value: [Category])] {

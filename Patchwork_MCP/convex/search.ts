@@ -32,7 +32,7 @@ export const searchTaskers = query({
       category = await ctx.db
         .query("categories")
         .withIndex("by_slug", (q) => q.eq("slug", args.categorySlug!))
-        .first();
+        .unique();
       
       if (!category) {
         return [];
@@ -79,7 +79,7 @@ export const searchTaskers = query({
           .withIndex("by_taskerProfile_category", (q) =>
             q.eq("taskerProfileId", profile._id).eq("categoryId", currentCategory!._id)
           )
-          .first();
+          .unique();
 
         if (!categoryData) {
           continue;
@@ -87,7 +87,7 @@ export const searchTaskers = query({
       } else {
         categoryData = await ctx.db
           .query("taskerCategories")
-          .withIndex("by_taskerProfile", (q) =>
+          .withIndex("by_taskerProfile_category", (q) =>
             q.eq("taskerProfileId", profile._id)
           )
           .first();

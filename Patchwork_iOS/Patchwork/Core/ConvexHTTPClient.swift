@@ -111,6 +111,34 @@ struct ConvexHTTPClient {
         }
     }
 
+    func signOut() async throws {
+        guard hasRefreshCredential else {
+            return
+        }
+
+        var request = URLRequest(url: siteURL.appending(path: "/api/auth/sign-out"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(betterAuthOrigin, forHTTPHeaderField: "Origin")
+        request.httpShouldHandleCookies = false
+        request.httpBody = Data("{}".utf8)
+
+        if let betterAuthSessionToken, !betterAuthSessionToken.isEmpty {
+            request.setValue("Bearer \(betterAuthSessionToken)", forHTTPHeaderField: "Authorization")
+        } else if let betterAuthCookie, !betterAuthCookie.isEmpty {
+            request.setValue(betterAuthCookie, forHTTPHeaderField: "Better-Auth-Cookie")
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PatchworkError.invalidResponse
+        }
+        guard 200 ..< 300 ~= httpResponse.statusCode else {
+            throw PatchworkError.server(Self.errorMessage(from: data) ?? "Sign out failed.")
+        }
+    }
+
     func fetchConvexJWT(sessionToken: String? = nil) async throws -> String {
         var lastErrorMessage: String?
         let activeSessionToken = sessionToken ?? betterAuthSessionToken

@@ -1,11 +1,9 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
 import {
   getEffectiveGhostMode,
   getEffectiveSubscriptionPlan,
   getEffectiveSubscriptionStatus,
-  getDefaultSubscriptionTermMs,
   hasActiveSubscription,
 } from "../lib/convex/subscriptionState";
 import {
@@ -13,12 +11,13 @@ import {
   taskerDetailValidator,
   taskerProfileResponseValidator,
 } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
-const MAX_SCHEDULER_DELAY_MS = 2_147_483_647;
+const MAX_CATEGORY_BIO_LENGTH = 500;
 
 function buildSubscriptionView(profile: {
-  subscriptionPlan: "none" | "tasker" | "basic" | "premium";
-  subscriptionAccessType?: "weekly" | "lifetime";
+  subscriptionPlan: "none" | "tasker";
+  subscriptionAccessType?: "subscription" | "lifetime";
   subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
   subscriptionEndsAt?: number;
   ghostMode: boolean;
@@ -39,10 +38,24 @@ function validateTaskerCategoryInput(args: {
   fixedRate?: number;
   serviceRadius: number;
 }) {
-  if (args.categoryBio.length > 2000) throw new ConvexError("Category bio must be 2000 characters or less");
+  if (args.categoryBio.length > MAX_CATEGORY_BIO_LENGTH) throw new ConvexError("Category bio must be 500 characters or less");
   if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new ConvexError("Service radius must be between 1 and 250 km");
   if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new ConvexError("Hourly rate must be between 1 and 1,000,000 (in cents)");
   if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new ConvexError("Fixed rate must be between 1 and 1,000,000 (in cents)");
+}
+
+async function loadOwnedTaskerProfile(ctx: any) {
+  const { user } = await requireAppUser(ctx);
+  const profile = await ctx.db
+    .query("taskerProfiles")
+    .withIndex("by_userId", (q: any) => q.eq("userId", user._id))
+    .unique();
+
+  if (!profile) {
+    throw new ConvexError("Tasker profile not found");
+  }
+
+  return { user, profile };
 }
 
 async function buildTaskerProfileResponse(
@@ -58,12 +71,11 @@ async function buildTaskerProfileResponse(
     completedJobs: number;
     responseTime?: string;
     verified: boolean;
-    subscriptionPlan: "none" | "tasker" | "basic" | "premium";
-    subscriptionAccessType?: "weekly" | "lifetime";
+    subscriptionPlan: "none" | "tasker";
+    subscriptionAccessType?: "subscription" | "lifetime";
     subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
     subscriptionEndsAt?: number;
     ghostMode: boolean;
-    premiumPin?: string;
     foundersBadge?: {
       categoryId: any;
       awardedAt: number;
@@ -76,10 +88,10 @@ async function buildTaskerProfileResponse(
     createdAt: number;
     updatedAt: number;
   },
-) {
+  ) {
   const taskerCategories = await ctx.db
     .query("taskerCategories")
-    .withIndex("by_taskerProfile", (q: any) => q.eq("taskerProfileId", profile._id))
+    .withIndex("by_taskerProfile_category", (q: any) => q.eq("taskerProfileId", profile._id))
     .take(20);
 
   const categoriesWithNames = await Promise.all(
@@ -123,7 +135,6 @@ async function buildTaskerProfileResponse(
     subscriptionStatus: profile.subscriptionStatus,
     subscriptionEndsAt: profile.subscriptionEndsAt,
     ghostMode: profile.ghostMode,
-    premiumPin: profile.premiumPin,
     foundersBadge: profile.foundersBadge,
     location: profile.location,
     geoPoint: profile.geoPoint,
@@ -148,20 +159,12 @@ export const createTaskerProfile = mutation({
   },
   returns: v.id("taskerProfiles"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     const existingProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
+      .unique();
 
     if (existingProfile) {
       throw new ConvexError("Tasker profile already exists");
@@ -170,7 +173,7 @@ export const createTaskerProfile = mutation({
     // Input validation
     if (args.displayName.length > 100) throw new ConvexError("Display name must be 100 characters or less");
     if (args.bio && args.bio.length > 2000) throw new ConvexError("Bio must be 2000 characters or less");
-    if (args.categoryBio.length > 2000) throw new ConvexError("Category bio must be 2000 characters or less");
+    if (args.categoryBio.length > MAX_CATEGORY_BIO_LENGTH) throw new ConvexError("Category bio must be 500 characters or less");
     if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new ConvexError("Service radius must be between 1 and 250 km");
     if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new ConvexError("Hourly rate must be between 1 and 1,000,000 (in cents)");
     if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new ConvexError("Fixed rate must be between 1 and 1,000,000 (in cents)");
@@ -226,20 +229,14 @@ export const getTaskerProfile = query({
   args: {},
   returns: v.union(taskerProfileResponseValidator, v.null()),
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) return null;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+    const { user } = session;
 
     const profile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
+      .unique();
 
     if (!profile) return null;
 
@@ -254,22 +251,7 @@ export const updateTaskerProfile = mutation({
   },
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
+    const { profile } = await loadOwnedTaskerProfile(ctx);
 
     // Input validation
     if (args.displayName !== undefined && args.displayName.length > 100) throw new ConvexError("Display name must be 100 characters or less");
@@ -307,29 +289,14 @@ export const addTaskerCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
+    const { user, profile } = await loadOwnedTaskerProfile(ctx);
 
     const existingCategory = await ctx.db
       .query("taskerCategories")
       .withIndex("by_taskerProfile_category", (q) =>
         q.eq("taskerProfileId", profile._id).eq("categoryId", args.categoryId)
       )
-      .first();
+      .unique();
 
     if (existingCategory) {
       throw new ConvexError("Category already exists for this tasker");
@@ -371,29 +338,14 @@ export const updateTaskerCategory = mutation({
   },
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
+    const { profile } = await loadOwnedTaskerProfile(ctx);
 
     const category = await ctx.db
       .query("taskerCategories")
       .withIndex("by_taskerProfile_category", (q) =>
         q.eq("taskerProfileId", profile._id).eq("categoryId", args.categoryId)
       )
-      .first();
+      .unique();
 
     if (!category) {
       throw new ConvexError("Category not found");
@@ -430,7 +382,7 @@ export const getTaskerById = query({
 
     const taskerCategories = await ctx.db
       .query("taskerCategories")
-      .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
+      .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", profile._id))
       .take(20);
 
     const categoriesWithNames = await Promise.all(
@@ -504,20 +456,14 @@ export const listFavouriteTaskers = query({
   },
   returns: v.array(searchTaskerResultValidator),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) return [];
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return [];
+    const { user } = session;
 
     const seekerProfile = await ctx.db
       .query("seekerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
+      .unique();
 
     if (!seekerProfile) return [];
 
@@ -529,7 +475,7 @@ export const listFavouriteTaskers = query({
         const profile = await ctx.db
           .query("taskerProfiles")
           .withIndex("by_userId", (q) => q.eq("userId", favouriteUserId))
-          .first();
+          .unique();
 
         if (!profile || !profile.isOnboarded) {
           return null;
@@ -542,7 +488,7 @@ export const listFavouriteTaskers = query({
 
         const categoryData = await ctx.db
           .query("taskerCategories")
-          .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", profile._id))
+          .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", profile._id))
           .first();
 
         if (!categoryData) {
@@ -604,29 +550,14 @@ export const removeTaskerCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
+    const { profile } = await loadOwnedTaskerProfile(ctx);
 
     const category = await ctx.db
       .query("taskerCategories")
       .withIndex("by_taskerProfile_category", (q) =>
         q.eq("taskerProfileId", profile._id).eq("categoryId", args.categoryId)
       )
-      .first();
+      .unique();
 
     if (!category) {
       throw new ConvexError("Category not found");
@@ -638,144 +569,25 @@ export const removeTaskerCategory = mutation({
   },
 });
 
+// Legacy compatibility for old clients. RevenueCat webhooks are the production source of truth.
 export const updateSubscriptionPlan = mutation({
   args: {
     plan: v.literal("tasker"),
-    accessType: v.optional(v.union(v.literal("weekly"), v.literal("lifetime"))),
+    accessType: v.optional(v.union(v.literal("subscription"), v.literal("lifetime"))),
     endsAt: v.optional(v.number()),
   },
   returns: taskerProfileResponseValidator,
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
-
-    const updates: any = {
-      subscriptionPlan: args.plan,
-      subscriptionAccessType: args.accessType,
-      subscriptionStatus: "active",
-      subscriptionEndsAt: args.accessType === "weekly" ? args.endsAt : undefined,
-      ghostMode: false,
-      updatedAt: Date.now(),
-    };
-
-    updates.premiumPin = undefined;
-
-    await ctx.db.patch(profile._id, updates);
-
-    return buildTaskerProfileResponse(ctx, {
-      ...profile,
-      ...updates,
-    });
+  handler: async (_ctx, _args) => {
+    throw new ConvexError("Direct billing activation is disabled. Tasker access is managed through RevenueCat webhooks.");
   },
 });
 
+// Legacy compatibility for old clients. RevenueCat webhooks are the production source of truth.
 export const cancelSubscription = mutation({
   args: {},
   returns: taskerProfileResponseValidator,
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
-    if (!hasActiveSubscription(profile)) {
-      throw new ConvexError("Active subscription required to cancel");
-    }
-
-    if (profile.subscriptionAccessType === "lifetime") {
-      throw new ConvexError("Lifetime access does not renew and cannot be cancelled");
-    }
-
-    const endsAt =
-      profile.subscriptionEndsAt ??
-      Date.now() +
-        getDefaultSubscriptionTermMs({
-          subscriptionPlan: profile.subscriptionPlan,
-          subscriptionAccessType: profile.subscriptionAccessType,
-        });
-
-    await ctx.db.patch(profile._id, {
-      subscriptionStatus: "cancel_at_period_end",
-      subscriptionEndsAt: endsAt,
-      updatedAt: Date.now(),
-    });
-
-    await ctx.scheduler.runAfter(
-      Math.min(Math.max(endsAt - Date.now(), 0), MAX_SCHEDULER_DELAY_MS),
-      internal.taskers.expireSubscriptionAtTermEnd,
-      {
-      taskerProfileId: profile._id,
-      expectedEndsAt: endsAt,
-      },
-    );
-
-    return buildTaskerProfileResponse(ctx, {
-      ...profile,
-      subscriptionStatus: "cancel_at_period_end",
-      subscriptionEndsAt: endsAt,
-    });
-  },
-});
-
-export const expireSubscriptionAtTermEnd = internalMutation({
-  args: {
-    taskerProfileId: v.id("taskerProfiles"),
-    expectedEndsAt: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const profile = await ctx.db.get(args.taskerProfileId);
-    if (!profile) {
-      return;
-    }
-
-    if (
-      profile.subscriptionStatus !== "cancel_at_period_end" ||
-      profile.subscriptionEndsAt !== args.expectedEndsAt ||
-      profile.subscriptionEndsAt > Date.now()
-    ) {
-      return;
-    }
-
-    const remainingMs = profile.subscriptionEndsAt - Date.now();
-    if (remainingMs > 0) {
-      await ctx.scheduler.runAfter(
-        Math.min(remainingMs, MAX_SCHEDULER_DELAY_MS),
-        internal.taskers.expireSubscriptionAtTermEnd,
-        args,
-      );
-      return;
-    }
-
-    await ctx.db.patch(profile._id, {
-      subscriptionStatus: "expired",
-      ghostMode: true,
-      updatedAt: Date.now(),
-    });
+  handler: async (_ctx) => {
+    throw new ConvexError("Direct billing cancellation is disabled. Subscription state is managed through RevenueCat webhooks.");
   },
 });
 
@@ -785,22 +597,7 @@ export const setGhostMode = mutation({
   },
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
-
-    const profile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
-
-    if (!profile) throw new ConvexError("Tasker profile not found");
+    const { profile } = await loadOwnedTaskerProfile(ctx);
 
     // Validate active subscription
     if (!hasActiveSubscription(profile)) {

@@ -12,6 +12,7 @@ struct PatchworkPrimaryButtonStyle: ButtonStyle {
             .font(.patchworkButton)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: PatchworkMetrics.buttonHeight)
+            .contentShape(Rectangle())
             .background(fill, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
             .shadow(color: PatchworkTheme.brand.opacity(configuration.isPressed ? 0.12 : 0.24), radius: configuration.isPressed ? 8 : 18, y: configuration.isPressed ? 4 : 10)
             .scaleEffect(configuration.isPressed ? 0.99 : 1)
@@ -25,6 +26,7 @@ struct PatchworkSecondaryButtonStyle: ButtonStyle {
             .font(.patchworkButton)
             .foregroundStyle(PatchworkTheme.textPrimary)
             .frame(maxWidth: .infinity, minHeight: PatchworkMetrics.buttonHeight)
+            .contentShape(Rectangle())
             .background(
                 PatchworkTheme.surface.opacity(configuration.isPressed ? 0.98 : 0.88),
                 in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)

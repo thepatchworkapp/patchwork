@@ -1,3 +1,4 @@
+import SafariServices
 import SwiftUI
 
 private enum ProfileSidebarDestination: String, Identifiable {
@@ -19,7 +20,7 @@ struct ProfileView: View {
     @State private var isSidebarPresented = false
     @State private var activeDestination: ProfileSidebarDestination?
 
-    let onSignOut: () -> Void
+    let onSignOut: () async -> Void
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -191,11 +192,15 @@ private struct ProfileAccountSection: View {
 
                 HStack(spacing: 10) {
                     if user?.roles?.isSeeker == true {
-                        roleBadge("Seeker", isPrimary: false)
+                        roleBadge(
+                            "Seeker",
+                            foreground: PatchworkTheme.success,
+                            background: PatchworkTheme.success.opacity(0.14),
+                            stroke: PatchworkTheme.success.opacity(0.4),
+                            accessibilityIdentifier: "Profile.seekerPill"
+                        )
                     }
-                    if user?.roles?.isTasker == true {
-                        roleBadge("Tasker", isPrimary: true)
-                    }
+                    taskerRoleBadge
                 }
                 .frame(maxWidth: .infinity)
 
@@ -246,20 +251,66 @@ private struct ProfileAccountSection: View {
         }
     }
 
-    private func roleBadge(_ title: String, isPrimary: Bool) -> some View {
+    private func roleBadge(
+        _ title: String,
+        foreground: Color,
+        background: Color,
+        stroke: Color,
+        accessibilityIdentifier: String
+    ) -> some View {
         Text(title)
             .font(.patchworkBodyStrong)
-            .foregroundStyle(isPrimary ? PatchworkTheme.brand : PatchworkTheme.textSecondary)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(
-                isPrimary ? PatchworkTheme.brandSoft.opacity(0.9) : PatchworkTheme.surfaceMuted,
-                in: Capsule()
-            )
+            .background(background, in: Capsule())
             .overlay(
                 Capsule()
-                    .stroke(isPrimary ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
+                    .stroke(stroke, lineWidth: 1)
             )
+            .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var taskerRoleBadge: some View {
+        let style: (foreground: Color, background: Color, stroke: Color) = {
+            guard let taskerProfile else {
+                return (
+                    PatchworkTheme.textSecondary,
+                    PatchworkTheme.surfaceMuted,
+                    PatchworkTheme.stroke
+                )
+            }
+
+            guard taskerProfile.hasActiveSubscription == true else {
+                return (
+                    PatchworkTheme.textSecondary,
+                    PatchworkTheme.surfaceMuted,
+                    PatchworkTheme.stroke
+                )
+            }
+
+            if taskerProfile.ghostMode == true {
+                return (
+                    PatchworkTheme.brand,
+                    PatchworkTheme.brandSoft.opacity(0.95),
+                    PatchworkTheme.strokeStrong
+                )
+            }
+
+            return (
+                PatchworkTheme.success,
+                PatchworkTheme.success.opacity(0.14),
+                PatchworkTheme.success.opacity(0.4)
+            )
+        }()
+
+        return roleBadge(
+            "Tasker",
+            foreground: style.foreground,
+            background: style.background,
+            stroke: style.stroke,
+            accessibilityIdentifier: "Profile.taskerPill"
+        )
     }
 
     private var profileStatsRow: some View {
@@ -395,6 +446,8 @@ private struct ProfileTaskerSection: View {
     @State private var ghostModeValue = false
     @State private var isUpdating = false
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
+    @State private var isShowingSubscriptions = false
+    @State private var didAutoPresentBillingPreview = false
 
     var body: some View {
         PatchworkSurfaceCard {
@@ -425,15 +478,31 @@ private struct ProfileTaskerSection: View {
                 .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
 
                 if let taskerProfile {
-                    NavigationLink(taskerProfile.hasActiveSubscription == true ? "Manage subscriptions" : "Activate subscription") {
-                        SubscriptionsView()
+                    let billingTitle = taskerProfile.hasActiveSubscription == true ? "Billing & access" : "Unlock tasker mode"
+
+                    Button(billingTitle) {
+                        isShowingSubscriptions = true
                     }
+                    .buttonStyle(.plain)
                     .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.visibilitySubscriptionLink"))
                 }
             }
         }
-        .task(id: taskerProfile?.ghostMode) {
-            ghostModeValue = taskerProfile?.ghostMode ?? false
+        .task(id: taskerGhostModeRefreshKey) {
+            ghostModeValue = effectiveGhostMode(for: taskerProfile)
+        }
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_TASKER_BILLING_PREVIEW_UNPAID"),
+                  !didAutoPresentBillingPreview else {
+                return
+            }
+
+            didAutoPresentBillingPreview = true
+            isShowingSubscriptions = true
+        }
+        .sheet(isPresented: $isShowingSubscriptions) {
+            TaskerBillingSheet()
+                .patchworkSheetChrome(detents: [.large])
         }
     }
 
@@ -445,7 +514,7 @@ private struct ProfileTaskerSection: View {
                         .font(.patchworkBodyStrong)
                         .foregroundStyle(PatchworkTheme.textPrimary)
 
-                    Text(ghostModeDescription)
+                    Text(ghostModeDescription(for: profile))
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -455,7 +524,7 @@ private struct ProfileTaskerSection: View {
 
                 Toggle("", isOn: ghostModeBinding(for: profile))
                     .labelsHidden()
-                    .disabled(isUpdating || profile.hasActiveSubscription != true)
+                    .disabled(isUpdating || !canToggleGhostMode(for: profile))
                     .tint(PatchworkTheme.brand)
             }
 
@@ -464,7 +533,7 @@ private struct ProfileTaskerSection: View {
                     .accessibilityIdentifier("Profile.ghostModeBanner")
             }
 
-            if profile.hasActiveSubscription != true {
+            if !canToggleGhostMode(for: profile) {
                 Text("Activate paid tasker access to change this setting.")
                     .font(.patchworkCaption)
                     .foregroundStyle(PatchworkTheme.textSecondary)
@@ -504,10 +573,10 @@ private struct ProfileTaskerSection: View {
 
     private func ghostModeBinding(for profile: TaskerProfileSelf) -> Binding<Bool> {
         Binding(
-            get: { ghostModeValue },
+            get: { effectiveGhostMode(for: profile) },
             set: { newValue in
-                guard profile.hasActiveSubscription == true, !isUpdating else {
-                    ghostModeValue = profile.ghostMode
+                guard canToggleGhostMode(for: profile), !isUpdating else {
+                    ghostModeValue = effectiveGhostMode(for: profile)
                     return
                 }
 
@@ -517,8 +586,35 @@ private struct ProfileTaskerSection: View {
         )
     }
 
-    private var ghostModeDescription: String {
-        ghostModeValue
+    private var taskerGhostModeRefreshKey: String {
+        let rawGhostMode = taskerProfile?.ghostMode == true ? "on" : "off"
+        let hasActiveSubscription = taskerProfile?.hasActiveSubscription == true ? "active" : "inactive"
+        let subscriptionStatus = taskerProfile?.subscriptionStatus ?? "none"
+        return "\(rawGhostMode)|\(hasActiveSubscription)|\(subscriptionStatus)"
+    }
+
+    private func canToggleGhostMode(for profile: TaskerProfileSelf) -> Bool {
+        profile.hasActiveSubscription == true
+    }
+
+    private func effectiveGhostMode(for profile: TaskerProfileSelf?) -> Bool {
+        guard let profile else {
+            return true
+        }
+
+        if canToggleGhostMode(for: profile) {
+            return profile.ghostMode
+        }
+
+        return true
+    }
+
+    private func ghostModeDescription(for profile: TaskerProfileSelf) -> String {
+        if !canToggleGhostMode(for: profile) {
+            return "Your profile stays hidden from search until you activate paid tasker access."
+        }
+
+        return ghostModeValue
             ? "Your profile is hidden from search."
             : "Your profile will appear in search."
     }
@@ -561,16 +657,12 @@ private struct ProfileTaskerSection: View {
         case "tasker":
             switch taskerProfile.subscriptionAccessType {
             case "lifetime":
-                return "Lifetime access"
-            case "weekly":
-                return "Weekly access"
+                return "Founders Club"
+            case "subscription":
+                return "Subscribe"
             default:
                 return "Tasker access"
             }
-        case "premium":
-            return "Premium plan"
-        case "basic":
-            return "Basic plan"
         default:
             return taskerProfile.subscriptionStatus == "expired" ? "Subscription expired" : "No active plan"
         }
@@ -595,9 +687,9 @@ private struct ProfileTaskerSection: View {
         switch status {
         case "active":
             if taskerProfile.subscriptionAccessType == "lifetime" {
-                return "Lifetime tasker access is active on this account."
+                return "Founders Club is active on this account."
             }
-            return "Paid tasker access is active on this account."
+            return "Your subscription is active on this account."
         case "cancel_at_period_end":
             if let endsAt = taskerProfile.subscriptionEndsAt {
                 return "Access remains active until \(formattedMonthDayYear(endsAt))."
@@ -622,14 +714,14 @@ private struct ProfileTaskerSection: View {
         do {
             let updatedProfile = try await sessionStore.client.mutation("taskers:setGhostMode", args: ["ghostMode": enabled]) as TaskerProfileSelf
             appState.taskerProfile = updatedProfile
-            ghostModeValue = updatedProfile.ghostMode
+            ghostModeValue = effectiveGhostMode(for: updatedProfile)
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
             feedbackMessage = SubscriptionFeedbackMessage(
                 tone: .success,
                 text: enabled ? "Ghost Mode turned on." : "Ghost Mode turned off."
             )
         } catch {
-            ghostModeValue = appState.taskerProfile?.ghostMode ?? false
+            ghostModeValue = effectiveGhostMode(for: appState.taskerProfile)
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }
@@ -895,7 +987,7 @@ private struct FavouriteTaskersPanel: View {
 }
 
 private struct ProfileSupportSection: View {
-    let onSignOut: () -> Void
+    let onSignOut: () async -> Void
 
     var body: some View {
         PatchworkSurfaceCard {
@@ -906,7 +998,9 @@ private struct ProfileSupportSection: View {
                 .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.helpLink"))
 
                 Button("Sign Out", role: .destructive) {
-                    onSignOut()
+                    Task {
+                        await onSignOut()
+                    }
                 }
                 .buttonStyle(PatchworkSecondaryButtonStyle())
                 .tint(PatchworkTheme.danger)
@@ -938,6 +1032,7 @@ private struct ProfileLinkRowStyle: ViewModifier {
                     .foregroundStyle(PatchworkTheme.textTertiary)
                     .padding(.trailing, 16)
             }
+            .contentShape(Rectangle())
             .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
@@ -995,8 +1090,9 @@ struct TaskerOnboardingView: View {
             }
         }
         .navigationTitle("Tasker Setup")
-        .navigationDestination(isPresented: $isShowingSubscriptions) {
-            SubscriptionsView()
+        .sheet(isPresented: $isShowingSubscriptions) {
+            TaskerBillingSheet()
+                .patchworkSheetChrome(detents: [.large])
         }
         .task {
             await appState.refreshAuthedData(client: sessionStore.client)
@@ -1174,12 +1270,12 @@ private struct TaskerCreateFlowView: View {
                                     .font(.patchworkSectionTitle)
                                     .foregroundStyle(PatchworkTheme.textPrimary)
 
-                                Text("To become discoverable to Seekers in your area, subscribe to a plan.")
+                                Text("To become discoverable to Seekers in your area, unlock tasker mode.")
                                     .font(.patchworkBody)
                                     .multilineTextAlignment(.center)
                                     .foregroundStyle(PatchworkTheme.textSecondary)
 
-                                Button("Subscribe") {
+                                Button("Unlock tasker mode") {
                                     onSubscribe()
                                 }
                                 .buttonStyle(PatchworkPrimaryButtonStyle())
@@ -1293,12 +1389,12 @@ private struct TaskerCreateFlowView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
                         eyebrow: "Tasker setup",
-                        title: "Review & accept",
+                        title: "Review & Accept",
                         message: "Confirm the essentials, then finish creating your tasker profile."
                     )
 
                     onboardingSummaryRow("Display name", value: displayName)
-                    onboardingSummaryRow("Rate type", value: rateType.capitalized)
+                    onboardingSummaryRow("Rate", value: reviewRateSummary)
                     onboardingSummaryRow("Radius", value: "\(serviceRadius) km")
 
                     Button {
@@ -1359,6 +1455,20 @@ private struct TaskerCreateFlowView: View {
         }
         return selectedCategory.name
     }
+
+    private var reviewRateSummary: String {
+        if rateType == "hourly" {
+            return formattedPrice(hourlyRate, suffix: "/hr")
+        }
+
+        return formattedPrice(fixedRate, suffix: " flat")
+    }
+
+    private func formattedPrice(_ value: String, suffix: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let amount = Double(trimmed) ?? 0
+        return "\(amount.formatted(.currency(code: "USD")))\(suffix)"
+    }
 }
 
 private struct TaskerProfileManageView: View {
@@ -1411,13 +1521,14 @@ private struct TaskerProfileManageView: View {
 
                     PatchworkSurfaceCard {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Categories")
+                            Text("My Categories")
                                 .font(.patchworkCardTitle)
                                 .foregroundStyle(PatchworkTheme.textPrimary)
 
-                            NavigationLink("Browse Category Library") {
-                                CategoriesView(title: "Category Library", dismissOnSelect: false, onSelect: { _ in })
+                            Button("Add Category") {
+                                addCategorySheet = true
                             }
+                            .buttonStyle(.plain)
                             .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "TaskerProfile.categoryLibraryLink"))
 
                             ForEach(appState.taskerProfile?.categories ?? []) { category in
@@ -1446,14 +1557,9 @@ private struct TaskerProfileManageView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .contentShape(Rectangle())
                                 .accessibilityIdentifier("TaskerProfile.category.\(category.categoryId)")
                             }
-
-                            Button("Add Category") {
-                                addCategorySheet = true
-                            }
-                            .buttonStyle(PatchworkSecondaryButtonStyle())
-                            .accessibilityIdentifier("TaskerProfile.addCategoryButton")
 
                             NavigationLink("Category Help") {
                                 HelpView()
@@ -1468,11 +1574,13 @@ private struct TaskerProfileManageView: View {
             .scrollIndicators(.hidden)
         }
         .sheet(isPresented: $addCategorySheet) {
-            AddCategorySheet(
-                categories: categories,
-                existingCategoryIDs: existingCategoryIDs,
-                onAdd: onAddCategory
-            )
+            NavigationStack {
+                AddCategorySheet(
+                    categories: categories,
+                    existingCategoryIDs: existingCategoryIDs,
+                    onAdd: onAddCategory
+                )
+            }
             .patchworkSheetChrome()
         }
         .sheet(
@@ -1486,13 +1594,15 @@ private struct TaskerProfileManageView: View {
             )
         ) {
             if let category = selectedCategory {
-                EditableTaskerCategorySheet(
-                    category: category,
-                    onSave: onUpdateCategory,
-                    onRemove: {
-                        try await onRemoveCategory(category.categoryId)
-                    }
-                )
+                NavigationStack {
+                    EditableTaskerCategorySheet(
+                        category: category,
+                        onSave: onUpdateCategory,
+                        onRemove: {
+                            try await onRemoveCategory(category.categoryId)
+                        }
+                    )
+                }
                 .patchworkSheetChrome()
             }
         }
@@ -1552,6 +1662,8 @@ private struct CategoryServiceDetailsSection: View {
         case fixedRate
     }
 
+    private let maxBioLength = 500
+
     let title: String
     let eyebrow: String?
     let message: String?
@@ -1593,16 +1705,7 @@ private struct CategoryServiceDetailsSection: View {
                     fixedRateField
                 }
 
-                Stepper("Service radius: \(serviceRadius) km", value: $serviceRadius, in: 1 ... 250)
-                    .font(.patchworkBody)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-                    .padding(16)
-                    .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                    )
-                    .accessibilityIdentifier("\(accessibilityPrefix).radiusStepper")
+                radiusControl
             }
         }
     }
@@ -1619,25 +1722,37 @@ private struct CategoryServiceDetailsSection: View {
                 RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
                     .stroke(PatchworkTheme.stroke, lineWidth: 1)
             )
+            .onChange(of: bio) { _, newValue in
+                if newValue.count > maxBioLength {
+                    bio = String(newValue.prefix(maxBioLength))
+                }
+            }
             .accessibilityIdentifier("\(accessibilityPrefix).bioField")
 
         if let focusedField {
-            field
-                .focused(focusedField, equals: .bio)
-                .simultaneousGesture(TapGesture().onEnded {
-                    focusedField.wrappedValue = .bio
-                })
+            VStack(alignment: .leading, spacing: 8) {
+                field
+                    .focused(focusedField, equals: .bio)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        focusedField.wrappedValue = .bio
+                    })
+                bioCount
+            }
         } else {
-            field
+            VStack(alignment: .leading, spacing: 8) {
+                field
+                bioCount
+            }
         }
     }
 
     @ViewBuilder
     private var hourlyRateField: some View {
-        let field = TextField("Hourly rate", text: $hourlyRate)
-            .keyboardType(.decimalPad)
-            .patchworkInputFieldStyle()
-            .accessibilityIdentifier("\(accessibilityPrefix).hourlyRateField")
+        let field = priceField(
+            placeholder: "Hourly rate",
+            text: $hourlyRate,
+            accessibilityIdentifier: "\(accessibilityPrefix).hourlyRateField"
+        )
 
         if let focusedField {
             field
@@ -1652,10 +1767,11 @@ private struct CategoryServiceDetailsSection: View {
 
     @ViewBuilder
     private var fixedRateField: some View {
-        let field = TextField("Fixed rate", text: $fixedRate)
-            .keyboardType(.decimalPad)
-            .patchworkInputFieldStyle()
-            .accessibilityIdentifier("\(accessibilityPrefix).fixedRateField")
+        let field = priceField(
+            placeholder: "Fixed rate",
+            text: $fixedRate,
+            accessibilityIdentifier: "\(accessibilityPrefix).fixedRateField"
+        )
 
         if let focusedField {
             field
@@ -1666,6 +1782,113 @@ private struct CategoryServiceDetailsSection: View {
         } else {
             field
         }
+    }
+
+    private var bioCount: some View {
+        Text("\(bio.count)/\(maxBioLength)")
+            .font(.patchworkCaption)
+            .foregroundStyle(bio.count >= maxBioLength ? PatchworkTheme.warning : PatchworkTheme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .accessibilityIdentifier("\(accessibilityPrefix).bioCount")
+    }
+
+    private var radiusControl: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Service radius")
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+                Spacer()
+                Text("\(serviceRadius) km")
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.brand)
+                    .accessibilityIdentifier("\(accessibilityPrefix).radiusValue")
+            }
+
+            HStack(spacing: 12) {
+                radiusStepButton(
+                    systemName: "minus",
+                    action: { serviceRadius = max(1, serviceRadius - 1) },
+                    accessibilityIdentifier: "\(accessibilityPrefix).radiusDecrementButton"
+                )
+
+                Slider(
+                    value: Binding(
+                        get: { Double(serviceRadius) },
+                        set: { serviceRadius = Int($0.rounded()) }
+                    ),
+                    in: 1 ... 250,
+                    step: 1
+                )
+                .tint(PatchworkTheme.brand)
+                .accessibilityIdentifier("\(accessibilityPrefix).radiusStepper")
+
+                radiusStepButton(
+                    systemName: "plus",
+                    action: { serviceRadius = min(250, serviceRadius + 1) },
+                    accessibilityIdentifier: "\(accessibilityPrefix).radiusIncrementButton"
+                )
+            }
+
+            HStack {
+                Text("1 km")
+                Spacer()
+                Text("250 km")
+            }
+            .font(.patchworkCaption)
+            .foregroundStyle(PatchworkTheme.textSecondary)
+        }
+        .padding(16)
+        .background(PatchworkTheme.brandSoft.opacity(0.92), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+        )
+    }
+
+    private func priceField(
+        placeholder: String,
+        text: Binding<String>,
+        accessibilityIdentifier: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text("$")
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(PatchworkTheme.brand)
+
+            TextField(placeholder, text: text)
+                .keyboardType(.decimalPad)
+                .font(.patchworkBody)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+                .accessibilityIdentifier(accessibilityIdentifier)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: PatchworkMetrics.fieldHeight)
+        .background(
+            PatchworkTheme.surface,
+            in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
+    }
+
+    private func radiusStepButton(
+        systemName: String,
+        action: @escaping () -> Void,
+        accessibilityIdentifier: String
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.bold))
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 36, height: 36)
+                .background(PatchworkTheme.surface, in: Circle())
+                .overlay(Circle().stroke(PatchworkTheme.strokeStrong, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 
@@ -1726,6 +1949,7 @@ private struct AddCategorySheet: View {
                                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                                         .stroke(PatchworkTheme.stroke, lineWidth: 1)
                                 )
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("AddCategorySheet.categoryPicker")
@@ -1957,381 +2181,8 @@ private struct EditableTaskerCategorySheet: View {
     }
 }
 
-private struct SubscriptionFeedbackMessage: Identifiable, Equatable {
-    let id = UUID()
-    let tone: PatchworkInlineStatusBanner.Tone
-    let text: String
-}
-
-struct SubscriptionsView: View {
-    @Environment(AppState.self) private var appState
-    @Environment(SessionStore.self) private var sessionStore
-    @Environment(RevenueCatManager.self) private var revenueCatManager
-    @Environment(\.openURL) private var openURL
-
-    @State private var isUpdating = false
-    @State private var feedbackMessage: SubscriptionFeedbackMessage?
-
-    var body: some View {
-        ZStack {
-            PatchworkBackdrop(tint: PatchworkTheme.brandBright)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    PatchworkSectionIntro(
-                        eyebrow: "Billing",
-                        title: "Subscriptions",
-                        message: "Manage App Store renewals, restores, and tasker access from one billing screen."
-                    )
-
-                    if let feedbackMessage {
-                        PatchworkInlineStatusBanner(tone: feedbackMessage.tone, text: feedbackMessage.text)
-                            .accessibilityIdentifier("Subscription.statusBanner")
-                    }
-
-                    if let profile = appState.taskerProfile {
-                        currentPlanCard(profile)
-                        plansOrManagementCard(profile)
-
-                        if profile.hasActiveSubscription == true,
-                           profile.subscriptionStatus == "cancel_at_period_end" {
-                            cancellationCard(profile)
-                        }
-                    } else {
-                        PatchworkSurfaceCard {
-                            VStack(spacing: 16) {
-                                Circle()
-                                    .fill(PatchworkTheme.brandSoft)
-                                    .frame(width: 76, height: 76)
-                                    .overlay {
-                                        Image(systemName: "person.crop.circle.badge.exclamationmark")
-                                            .font(.system(size: 28, weight: .semibold))
-                                            .foregroundStyle(PatchworkTheme.brand)
-                                    }
-
-                                Text("Finish Tasker Setup First")
-                                    .font(.patchworkCardTitle)
-                                    .foregroundStyle(PatchworkTheme.textPrimary)
-
-                                Text("Subscriptions only apply after your tasker profile is complete.")
-                                    .font(.patchworkBody)
-                                    .foregroundStyle(PatchworkTheme.textSecondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 20)
-            }
-            .scrollIndicators(.hidden)
-        }
-        .navigationTitle("Subscriptions")
-        .task {
-            await revenueCatManager.refresh(appState: appState, client: sessionStore.client)
-            syncRevenueCatFeedback()
-        }
-        .onChange(of: revenueCatManager.lastError) { _, newValue in
-            guard let newValue, !newValue.isEmpty else { return }
-            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: newValue)
-        }
-        .onChange(of: revenueCatManager.hasUnresolvedExpiryGap) { _, hasGap in
-            guard hasGap else { return }
-            feedbackMessage = SubscriptionFeedbackMessage(
-                tone: .warning,
-                text: "The App Store and Patchwork still need to finish one subscription reconciliation step."
-            )
-        }
-    }
-
-    private func currentPlanCard(_ profile: TaskerProfileSelf) -> some View {
-        PatchworkSurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(planTitle(for: profile))
-                            .font(.patchworkCardTitle)
-                            .foregroundStyle(PatchworkTheme.textPrimary)
-                        Text(planDescription(for: profile))
-                            .font(.patchworkBody)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer()
-
-                    Text(profile.subscriptionStatus == "active" ? "Active" : profile.subscriptionStatus == "cancel_at_period_end" ? "Ending soon" : "Inactive")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(subscriptionStatusColor(profile))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(subscriptionStatusColor(profile).opacity(0.12), in: Capsule())
-                }
-
-                if let endsAt = profile.subscriptionEndsAt,
-                   profile.subscriptionStatus == "cancel_at_period_end" {
-                    LabeledContent("Term ends", value: formattedDate(endsAt))
-                        .font(.patchworkCaption)
-                }
-
-                if revenueCatManager.isLoading {
-                    ProgressView("Refreshing App Store status...")
-                        .font(.patchworkCaption)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func plansOrManagementCard(_ profile: TaskerProfileSelf) -> some View {
-        let hasRenewableAccess = revenueCatManager.storeState.activePlan?.isRenewable ?? (profile.subscriptionAccessType == "weekly")
-
-        PatchworkSurfaceCard {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(profile.hasActiveSubscription == true ? "Access Management" : "Access Options")
-                    .font(.patchworkCardTitle)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-
-                if profile.hasActiveSubscription == true {
-                    if hasRenewableAccess, let managementURL = revenueCatManager.managementURL {
-                        Button("Manage subscription in App Store") {
-                            openURL(managementURL)
-                        }
-                        .buttonStyle(PatchworkSecondaryButtonStyle())
-                        .accessibilityIdentifier("Subscription.manageButton")
-                    } else if hasRenewableAccess {
-                        Text("Open this screen after the App Store has loaded your subscription details on this device to manage renewals.")
-                            .font(.patchworkBody)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    } else {
-                        Text("Lifetime access is a one-time purchase. There is nothing to renew or cancel in the App Store.")
-                            .font(.patchworkBody)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    }
-
-                    Button("Restore purchases") {
-                        Task { await restorePurchases() }
-                    }
-                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                    .disabled(isUpdating || revenueCatManager.isLoading)
-                    .accessibilityIdentifier("Subscription.restoreButton")
-                } else {
-                    if revenueCatManager.availablePackages.isEmpty {
-                        Text("Subscription options are unavailable until RevenueCat loads the current App Store offering.")
-                            .font(.patchworkBody)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    } else {
-                        ForEach(revenueCatManager.availablePackages) { package in
-                            Button {
-                                Task { await purchase(package.plan) }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(package.title)
-                                            .font(.patchworkBodyStrong)
-                                            .foregroundStyle(PatchworkTheme.textPrimary)
-                                        Text(package.subtitle)
-                                            .font(.patchworkCaption)
-                                            .foregroundStyle(PatchworkTheme.textSecondary)
-                                        Text(package.priceLabel)
-                                            .font(.patchworkCaption)
-                                            .foregroundStyle(PatchworkTheme.textSecondary)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right.circle.fill")
-                                        .foregroundStyle(PatchworkTheme.brand)
-                                }
-                                .padding(16)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isUpdating || revenueCatManager.isPurchasing)
-                            .accessibilityIdentifier(package.plan.purchaseAccessibilityIdentifier)
-                        }
-                    }
-
-                    Button("Restore purchases") {
-                        Task { await restorePurchases() }
-                    }
-                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                    .disabled(isUpdating || revenueCatManager.isLoading)
-                    .accessibilityIdentifier("Subscription.restoreButton")
-                }
-            }
-        }
-    }
-
-    private func cancellationCard(_ profile: TaskerProfileSelf) -> some View {
-        PatchworkSurfaceCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cancellation")
-                    .font(.patchworkCardTitle)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-                Text(profile.subscriptionEndsAt.map(formattedDate) ?? "Cancellation scheduled for the end of the current term.")
-                    .font(.patchworkBody)
-                    .foregroundStyle(PatchworkTheme.textSecondary)
-                    .accessibilityIdentifier("Subscription.cancellationScheduledText")
-            }
-        }
-    }
-
-    private func purchase(_ plan: SubscriptionPlanChoice) async {
-        isUpdating = true
-        defer { isUpdating = false }
-        await revenueCatManager.purchase(plan, appState: appState, client: sessionStore.client)
-        syncRevenueCatFeedback(successText: "Subscription updated from the App Store.")
-    }
-
-    private func restorePurchases() async {
-        isUpdating = true
-        defer { isUpdating = false }
-        await revenueCatManager.restorePurchases(appState: appState, client: sessionStore.client)
-        syncRevenueCatFeedback(successText: "App Store purchases restored.")
-    }
-
-    private func syncRevenueCatFeedback(successText: String? = nil) {
-        if let error = revenueCatManager.lastError, !error.isEmpty {
-            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error)
-            return
-        }
-
-        if revenueCatManager.hasUnresolvedExpiryGap {
-            feedbackMessage = SubscriptionFeedbackMessage(
-                tone: .warning,
-                text: "The App Store and Patchwork still need to finish one subscription reconciliation step."
-            )
-            return
-        }
-
-        if let successText {
-            feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: successText)
-        }
-    }
-
-    private func planTitle(for profile: TaskerProfileSelf) -> String {
-        switch profile.subscriptionPlan {
-        case "tasker":
-            switch profile.subscriptionAccessType {
-            case "lifetime":
-                return "Lifetime access"
-            case "weekly":
-                return "Weekly access"
-            default:
-                return "Tasker access"
-            }
-        case "premium":
-            return "Premium plan"
-        case "basic":
-            return "Basic plan"
-        default:
-            return profile.subscriptionStatus == "expired" ? "Subscription expired" : "No active plan"
-        }
-    }
-
-    private func planDescription(for profile: TaskerProfileSelf) -> String {
-        switch profile.subscriptionStatus ?? "inactive" {
-        case "active":
-            if profile.subscriptionAccessType == "lifetime" {
-                return "Lifetime access is active. Your profile is discoverable and Ghost Mode can be toggled at any time."
-            }
-            return "Your profile is discoverable and Ghost Mode can be toggled at any time."
-        case "cancel_at_period_end":
-            if let endsAt = profile.subscriptionEndsAt {
-                return "Cancellation is scheduled for \(formattedDate(endsAt)). Ghost Mode turns back on automatically then."
-            }
-            return "Cancellation is scheduled for the end of the current term."
-        case "expired":
-            return "Your paid plan has ended. Ghost Mode is back on until you activate a new plan."
-        default:
-            return "Ghost Mode stays on until you activate a paid plan."
-        }
-    }
-
-    private func formattedDate(_ millis: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
-        return date.formatted(.dateTime.month(.wide).day().year())
-    }
-
-    private func subscriptionStatusColor(_ profile: TaskerProfileSelf) -> Color {
-        switch profile.subscriptionStatus ?? "inactive" {
-        case "active":
-            return PatchworkTheme.brand
-        case "cancel_at_period_end":
-            return PatchworkTheme.warning
-        default:
-            return PatchworkTheme.textSecondary
-        }
-    }
-}
-
-private struct PremiumUpgradeView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            PatchworkBackdrop(tint: PatchworkTheme.brandBright)
-
-            VStack(spacing: 18) {
-                PatchworkSurfaceCard {
-                    VStack(spacing: 18) {
-                        Circle()
-                            .fill(PatchworkTheme.brandSoft)
-                            .frame(width: 84, height: 84)
-                            .overlay {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 30, weight: .semibold))
-                                    .foregroundStyle(PatchworkTheme.brand)
-                            }
-
-                        PatchworkSectionIntro(
-                            eyebrow: "Premium",
-                            title: "Upgrade to Premium",
-                            message: "Premium gives you a searchable PIN and keeps the same Ghost Mode controls as Basic while your plan stays active."
-                        )
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            premiumBullet("Searchable premium PIN for direct referrals")
-                            premiumBullet("The same visibility controls with a stronger brand signal")
-                            premiumBullet("A cleaner upgrade path for repeat clients")
-                        }
-
-                        Button("Close") { dismiss() }
-                            .buttonStyle(PatchworkPrimaryButtonStyle())
-                            .accessibilityIdentifier("PremiumUpgradeView.closeButton")
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-
-    private func premiumBullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(PatchworkTheme.success)
-            Text(text)
-                .font(.patchworkBody)
-                .foregroundStyle(PatchworkTheme.textPrimary)
-        }
-    }
-}
-
 private struct HelpView: View {
-    private let faqs: [(question: String, category: String)] = [
-        ("How accurate is location tracking?", "Location"),
-        ("What if no Taskers are available?", "Search"),
-        ("How do I report a safety concern?", "Safety"),
-        ("Can Taskers pay for better placement?", "Reviews"),
-        ("How are rankings determined?", "Reviews"),
-        ("What if I need to cancel a job?", "Jobs"),
-    ]
+    @State private var legalDocument: LegalDocument?
 
     var body: some View {
         ZStack {
@@ -2342,64 +2193,27 @@ private struct HelpView: View {
                     PatchworkSectionIntro(
                         eyebrow: "Support",
                         title: "Help",
-                        message: "Answers, support contacts, and the ranking promise that keeps discovery trustworthy."
+                        message: "Review Patchwork's policies or send feedback directly from the app."
                     )
 
                     PatchworkSurfaceCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("Frequently asked questions")
-                                .font(.patchworkCardTitle)
-                                .foregroundStyle(PatchworkTheme.textPrimary)
-
-                            ForEach(Array(faqs.enumerated()), id: \.offset) { index, faq in
-                                HStack(alignment: .firstTextBaseline) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(faq.question)
-                                            .font(.patchworkBodyStrong)
-                                            .foregroundStyle(PatchworkTheme.textPrimary)
-                                        Text(faq.category)
-                                            .font(.patchworkCaption)
-                                            .foregroundStyle(PatchworkTheme.textSecondary)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundStyle(PatchworkTheme.textTertiary)
-                                }
-                                .padding(.vertical, 4)
-                                .accessibilityIdentifier("Help.faq.\(index)")
+                        VStack(spacing: 14) {
+                            Button("Terms of Service") {
+                                legalDocument = .terms
                             }
-                        }
-                    }
+                            .buttonStyle(.plain)
+                            .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.termsLink"))
 
-                    PatchworkSurfaceCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("Support")
-                                .font(.patchworkCardTitle)
-                                .foregroundStyle(PatchworkTheme.textPrimary)
-                            helpDetailRow("Email", value: "support@patchwork.app")
-                                .textSelection(.enabled)
-                                .accessibilityIdentifier("Help.emailSupport")
-                            helpDetailRow("Phone", value: "1-800-PATCH-WK")
-                                .accessibilityIdentifier("Help.phoneSupport")
-                            Text("Mon-Fri, 9 AM - 5 PM ET")
-                                .font(.patchworkCaption)
-                                .foregroundStyle(PatchworkTheme.textSecondary)
-                        }
-                    }
+                            Button("Privacy Policy") {
+                                legalDocument = .privacy
+                            }
+                            .buttonStyle(.plain)
+                            .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.privacyLink"))
 
-                    PatchworkSurfaceCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Ranking promise")
-                                .font(.patchworkCardTitle)
-                                .foregroundStyle(PatchworkTheme.textPrimary)
-                            Text("Patchwork never accepts payment for better placement. Rankings are based solely on:")
-                                .font(.patchworkBody)
-                                .foregroundStyle(PatchworkTheme.textSecondary)
-                            premiumBullet("Verified client reviews and ratings")
-                            premiumBullet("Proximity to your location")
-                            premiumBullet("Recent activity and response time")
-                            premiumBullet("Completion rate and reliability")
+                            NavigationLink("Send Feedback") {
+                                FeedbackView()
+                            }
+                            .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.feedbackLink"))
                         }
                     }
                 }
@@ -2410,28 +2224,130 @@ private struct HelpView: View {
             .scrollIndicators(.hidden)
         }
         .navigationTitle("Help")
+        .sheet(item: $legalDocument) { document in
+            LegalDocumentView(document: document)
+        }
         .accessibilityIdentifier("Help.list")
     }
+}
 
-    private func helpDetailRow(_ title: String, value: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.patchworkCaption)
-                .foregroundStyle(PatchworkTheme.textSecondary)
-            Spacer()
-            Text(value)
-                .font(.patchworkBodyStrong)
-                .foregroundStyle(PatchworkTheme.textPrimary)
+private enum LegalDocument: String, Identifiable {
+    case privacy
+    case terms
+
+    var id: String { rawValue }
+
+    var url: URL {
+        switch self {
+        case .privacy:
+            return URL(string: "https://ddga.ltd/patchwork/privacy")!
+        case .terms:
+            return URL(string: "https://ddga.ltd/patchwork/terms")!
         }
     }
+}
 
-    private func premiumBullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(PatchworkTheme.success)
-            Text(text)
-                .font(.patchworkBody)
-                .foregroundStyle(PatchworkTheme.textPrimary)
+private struct LegalDocumentView: UIViewControllerRepresentable {
+    let document: LegalDocument
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let controller = SFSafariViewController(url: document.url)
+        controller.preferredControlTintColor = UIColor(PatchworkTheme.brand)
+        controller.dismissButtonStyle = .close
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
+
+private struct FeedbackView: View {
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var message = ""
+    @State private var feedbackMessage: SubscriptionFeedbackMessage?
+    @State private var isSubmitting = false
+
+    private let maxFeedbackLength = 2000
+
+    var body: some View {
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+
+            ScrollView {
+                VStack(spacing: 18) {
+                    PatchworkSurfaceCard {
+                        VStack(alignment: .leading, spacing: 18) {
+                            PatchworkSectionIntro(
+                                eyebrow: "Support",
+                                title: "Send Feedback",
+                                message: "Share product feedback, bugs, or rough edges in your own words."
+                            )
+
+                            if let feedbackMessage {
+                                PatchworkInlineStatusBanner(tone: feedbackMessage.tone, text: feedbackMessage.text)
+                                    .accessibilityIdentifier("Feedback.statusBanner")
+                            }
+
+                            TextEditor(text: $message)
+                                .font(.patchworkBody)
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+                                .frame(minHeight: 160)
+                                .padding(10)
+                                .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                                .onChange(of: message) { _, newValue in
+                                    if newValue.count > maxFeedbackLength {
+                                        message = String(newValue.prefix(maxFeedbackLength))
+                                    }
+                                }
+                                .accessibilityIdentifier("Feedback.messageField")
+
+                            Text("\(message.count)/\(maxFeedbackLength)")
+                                .font(.patchworkCaption)
+                                .foregroundStyle(message.count >= maxFeedbackLength ? PatchworkTheme.warning : PatchworkTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .accessibilityIdentifier("Feedback.messageCount")
+
+                            Button(isSubmitting ? "Sending..." : "Send Feedback") {
+                                Task { await submitFeedback() }
+                            }
+                            .buttonStyle(PatchworkPrimaryButtonStyle())
+                            .disabled(isSubmitting || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityIdentifier("Feedback.submitButton")
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .navigationTitle("Feedback")
+    }
+
+    private func submitFeedback() async {
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else {
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: "Enter your feedback before sending.")
+            return
+        }
+
+        isSubmitting = true
+        feedbackMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            _ = try await sessionStore.client.mutation("feedback:submit", args: ["message": trimmedMessage]) as EmptyResponse
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Feedback sent. Thank you.")
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            dismiss()
+        } catch {
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }
 }

@@ -15,6 +15,8 @@ final class AppState {
     var isBootstrapped = false
 
     var categories: [Category] = []
+    var categoriesErrorMessage: String?
+    var isLoadingCategories = false
     var taskers: [TaskerSummary] = []
     var favouriteTaskers: [TaskerSummary] = []
     var conversations: [ConversationSummary] = []
@@ -60,27 +62,43 @@ final class AppState {
 
     func loadBootstrapData(client: ConvexHTTPClient) async {
         isBootstrapped = false
+        await refreshCategories(client: client)
+        await refreshAuthedData(client: client, surfaceErrors: false, shouldRefreshCategories: false)
+        if currentUser != nil {
+            await searchTaskers(
+                client: client,
+                categorySlug: activeCategorySlug,
+                radiusKm: searchRadius,
+                excludeCurrentUserWhenTasker: true
+            )
+        } else {
+            taskers = []
+        }
+        isBootstrapped = true
+    }
+
+    func refreshCategories(client: ConvexHTTPClient) async {
+        isLoadingCategories = true
+        defer { isLoadingCategories = false }
+
         do {
             categories = try await client.query("categories:listCategories", args: [:])
-            await refreshAuthedData(client: client, surfaceErrors: false)
-            if currentUser != nil {
-                await searchTaskers(
-                    client: client,
-                    categorySlug: activeCategorySlug,
-                    radiusKm: searchRadius,
-                    excludeCurrentUserWhenTasker: true
-                )
-            } else {
-                taskers = []
-            }
-            isBootstrapped = true
+            categoriesErrorMessage = nil
         } catch {
-            presentError(error, prefix: "Failed to bootstrap app data")
-            isBootstrapped = true
+            categories = []
+            categoriesErrorMessage = error.localizedDescription
         }
     }
 
-    func refreshAuthedData(client: ConvexHTTPClient, surfaceErrors: Bool = true) async {
+    func refreshAuthedData(
+        client: ConvexHTTPClient,
+        surfaceErrors: Bool = true,
+        shouldRefreshCategories: Bool = true
+    ) async {
+        if shouldRefreshCategories {
+            await refreshCategories(client: client)
+        }
+
         let previousCurrentUser = currentUser
         let previousConversations = conversations
         let previousJobs = jobs
@@ -278,6 +296,8 @@ final class AppState {
         taskerProfile = nil
         selectedTasker = nil
         selectedConversation = nil
+        categoriesErrorMessage = nil
+        isLoadingCategories = false
         lastError = nil
     }
 }

@@ -238,8 +238,30 @@ final class SessionStore {
         }
     }
 
-    func signOut() {
+    func signOut() async {
+        let sessionToInvalidate = StoredSession(
+            convexAuthToken: token,
+            betterAuthCookie: betterAuthCookie,
+            betterAuthSessionToken: betterAuthSessionToken
+        )
+
         clearSession(errorMessage: nil)
+
+        guard sessionToInvalidate.hasRefreshCredential else {
+            return
+        }
+
+        do {
+            try await clientBuilder(
+                sessionToInvalidate.convexAuthToken,
+                sessionToInvalidate.betterAuthCookie,
+                sessionToInvalidate.betterAuthSessionToken,
+                nil,
+                nil
+            ).signOut()
+        } catch {
+            // Local session has already been cleared; remote sign-out is best effort.
+        }
     }
 
     private func invalidateSession(message: String) {
@@ -302,14 +324,44 @@ final class SessionStore {
         if let patchworkError = error as? PatchworkError,
            let description = patchworkError.errorDescription,
            !description.isEmpty {
+            if isAuthenticationFailure(description) {
+                return "Your session expired. Sign in again."
+            }
             return description
         }
 
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !description.isEmpty {
+            if isAuthenticationFailure(description) {
+                return "Your session expired. Sign in again."
+            }
             return description
         }
 
         return "We couldn't restore your session. Sign in again."
+    }
+
+    private func isAuthenticationFailure(_ description: String) -> Bool {
+        let normalized = description
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let authFailurePhrases = [
+            "unauthorized",
+            "forbidden",
+            "not authenticated",
+            "authentication expired",
+            "authentication required",
+            "session expired",
+            "expired session",
+            "invalid session",
+            "session is invalid",
+            "token expired",
+            "expired token",
+            "invalid token",
+            "token is invalid",
+            "invalid jwt",
+            "jwt expired",
+        ]
+        return authFailurePhrases.contains(where: normalized.contains)
     }
 }
