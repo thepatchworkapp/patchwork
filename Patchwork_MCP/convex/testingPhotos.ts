@@ -7,14 +7,14 @@ export const checkUserPhotos = internalQuery({
     const user = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
+      .unique();
     
     if (!user) return null;
     
     const taskerProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
+      .unique();
     
     if (!taskerProfile) {
       return {
@@ -31,7 +31,7 @@ export const checkUserPhotos = internalQuery({
     
     const taskerCategories = await ctx.db
       .query("taskerCategories")
-      .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", taskerProfile._id))
+      .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", taskerProfile._id))
       .take(10);
     
     const allCategoryPhotos = taskerCategories.flatMap(tc => tc.photos || []);
@@ -60,7 +60,7 @@ export const forceUpdateUserPhoto = internalMutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
+      .unique();
     
     if (!user) throw new ConvexError(`User not found: ${args.email}`);
     

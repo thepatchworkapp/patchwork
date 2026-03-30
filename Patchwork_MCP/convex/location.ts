@@ -2,6 +2,7 @@ import { internalMutation, mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { taskerGeo } from "./geospatial";
 import { locationUpdateResultValidator } from "../lib/convex/validators";
+import { requireAppUser } from "./authHelpers";
 
 /**
  * Calculates the Haversine distance between two coordinates in meters
@@ -38,14 +39,7 @@ export const updateUserLocation = mutation({
   },
   returns: locationUpdateResultValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // Coordinate validation
     if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
@@ -96,14 +90,7 @@ export const updateTaskerLocation = mutation({
   },
   returns: locationUpdateResultValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // Coordinate validation
     if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
@@ -112,7 +99,7 @@ export const updateTaskerLocation = mutation({
     const taskerProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .first();
+      .unique();
     if (!taskerProfile) throw new ConvexError("Tasker profile not found");
 
     const currentLocation = taskerProfile.location;
@@ -143,7 +130,7 @@ export const updateTaskerLocation = mutation({
 
     const primaryCategory = await ctx.db
       .query("taskerCategories")
-      .withIndex("by_taskerProfile", (q) =>
+      .withIndex("by_taskerProfile_category", (q) =>
         q.eq("taskerProfileId", taskerProfile._id)
       )
       .first();
@@ -181,7 +168,7 @@ export const syncTaskerGeo = internalMutation({
     const taskerProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
+      .unique();
     if (!taskerProfile) return;
 
     await ctx.db.patch(taskerProfile._id, {
@@ -191,7 +178,7 @@ export const syncTaskerGeo = internalMutation({
 
     const primaryCategory = await ctx.db
       .query("taskerCategories")
-      .withIndex("by_taskerProfile", (q) =>
+      .withIndex("by_taskerProfile_category", (q) =>
         q.eq("taskerProfileId", taskerProfile._id)
       )
       .first();

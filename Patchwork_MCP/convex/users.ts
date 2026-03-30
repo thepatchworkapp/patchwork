@@ -19,7 +19,7 @@ export const createProfile = mutation({
     const existing = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
+      .unique();
 
     if (existing) {
       // Return existing user ID (idempotent) instead of throwing
@@ -80,7 +80,7 @@ export const getCurrentUser = query({
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
+      .unique();
 
     if (!user) {
       return null;
@@ -116,7 +116,7 @@ export const updateLocation = mutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
+      .unique();
     
     if (!user) throw new ConvexError("User not found");
 
@@ -142,11 +142,12 @@ export const updateLocation = mutation({
     });
 
     if (user.roles.isTasker) {
-      await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
+      const scheduledSyncTaskerGeoJob = await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
         userId: user._id,
         lat: args.lat,
         lng: args.lng,
       });
+      void scheduledSyncTaskerGeoJob;
     }
 
     return user._id;

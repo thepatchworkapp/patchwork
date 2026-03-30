@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { conversationValidator } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
 export const startConversation = mutation({
   args: {
@@ -9,14 +10,7 @@ export const startConversation = mutation({
   },
   returns: v.id("conversations"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     if (user._id === args.taskerId) {
       throw new ConvexError("Cannot start conversation with yourself");
@@ -32,7 +26,7 @@ export const startConversation = mutation({
       .withIndex("by_participants", (q) =>
         q.eq("seekerId", user._id).eq("taskerId", args.taskerId)
       )
-      .first();
+      .unique();
 
     if (existingConversation) {
       return existingConversation._id;
@@ -81,11 +75,9 @@ export const listConversations = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) return [];
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return [];
+    const { user } = session;
 
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
 
@@ -188,11 +180,9 @@ export const getConversation = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) return null;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+    const { user } = session;
 
     const conversation = await ctx.db.get(args.conversationId);
     if (
@@ -234,14 +224,7 @@ export const markAsRead = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) throw new ConvexError("Conversation not found");

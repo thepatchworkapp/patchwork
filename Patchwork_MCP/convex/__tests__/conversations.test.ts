@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
@@ -108,7 +108,7 @@ describe("conversations", () => {
       province: "ON",
     });
 
-    await asTasker.mutation(api.categories.seedCategories, {});
+    await asTasker.mutation(internal.categories.seedCategories, {});
     const categories = await asTasker.query(api.categories.listCategories, {});
     const firstCategory = categories[0];
     expect(firstCategory?._id).toBeDefined();

@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
@@ -32,7 +32,7 @@ const modules: Record<string, () => Promise<any>> = {
 
 // Helper to create a completed job
 async function createCompletedJob(t: any, seekerAuth: any, taskerAuth: any) {
-  await t.mutation(api.categories.seedCategories);
+  await t.mutation(internal.categories.seedCategories);
 
   // Create seeker
   const seekerId = await seekerAuth.mutation(api.users.createProfile, {
@@ -364,7 +364,7 @@ describe("reviews - rating aggregation", () => {
     });
 
     // Create tasker once
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const taskerId = await asTasker.mutation(api.users.createProfile, {
       name: "Tasker Multi",
       city: "Toronto",
@@ -491,7 +491,7 @@ describe("reviews - basic functionality", () => {
       email: "tasker_basic2@example.com",
     });
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     const seekerId = await asSeeker.mutation(api.users.createProfile, {
       name: "Seeker",

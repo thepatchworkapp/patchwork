@@ -1,6 +1,5 @@
-import { ConvexError, v } from "convex/values";
-import { components, internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { ConvexError } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const APP_REVIEW_EMAIL = "review@apple.com";
 export const APP_REVIEW_SEEKER_EMAIL = "seeker@apple.com";
@@ -16,7 +15,6 @@ const REVIEW_CATEGORY_NAME = "Cleaning";
 const REVIEW_CATEGORY_SLUG = "cleaning";
 const REVIEW_RATE_CENTS = 6500;
 const REVIEW_SERVICE_RADIUS_KM = 25;
-const REVIEW_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PRIMARY_REVIEW_EMAIL = APP_REVIEW_EMAIL;
 
 type ReviewAccessMode = "fullProfile" | "authOnly";
@@ -66,7 +64,7 @@ async function getReviewAccessRecord(ctx: any, email: string = PRIMARY_REVIEW_EM
   return await ctx.db
     .query("reviewAccess")
     .withIndex("by_email", (q: any) => q.eq("email", email))
-    .first();
+    .unique();
 }
 
 async function upsertReviewAccessRecord(
@@ -104,7 +102,7 @@ async function ensureReviewCategory(ctx: any) {
   let category = await ctx.db
     .query("categories")
     .withIndex("by_slug", (q: any) => q.eq("slug", REVIEW_CATEGORY_SLUG))
-    .first();
+    .unique();
 
   if (!category) {
     const categoryId = await ctx.db.insert("categories", {
@@ -130,7 +128,7 @@ async function ensureAppReviewUser(ctx: any, betterAuthUserId?: string | null) {
   let user = await ctx.db
     .query("users")
     .withIndex("by_email", (q: any) => q.eq("email", APP_REVIEW_EMAIL))
-    .first();
+    .unique();
   const authId =
     betterAuthUserId != null
       ? reviewAuthIdForUserId(betterAuthUserId)
@@ -182,7 +180,7 @@ async function ensureSeekerProfile(ctx: any, userId: any) {
   const existing = await ctx.db
     .query("seekerProfiles")
     .withIndex("by_userId", (q: any) => q.eq("userId", userId))
-    .first();
+    .unique();
 
   if (existing) {
     return existing;
@@ -207,7 +205,7 @@ async function ensureTaskerProfile(ctx: any, userId: any, categoryId: any) {
   let taskerProfile = await ctx.db
     .query("taskerProfiles")
     .withIndex("by_userId", (q: any) => q.eq("userId", userId))
-    .first();
+    .unique();
 
   const taskerPatch = {
     displayName: REVIEW_DISPLAY_NAME,
@@ -223,7 +221,6 @@ async function ensureTaskerProfile(ctx: any, userId: any, categoryId: any) {
     subscriptionStatus: "active" as const,
     subscriptionEndsAt: undefined,
     ghostMode: false,
-    premiumPin: undefined,
     foundersBadge: {
       categoryId,
       awardedAt: now,
@@ -256,7 +253,7 @@ async function ensureTaskerProfile(ctx: any, userId: any, categoryId: any) {
     .withIndex("by_taskerProfile_category", (q: any) =>
       q.eq("taskerProfileId", taskerProfile._id).eq("categoryId", categoryId)
     )
-    .first();
+    .unique();
 
   const taskerCategoryPatch = {
     taskerProfileId: taskerProfile._id,
@@ -289,19 +286,11 @@ async function ensureTaskerProfile(ctx: any, userId: any, categoryId: any) {
     throw new ConvexError("Review tasker category could not be created");
   }
 
-  if (ctx.scheduler?.runAfter) {
-    await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
-      userId,
-      lat: REVIEW_LAT,
-      lng: REVIEW_LNG,
-    });
-  } else if (ctx.runMutation) {
-    await ctx.runMutation(internal.location.syncTaskerGeo, {
-      userId,
-      lat: REVIEW_LAT,
-      lng: REVIEW_LNG,
-    });
-  }
+  await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
+    userId,
+    lat: REVIEW_LAT,
+    lng: REVIEW_LNG,
+  });
 
   return { taskerProfile, taskerCategory };
 }
@@ -458,54 +447,23 @@ export async function createReviewSession(ctx: any, email: string) {
     throw new ConvexError("App review access is disabled");
   }
 
-  let authUser = await ctx.runQuery(components.betterAuth.adapter.findOne, {
-    model: "user",
-    where: [{ field: "email", value: config.email }],
+  const sessionToken = makeSessionToken();
+  const authSession = await ctx.runMutation(internal.reviewAccessInternal.ensureReviewAuthSession, {
+    email: config.email,
+    name: config.name,
+    sessionToken,
+    userAgent: "Patchwork App Review",
   });
 
-  if (!authUser) {
-    authUser = await ctx.runMutation(components.betterAuth.adapter.create, {
-      input: {
-        model: "user",
-        data: {
-          name: config.name,
-          email: config.email,
-          emailVerified: true,
-          image: null,
-          createdAt: new Date().getTime(),
-          updatedAt: new Date().getTime(),
-        },
-      },
-    });
-  }
-
-  const betterAuthUserId = String(authUser?.id ?? authUser?._id ?? "");
+  const betterAuthUserId = String(authSession?.betterAuthUserId ?? "");
   if (!betterAuthUserId) {
     throw new ConvexError("Review auth user could not be created");
   }
 
-  const seeded = await ctx.runMutation(internal.reviewAccess.bootstrap, {
+  const seeded = await ctx.runMutation(internal.reviewAccessInternal.bootstrap, {
     enabled: true,
     betterAuthUserId,
     email: config.email,
-  });
-
-  const sessionToken = makeSessionToken();
-  const now = Date.now();
-
-  await ctx.runMutation(components.betterAuth.adapter.create, {
-    input: {
-      model: "session",
-      data: {
-        expiresAt: now + REVIEW_SESSION_TTL_MS,
-        token: sessionToken,
-        createdAt: now,
-        updatedAt: now,
-        ipAddress: "",
-        userAgent: "Patchwork App Review",
-        userId: betterAuthUserId,
-      },
-    },
   });
 
   return {
@@ -514,14 +472,3 @@ export async function createReviewSession(ctx: any, email: string) {
     appUserId: seeded.appUserId ?? null,
   };
 }
-
-export const bootstrap = internalMutation({
-  args: {
-    enabled: v.boolean(),
-    betterAuthUserId: v.optional(v.string()),
-    email: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    return await setReviewAccessEnabled(ctx, args.enabled, args.betterAuthUserId, args.email);
-  },
-});

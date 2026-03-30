@@ -6,7 +6,7 @@ import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import geospatialSchema from "../../node_modules/@convex-dev/geospatial/dist/component/schema.js";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as usersModule from "../users";
 import * as categoriesModule from "../categories";
@@ -119,7 +119,7 @@ describe("location", () => {
       province: "BC",
     });
 
-    await asUser.mutation(api.categories.seedCategories, {});
+    await asUser.mutation(internal.categories.seedCategories, {});
     const categories = await asUser.query(api.categories.listCategories);
     const categoryId = categories[0]._id;
 

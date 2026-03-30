@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import { Doc } from "../_generated/dataModel";
 import * as conversationsModule from "../conversations";
@@ -33,7 +33,7 @@ describe("jobs", () => {
   test("job created when proposal accepted", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -99,7 +99,7 @@ describe("jobs", () => {
   test("getJob returns job by ID", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -161,7 +161,7 @@ describe("jobs", () => {
   test("listJobs returns jobs for authenticated user as seeker", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -219,7 +219,7 @@ describe("jobs", () => {
   test("listJobs returns jobs for authenticated user as tasker", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -277,7 +277,7 @@ describe("jobs", () => {
   test("listJobs filters by status when provided", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -345,7 +345,7 @@ describe("jobs", () => {
   test("seeker can complete in_progress job", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -403,7 +403,7 @@ describe("jobs", () => {
   test("tasker cannot complete job (unauthorized)", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -455,7 +455,7 @@ describe("jobs", () => {
   test("cannot complete pending job", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -512,7 +512,7 @@ describe("jobs", () => {
   test("cannot complete already completed job", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -567,7 +567,7 @@ describe("jobs", () => {
   test("completeJob sets completedDate", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -630,7 +630,7 @@ describe("jobs", () => {
   test("getJob returns null for non-participant", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     const asSeeker = t.withIdentity({
       tokenIdentifier: "google|seeker_auth_job1",
@@ -685,7 +685,7 @@ describe("jobs", () => {
   test("getJob returns null for unauthenticated user", async () => {
     const t = convexTest(schema, modules);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
 
     const asSeeker = t.withIdentity({
       tokenIdentifier: "google|seeker_auth_job2",

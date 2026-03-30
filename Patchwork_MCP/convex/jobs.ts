@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { jobValidator, listedJobValidator } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
 type JobStatus = "pending" | "in_progress" | "completed" | "cancelled" | "disputed";
 
@@ -64,14 +65,9 @@ export const getJob = query({
   args: { jobId: v.id("jobs") },
   returns: v.union(jobValidator, v.null()),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) return null;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+    const { user } = session;
 
     const job = await ctx.db.get(args.jobId);
     if (!job || (job.seekerId !== user._id && job.taskerId !== user._id)) {
@@ -96,15 +92,9 @@ export const listJobs = query({
   },
   returns: v.array(listedJobValidator),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) return [];
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return [];
+    const { user } = session;
 
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
 
@@ -201,14 +191,7 @@ export const completeJob = mutation({
   args: { jobId: v.id("jobs") },
   returns: v.object({ jobId: v.id("jobs") }),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     const job = await ctx.db.get(args.jobId);
     if (!job) throw new ConvexError("Job not found");

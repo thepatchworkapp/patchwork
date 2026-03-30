@@ -1,6 +1,6 @@
-import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
+import { authComponent } from "./auth";
 import { getReviewAccessStatus, setReviewAccessEnabled } from "./reviewAccess";
 import { taskerGeo } from "./geospatial";
 
@@ -19,6 +19,16 @@ function getAdminEmailAllowlist(): Set<string> {
 
 const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
+const reviewAccessStatusValidator = v.object({
+  email: v.string(),
+  allowedEmails: v.array(v.string()),
+  enabled: v.boolean(),
+  betterAuthUserId: v.union(v.string(), v.null()),
+  appUserId: v.union(v.id("users"), v.null()),
+  lastEnabledAt: v.union(v.number(), v.null()),
+  lastDisabledAt: v.union(v.number(), v.null()),
+  updatedAt: v.union(v.number(), v.null()),
+});
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
@@ -58,15 +68,81 @@ async function deleteTableRows(
   return deleted;
 }
 
+async function collectStorageIdsForRows(
+  rows: Array<any>,
+  storageIds: Set<any>,
+  getStorageIds: (row: any) => Array<any>
+) {
+  for (const row of rows) {
+    for (const storageId of getStorageIds(row)) {
+      storageIds.add(storageId);
+    }
+  }
+}
+
+async function resetApplicationData(ctx: any) {
+  const storageIds = new Set<any>();
+
+  const deletedMessages = await deleteTableRows(ctx, "messages", async (message) => {
+    await collectStorageIdsForRows([message], storageIds, (row) => row.attachments ?? []);
+  });
+  const deletedReviews = await deleteTableRows(ctx, "reviews");
+  const deletedJobs = await deleteTableRows(ctx, "jobs");
+  const deletedProposals = await deleteTableRows(ctx, "proposals");
+  const deletedConversations = await deleteTableRows(ctx, "conversations");
+  const deletedJobRequests = await deleteTableRows(ctx, "jobRequests", async (jobRequest) => {
+    await collectStorageIdsForRows([jobRequest], storageIds, (row) => row.photos ?? []);
+  });
+  const deletedTaskerCategories = await deleteTableRows(ctx, "taskerCategories", async (taskerCategory) => {
+    await collectStorageIdsForRows([taskerCategory], storageIds, (row) => row.photos ?? []);
+  });
+  const deletedTaskerProfiles = await deleteTableRows(ctx, "taskerProfiles", async (taskerProfile) => {
+    await taskerGeo.remove(ctx, taskerProfile._id);
+  });
+  const deletedSeekerProfiles = await deleteTableRows(ctx, "seekerProfiles");
+  const deletedReviewAccess = await deleteTableRows(ctx, "reviewAccess");
+  const deletedOtps = await deleteTableRows(ctx, "otps");
+  const deletedAdminOtps = await deleteTableRows(ctx, "adminOtps");
+  const deletedUsers = await deleteTableRows(ctx, "users", async (user) => {
+    if (user.photo) {
+      storageIds.add(user.photo);
+    }
+  });
+
+  const deletedStorageFiles = await deleteStorageIds(ctx, storageIds);
+
+  return {
+    deletedMessages,
+    deletedReviews,
+    deletedJobs,
+    deletedProposals,
+    deletedConversations,
+    deletedJobRequests,
+    deletedTaskerCategories,
+    deletedTaskerProfiles,
+    deletedSeekerProfiles,
+    deletedReviewAccess,
+    deletedOtps,
+    deletedAdminOtps,
+    deletedUsers,
+    deletedStorageFiles,
+  };
+}
+
 async function resetBetterAuthNonAdmin(ctx: any) {
+  const authAdapter = authComponent.adapter(ctx);
   const adminAuthUserIds = new Set<string>();
 
-  for (const email of ADMIN_EMAILS) {
-    const authUser = await ctx.runQuery(components.betterAuth.adapter.findOne, {
-      model: "user",
-      where: [{ field: "email", operator: "eq", value: email }],
-    });
+  const adminAuthUsers = await Promise.all(
+    Array.from(ADMIN_EMAILS).map(async (email) =>
+      await authAdapter.findOne({
+        model: "user",
+        where: [{ field: "email", operator: "eq", value: email }],
+      })
+    )
+  );
 
+  for (const authUser of adminAuthUsers) {
     const authUserId = authUser ? String(authUser.id ?? authUser._id ?? "") : "";
     if (authUserId) {
       adminAuthUserIds.add(authUserId);
@@ -80,38 +156,39 @@ async function resetBetterAuthNonAdmin(ctx: any) {
     ? [{ field: "userId", operator: "not_in" as const, value: Array.from(adminAuthUserIds) }]
     : undefined;
 
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "session", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "account", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "twoFactor", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "passkey", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "oauthAccessToken", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "oauthConsent", where: nonAdminAuthIdFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "verification" },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
-  await ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-    input: { model: "user", where: nonAdminUserFilter },
-    paginationOpts: { cursor: null, numItems: 10_000 },
-  });
+  await Promise.all([
+    authAdapter.deleteMany({
+      model: "session",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "account",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "twoFactor",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "passkey",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "oauthAccessToken",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "oauthConsent",
+      where: nonAdminAuthIdFilter,
+    }),
+    authAdapter.deleteMany({
+      model: "verification",
+    }),
+    authAdapter.deleteMany({
+      model: "user",
+      where: nonAdminUserFilter,
+    }),
+  ]);
 }
 
 async function requireAdmin(ctx: any): Promise<boolean> {
@@ -131,6 +208,34 @@ export const listAllUsers = query({
     cursor: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
+  returns: v.object({
+    users: v.array(
+      v.object({
+        _id: v.id("users"),
+        email: v.string(),
+        name: v.string(),
+        photo: v.optional(v.id("_storage")),
+        photoUrl: v.union(v.string(), v.null()),
+        location: v.object({
+          city: v.string(),
+          province: v.string(),
+          coordinates: v.optional(
+            v.object({
+              lat: v.number(),
+              lng: v.number(),
+            })
+          ),
+        }),
+        roles: v.object({
+          isSeeker: v.boolean(),
+          isTasker: v.boolean(),
+        }),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+      })
+    ),
+    cursor: v.union(v.string(), v.null()),
+  }),
   handler: async (ctx, args) => {
     if (!(await requireAdmin(ctx))) {
       return { users: [], cursor: null };
@@ -178,6 +283,7 @@ export const listAllUsers = query({
 
 export const isAdmin = query({
   args: {},
+  returns: v.boolean(),
   handler: async (ctx) => {
     return await requireAdmin(ctx);
   },
@@ -185,6 +291,7 @@ export const isAdmin = query({
 
 export const getReviewAccess = query({
   args: {},
+  returns: v.union(reviewAccessStatusValidator, v.null()),
   handler: async (ctx) => {
     if (!(await requireAdmin(ctx))) return null;
     return await getReviewAccessStatus(ctx);
@@ -195,6 +302,7 @@ export const setReviewAccess = mutation({
   args: {
     enabled: v.boolean(),
   },
+  returns: reviewAccessStatusValidator,
   handler: async (ctx, args) => {
     await requireAdminOrThrow(ctx);
     return await setReviewAccessEnabled(ctx, args.enabled);
@@ -213,60 +321,12 @@ export const resetDatabase = mutation({
   args: {},
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
-
-    const storageIds = new Set<any>();
-
-    const deletedMessages = await deleteTableRows(ctx, "messages", async (message) => {
-      for (const attachment of message.attachments ?? []) {
-        storageIds.add(attachment);
-      }
-    });
-    const deletedReviews = await deleteTableRows(ctx, "reviews");
-    const deletedJobs = await deleteTableRows(ctx, "jobs");
-    const deletedProposals = await deleteTableRows(ctx, "proposals");
-    const deletedConversations = await deleteTableRows(ctx, "conversations");
-    const deletedJobRequests = await deleteTableRows(ctx, "jobRequests", async (jobRequest) => {
-      for (const photo of jobRequest.photos ?? []) {
-        storageIds.add(photo);
-      }
-    });
-    const deletedTaskerCategories = await deleteTableRows(ctx, "taskerCategories", async (taskerCategory) => {
-      for (const photo of taskerCategory.photos ?? []) {
-        storageIds.add(photo);
-      }
-    });
-    const deletedTaskerProfiles = await deleteTableRows(ctx, "taskerProfiles", async (taskerProfile) => {
-      await taskerGeo.remove(ctx, taskerProfile._id);
-    });
-    const deletedSeekerProfiles = await deleteTableRows(ctx, "seekerProfiles");
-    const deletedReviewAccess = await deleteTableRows(ctx, "reviewAccess");
-    const deletedOtps = await deleteTableRows(ctx, "otps");
-    const deletedAdminOtps = await deleteTableRows(ctx, "adminOtps");
-    const deletedUsers = await deleteTableRows(ctx, "users", async (user) => {
-      if (user.photo) {
-        storageIds.add(user.photo);
-      }
-    });
-
-    const deletedStorageFiles = await deleteStorageIds(ctx, storageIds);
+    const resetCounts = await resetApplicationData(ctx);
     await resetBetterAuthNonAdmin(ctx);
 
     return {
       resetAt: Date.now(),
-      deletedMessages,
-      deletedReviews,
-      deletedJobs,
-      deletedProposals,
-      deletedConversations,
-      deletedJobRequests,
-      deletedTaskerCategories,
-      deletedTaskerProfiles,
-      deletedSeekerProfiles,
-      deletedReviewAccess,
-      deletedOtps,
-      deletedAdminOtps,
-      deletedUsers,
-      deletedStorageFiles,
+      ...resetCounts,
       preservedAdminEmails: Array.from(ADMIN_EMAILS),
     };
   },
@@ -287,18 +347,18 @@ export const getUserDetail = query({
     const seekerProfile = await ctx.db
       .query("seekerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
+      .unique();
 
     const taskerProfile = await ctx.db
       .query("taskerProfiles")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
+      .unique();
 
     let taskerProfileWithCategories = null;
     if (taskerProfile) {
       const taskerCategories = await ctx.db
         .query("taskerCategories")
-        .withIndex("by_taskerProfile", (q) => q.eq("taskerProfileId", taskerProfile._id))
+        .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", taskerProfile._id))
         .take(50);
 
       const categoriesWithNames = await Promise.all(

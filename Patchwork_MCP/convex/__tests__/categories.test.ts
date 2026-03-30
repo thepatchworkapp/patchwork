@@ -1,7 +1,7 @@
 // convex/__tests__/categories.test.ts
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as categoriesModule from "../categories";
 import * as usersModule from "../users";
@@ -23,7 +23,7 @@ describe("categories", () => {
   test("seedCategories creates all categories", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     const categories = await t.query(api.categories.listCategories);
     expect(categories.length).toBeGreaterThanOrEqual(50);
@@ -32,10 +32,10 @@ describe("categories", () => {
   test("seedCategories is idempotent (running twice doesn't duplicate)", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const firstRun = await t.query(api.categories.listCategories);
 
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     const secondRun = await t.query(api.categories.listCategories);
     
     expect(secondRun).toHaveLength(firstRun.length);
@@ -44,7 +44,7 @@ describe("categories", () => {
   test("listCategories returns all active categories sorted by sortOrder", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     const categories = await t.query(api.categories.listCategories);
     
@@ -62,7 +62,7 @@ describe("categories", () => {
   test("getCategoryBySlug returns single category by slug", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "plumbing",
@@ -78,12 +78,31 @@ describe("categories", () => {
   test("getCategoryBySlug returns null for non-existent slug", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     const category = await t.query(api.categories.getCategoryBySlug, {
       slug: "non-existent",
     });
     
     expect(category).toBeNull();
+  });
+
+  test("listCategories excludes inactive categories", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+    const plumbing = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumbing",
+    });
+    expect(plumbing).toBeDefined();
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(plumbing!._id, {
+        isActive: false,
+      });
+    });
+
+    const categories = await t.query(api.categories.listCategories);
+    expect(categories.find((category) => category.slug === "plumbing")).toBeUndefined();
   });
 });

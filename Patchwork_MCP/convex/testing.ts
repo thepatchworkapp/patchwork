@@ -119,7 +119,6 @@ export const getTaskerProfileByEmail = internalQuery({
       subscriptionStatus: taskerProfile.subscriptionStatus,
       subscriptionEndsAt: taskerProfile.subscriptionEndsAt,
       ghostMode: taskerProfile.ghostMode,
-      premiumPin: taskerProfile.premiumPin,
     };
   },
 });
@@ -275,7 +274,7 @@ export const ensureDiscoverableTasker = internalMutation({
     fixedRate: v.optional(v.number()),
     serviceRadius: v.number(),
     verified: v.optional(v.boolean()),
-    subscriptionPlan: v.optional(v.union(v.literal("tasker"), v.literal("basic"), v.literal("premium"))),
+    subscriptionPlan: v.optional(v.literal("tasker")),
   },
   handler: async (ctx, args) => {
     const now = Date.now();

@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { requireAppUser } from "./authHelpers";
 
 export const sendProposal = mutation({
   args: {
@@ -13,14 +14,7 @@ export const sendProposal = mutation({
   },
   returns: v.id("proposals"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // Input validation
     if (args.rate < 1 || args.rate > 100000000) throw new ConvexError("Rate must be between 1 and 1,000,000 (in cents)");
@@ -78,14 +72,7 @@ export const acceptProposal = mutation({
   },
   returns: v.object({ jobId: v.id("jobs") }),
   handler: async (ctx, args): Promise<{ jobId: Id<"jobs"> }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) throw new ConvexError("Proposal not found");
@@ -124,14 +111,7 @@ export const declineProposal = mutation({
   },
   returns: v.id("proposals"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) throw new ConvexError("Proposal not found");
@@ -166,14 +146,7 @@ export const counterProposal = mutation({
   },
   returns: v.id("proposals"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // Input validation
     if (args.rate < 1 || args.rate > 100000000) throw new ConvexError("Rate must be between 1 and 1,000,000 (in cents)");

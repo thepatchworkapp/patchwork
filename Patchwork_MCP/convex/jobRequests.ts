@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { jobRequestValidator } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
 export const createJobRequest = mutation({
   args: {
@@ -30,16 +31,7 @@ export const createJobRequest = mutation({
   },
   returns: v.id("jobRequests"),
   handler: async (ctx, args) => {
-    // 1. Check auth
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    // 2. Lookup user by authId
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // 3. Validate required fields
     if (!args.description.trim()) {
@@ -100,14 +92,9 @@ export const listMyJobRequests = query({
   },
   returns: v.union(v.array(jobRequestValidator), v.null()),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) return null;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+    const { user } = session;
 
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
 

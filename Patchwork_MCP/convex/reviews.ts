@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { reviewDocValidator } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
 /**
  * Internal function to update profile rating after review submission
@@ -19,7 +20,7 @@ async function updateProfileRating(
   const profile = await ctx.db
     .query(profileTable)
     .withIndex("by_userId", (q: any) => q.eq("userId", revieweeId))
-    .first();
+    .unique();
 
   if (!profile) {
     throw new ConvexError(`${profileTable} not found for user`);
@@ -55,16 +56,7 @@ export const createReview = mutation({
   },
   returns: v.id("reviews"),
   handler: async (ctx, args) => {
-    // 1. Auth check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     // 2. Validate rating range
     if (args.rating < 1 || args.rating > 5) {
@@ -107,7 +99,7 @@ export const createReview = mutation({
       .withIndex("by_job_reviewer", (q) =>
         q.eq("jobId", args.jobId).eq("reviewerId", user._id)
       )
-      .first();
+      .unique();
 
     if (existingReview) {
       throw new ConvexError("You have already reviewed this job");
@@ -175,14 +167,9 @@ export const getJobReviews = query({
   args: { jobId: v.id("jobs") },
   returns: v.union(v.array(reviewDocValidator), v.null()),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) return null;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+    const { user } = session;
 
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
@@ -216,6 +203,13 @@ export const getUserReviews = query({
   },
   returns: v.array(reviewDocValidator),
   handler: async (ctx, args) => {
+    const session = await getAppUserOrNull(ctx);
+    const currentUser = session?.user ?? null;
+
+    if (!currentUser || currentUser._id !== args.userId) {
+      return [];
+    }
+
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
 
     const reviews = await ctx.db
@@ -238,15 +232,9 @@ export const canReview = query({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return false;
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-
-    if (!user) return false;
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return false;
+    const { user } = session;
 
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== "completed") return false;
@@ -262,7 +250,7 @@ export const canReview = query({
       .withIndex("by_job_reviewer", (q) =>
         q.eq("jobId", args.jobId).eq("reviewerId", user._id)
       )
-      .first();
+      .unique();
 
     if (existingReview) return false;
 

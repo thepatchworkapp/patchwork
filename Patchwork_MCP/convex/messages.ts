@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { messagesPageValidator } from "../lib/convex/validators";
+import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 
 type SystemMessageType =
   | "proposal_sent"
@@ -18,14 +19,7 @@ export const sendMessage = mutation({
   },
   returns: v.id("messages"),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Unauthorized");
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) throw new ConvexError("User not found");
+    const { user } = await requireAppUser(ctx);
 
     if (args.attachments && args.attachments.length > 3) {
       throw new ConvexError("Maximum 3 attachments allowed");
@@ -121,18 +115,11 @@ export const listMessages = query({
   },
   returns: messagesPageValidator,
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const session = await getAppUserOrNull(ctx);
+    if (!session) {
       return { page: [], isDone: true, continueCursor: "" };
     }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .first();
-    if (!user) {
-      return { page: [], isDone: true, continueCursor: "" };
-    }
+    const { user } = session;
 
     const conversation = await ctx.db.get(args.conversationId);
     if (

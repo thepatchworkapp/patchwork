@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { categoryValidator } from "../lib/convex/validators";
 
@@ -93,7 +93,7 @@ const ALL_CATEGORIES: {
   { name: "Furniture Assembly", emoji: "🛠️", group: "Repair & Appliances", sortOrder: 102 },
 ];
 
-export const seedCategories = mutation({
+export const seedCategories = internalMutation({
   args: {},
   returns: v.object({
     total: v.number(),
@@ -107,7 +107,7 @@ export const seedCategories = mutation({
       const existing = await ctx.db
         .query("categories")
         .withIndex("by_slug", (q) => q.eq("slug", slug))
-        .first();
+        .unique();
 
       if (existing) {
         await ctx.db.patch(existing._id, {
@@ -136,6 +136,8 @@ export const listCategories = query({
   args: {},
   returns: v.array(categoryValidator),
   handler: async (ctx) => {
+    await ctx.auth.getUserIdentity();
+
     const categories = await ctx.db
       .query("categories")
       .withIndex("by_active", (q) => q.eq("isActive", true))
@@ -160,10 +162,12 @@ export const getCategoryBySlug = query({
   args: { slug: v.string() },
   returns: v.union(categoryValidator, v.null()),
   handler: async (ctx, args) => {
+    await ctx.auth.getUserIdentity();
+
     const category = await ctx.db
       .query("categories")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .first();
+      .unique();
 
     if (!category) {
       return null;

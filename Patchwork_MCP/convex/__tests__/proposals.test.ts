@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import { Doc } from "../_generated/dataModel";
 import * as conversationsModule from "../conversations";
@@ -181,7 +181,7 @@ describe("proposals", () => {
   test("receiver can accept proposal", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -286,7 +286,7 @@ describe("proposals", () => {
   test("acceptProposal creates proposal_accepted system message", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     // Create seeker
     const asSeeker = t.withIdentity({
@@ -637,7 +637,7 @@ describe("proposals", () => {
   test("job created when proposal accepted", async () => {
     const t = convexTest(schema, modules);
     
-    await t.mutation(api.categories.seedCategories);
+    await t.mutation(internal.categories.seedCategories);
     
     // Create seeker
     const asSeeker = t.withIdentity({
