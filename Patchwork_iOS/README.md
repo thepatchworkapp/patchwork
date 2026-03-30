@@ -61,7 +61,7 @@ If you need to toggle them from the CLI instead, run the Convex helper against t
 These examples use `--push`, so they also publish the current local Convex functions to that deployment.
 
 ```bash
-cd /Users/daldwinc/Documents/nosync/development/patchwork/Patchwork_MCP
+cd /Users/daldwinc/Documents/nosync/development/patchwork/patchwork-backend
 
 # enable both review accounts
 npx convex run reviewAccess:bootstrap '{"enabled":true}' --deployment-name vibrant-caribou-150 --push

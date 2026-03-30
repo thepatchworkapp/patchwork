@@ -2,7 +2,7 @@
 
 Date: March 9, 2026
 Command: `npx convex-doctor --verbose`
-Workspace: `/Users/daldwinc/Documents/nosync/development/patchwork/Patchwork_MCP`
+Workspace: `/Users/daldwinc/Documents/nosync/development/patchwork/patchwork-backend`
 
 ## Snapshot
 

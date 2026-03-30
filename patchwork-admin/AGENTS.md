@@ -37,8 +37,8 @@ We use:
 
 Admin authorization is enforced **server-side** in Convex via `ADMIN_EMAILS` (comma-separated), used by:
 
-- `Patchwork_MCP/convex/admin.ts` (admin queries)
-- `Patchwork_MCP/convex/adminOtp.ts` (legacy admin OTP routes)
+- `patchwork-backend/convex/admin.ts` (admin queries)
+- `patchwork-backend/convex/adminOtp.ts` (legacy admin OTP routes)
 
 The admin UI intentionally does **not** reveal allowlist status on the login screen (to avoid email enumeration).
 

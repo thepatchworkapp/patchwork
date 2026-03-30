@@ -1,4 +1,4 @@
-# Patchwork_MCP
+# patchwork-backend
 
 Convex backend for Patchwork. The old React/Vite PoC client has been removed; the live clients are the native iOS app and the separate admin app in `patchwork-admin/`.
 
@@ -15,27 +15,27 @@ This folder is still the Convex project root, even though the client web UI is g
 Install dependencies:
 
 ```bash
-cd Patchwork_MCP
+cd patchwork-backend
 npm i
 ```
 
 Run Convex dev:
 
 ```bash
-cd Patchwork_MCP
+cd patchwork-backend
 npm run dev
 ```
 
 Regenerate bindings:
 
 ```bash
-cd Patchwork_MCP
+cd patchwork-backend
 npm run codegen
 ```
 
 ## Environment Variables
 
-Copy `Patchwork_MCP/.env.example` to `Patchwork_MCP/.env.local` and fill the required values.
+Copy `patchwork-backend/.env.example` to `patchwork-backend/.env.local` and fill the required values.
 
 Important variables:
 
@@ -66,7 +66,7 @@ Current behavior:
 Backend/unit tests:
 
 ```bash
-cd Patchwork_MCP
+cd patchwork-backend
 npm run test:run
 ```
 
@@ -74,5 +74,5 @@ Focused test helpers live in Convex under `testing.ts`, `testingPhotos.ts`, and 
 
 ## References
 
-- `Patchwork_MCP/AGENTS.md`
-- `Patchwork_MCP/convex/AGENTS.md`
+- `patchwork-backend/AGENTS.md`
+- `patchwork-backend/convex/AGENTS.md`

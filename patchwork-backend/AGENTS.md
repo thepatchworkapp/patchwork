@@ -1,4 +1,4 @@
-# Patchwork MCP - Backend Guidelines
+# patchwork-backend Guidelines
 
 > Convex backend for the Patchwork iOS app and the `patchwork-admin` web app.
 
@@ -21,7 +21,7 @@
 ## Project Structure
 
 ```text
-Patchwork_MCP/
+patchwork-backend/
 ├── convex/           # Backend functions, schema, HTTP actions
 │   └── __tests__/    # Backend tests with convex-test
 ├── lib/              # Shared backend helpers and validators
@@ -31,7 +31,7 @@ Patchwork_MCP/
 ## Commands
 
 ```bash
-cd Patchwork_MCP
+cd patchwork-backend
 npm install
 npm run dev
 npm run codegen

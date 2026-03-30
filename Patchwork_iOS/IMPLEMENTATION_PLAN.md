@@ -2,7 +2,7 @@
 
 ## Goal
 
-Rebuild the Patchwork_MCP PoC frontend as a native SwiftUI iPhone app while keeping it aligned with the live webhook-driven Convex billing backend.
+Rebuild the former Patchwork web PoC as a native SwiftUI iPhone app while keeping it aligned with the live webhook-driven Convex billing backend.
 
 ## Architecture
 
