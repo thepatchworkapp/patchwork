@@ -301,11 +301,11 @@ export const iapAuditSnapshot = {
   },
   nextSteps: [
     {
-      title: "Upload build 26 to TestFlight",
+      title: "Validate build 26 in TestFlight",
       owner: "iOS",
       priority: "P0",
       detail:
-        "Ship the current paywall/UI changes so external validation can happen against the actual billing surface, not just local simulator screenshots.",
+        "Run real-device purchase and restore validation against the uploaded TestFlight build so the live billing surface is checked outside the simulator.",
     },
     {
       title: "Run annual and lifetime purchase smoke tests",
@@ -330,7 +330,7 @@ export const iapAuditSnapshot = {
     },
   ],
   sourceNotes: [
-    "Local code snapshot: `Patchwork_iOS/Patchwork/Core/AppConfig.swift`, `RevenueCatManager.swift`, `TaskerBillingSheet.swift`, `ProfileView.swift`, `Patchwork_MCP/convex/taskers.ts`, `Patchwork_MCP/convex/taskersInternal.ts`, `Patchwork_MCP/convex/http.ts`, `Patchwork_MCP/src/screens/Profile.tsx`.",
+    "Local code snapshot: `Patchwork_iOS/Patchwork/Core/AppConfig.swift`, `RevenueCatManager.swift`, `TaskerBillingSheet.swift`, `ProfileView.swift`, `Patchwork_MCP/convex/taskers.ts`, `Patchwork_MCP/convex/taskersInternal.ts`, `Patchwork_MCP/convex/http.ts`, `Patchwork_MCP/convex/feedback.ts`.",
     "Live RevenueCat snapshot: `tasker_access_paywall` is now the current offering, annual+lifetime remain attached, webhook integration is live, weekly is inactive, and only inactive monthly legacy SKUs remain as of March 30, 2026.",
     "Live App Store Connect snapshot: Canada pricing confirms `47.99 CAD` annual and `95.99 CAD` lifetime, both products are `READY_TO_SUBMIT`, weekly is deleted, and the remaining drift is store-side product naming as of March 30, 2026.",
   ],

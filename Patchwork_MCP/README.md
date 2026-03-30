@@ -1,133 +1,78 @@
 # Patchwork_MCP
 
-Mobile-first service marketplace (TaskRabbit-like) built with React + Vite + Convex + Better Auth.
+Convex backend for Patchwork. The old React/Vite PoC client has been removed; the live clients are the native iOS app and the separate admin app in `patchwork-admin/`.
 
-Design source: https://www.figma.com/design/4sgVZ8eMkA18LI4cYaqQSl/Patchwork_MCP
+## Scope
 
-## Stack
+- Backend functions: `convex/`
+- Shared backend helpers and validators: `lib/`
+- Backend tests: `convex/__tests__/`
 
-- Frontend: React 18, Vite
-- Backend: Convex
-- Auth: Better Auth (Google OAuth + Email OTP)
-- Styling: Tailwind CSS, Radix UI (shadcn/ui) + custom `src/components/patchwork/`
-
-## Project Layout
-
-This repo is a monorepo-ish layout:
-
-- `Patchwork_MCP/` is the app (Vite, Convex functions, backend tests)
-- Repo root has Playwright configuration and E2E tests under `tests/ui/`
+This folder is still the Convex project root, even though the client web UI is gone.
 
 ## Running Locally
 
-Install deps:
+Install dependencies:
 
 ```bash
 cd Patchwork_MCP
 npm i
 ```
 
-Run the frontend:
+Run Convex dev:
 
 ```bash
 cd Patchwork_MCP
 npm run dev
 ```
 
-Run Convex:
+Regenerate bindings:
 
 ```bash
 cd Patchwork_MCP
-npx convex dev
+npm run codegen
 ```
-
-Local dev URL: `http://localhost:5173`
 
 ## Environment Variables
 
-Copy and fill `Patchwork_MCP/.env.example` -> `Patchwork_MCP/.env.local`.
+Copy `Patchwork_MCP/.env.example` to `Patchwork_MCP/.env.local` and fill the required values.
 
-Important:
+Important variables:
 
-- `VITE_CONVEX_URL` should be the Convex deployment URL ending in `.convex.cloud`.
-- `VITE_CONVEX_SITE_URL` ends in `.convex.site` (used for HTTP Actions).
-- `VITE_SITE_URL` should be `http://localhost:5173` for OAuth callbacks.
+- `CONVEX_DEPLOYMENT`
+- `SITE_URL`
+- `TRUSTED_ORIGINS`
+- `ADMIN_APP_ORIGIN`
+- `BETTER_AUTH_SECRET`
+- `BETTER_AUTH_URL`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `RESEND_API_KEY`
+- `OTP_FROM_EMAIL`
+- `REVENUECAT_WEBHOOK_AUTHORIZATION`
 
-## Navigation (No React Router)
-
-This app does NOT use React Router. Navigation is callback-based via the state machine in `Patchwork_MCP/src/App.tsx`.
-
-## Data Sources (Mock vs Real)
-
-Wired to real Convex data (smoke-test targets):
-
-- Auth + profile creation
-- Profile screen
-- Categories
-- Messages + Chat (real-time)
-- Proposals + job creation on accept
-- Jobs list
-- Tasker onboarding
-- Home swipe cards
-- Browse provider list and provider detail
-- Request flow steps (job requests)
-
-Still mock / placeholder data:
-
-- Map view in Browse (list view is real)
-- Stripe/RevenueCat payment processing (subscriptions use mock bypass - always succeed)
-
-## Subscription System
+## Billing Contract
 
 Tasker billing is normalized to RevenueCat plus App Store Connect. Convex is updated by RevenueCat webhook events, not by client-side purchase mutations.
 
-**Current behavior:**
+Current behavior:
+
 - The only paid tasker access types are `subscription` and `lifetime`
 - RevenueCat webhooks activate, renew, restore, cancel-at-period-end, and expire tasker access
-- Ghost Mode toggle requires active paid tasker access
-
-**Mutations:**
-- `setGhostMode({ ghostMode: boolean })` - Toggle visibility (requires active paid tasker access)
+- Ghost Mode requires active paid tasker access
 
 ## Tests
 
-Backend/unit tests (Vitest + convex-test):
+Backend/unit tests:
 
 ```bash
 cd Patchwork_MCP
 npm run test:run
 ```
 
-E2E UI tests (Playwright) live at repo root `tests/ui/`:
+Focused test helpers live in Convex under `testing.ts`, `testingPhotos.ts`, and `testingTasker.ts`.
 
-```bash
-cd ..
-# Ensure VITE_CONVEX_URL is set (use the value from Patchwork_MCP/.env.local)
-VITE_CONVEX_URL=https://<deployment>.convex.cloud \
-VITE_CONVEX_SITE_URL=https://<deployment>.convex.site \
-  npx playwright test tests/ui/smoke.test.ts
-```
-
-Notes:
-
-- Email OTP E2E uses the `/test-proxy` HTTP endpoint to invoke internal testing functions. Testing functions (`testing.ts`, `testingPhotos.ts`, `testingTasker.ts`) are `internalMutation`/`internalQuery` and cannot be called directly from clients. OTPs are stored hashed.
-- E2E test isolation/cleanup is implemented as internal functions in `Patchwork_MCP/convex/testing.ts`, accessed via `/test-proxy`:
-  - `deleteTestUser`, `deleteByEmailPrefix`, `ensureCategoryExists`, `cleanupConversations`
-- Vitest is scoped to `convex/__tests__/**` and excludes `tests/ui/**` (Playwright)
-
-## Conventions
-
-- Backend mutations must: auth check first, lookup user by `identity.tokenIdentifier` (NOT email), include timestamps.
-- Queries should return `null` when data is missing.
-- Avoid `as any`, `@ts-ignore`, `@ts-expect-error`.
-- Auth redirects should gate on Convex auth readiness (`useConvexAuth`) before using `getCurrentUser`.
-
-See:
+## References
 
 - `Patchwork_MCP/AGENTS.md`
 - `Patchwork_MCP/convex/AGENTS.md`
-- `Patchwork_MCP/src/screens/AGENTS.md`
-
-## Staging (Cloudflare)
-
-For staging deployment and security settings, see `doc/staging-cloudflare.md`.

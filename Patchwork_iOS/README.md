@@ -1,13 +1,13 @@
 # Patchwork iOS (SwiftUI)
 
-Native SwiftUI client for the Patchwork PoC, wired to the existing Convex backend.
+Native SwiftUI client for Patchwork, wired to the existing Convex backend.
 
 ## What Is Implemented
 
 - Callback-free native navigation with `NavigationStack` + `TabView`.
-- Auth flow (email OTP) against Better Auth routes on `VITE_CONVEX_SITE_URL` equivalent.
+- Auth flow (email OTP) against Better Auth routes on the configured Convex site URL.
 - Convex Functions API integration over HTTP (`/api/query`, `/api/mutation`).
-- Core PoC flows mapped from `Patchwork_MCP/src/App.tsx`:
+- Core product flows implemented natively:
   - splash/onboarding/sign-in
   - home + browse taskers
   - provider detail
@@ -54,7 +54,7 @@ The iOS app has two Apple-review bypass accounts:
 - `review@apple.com`: seeded reviewer account with seeker + tasker profiles.
 - `seeker@apple.com`: OTP bypass only, no app profile; first sign-in lands in profile setup.
 
-Enable or disable them with the admin "App Review Access" control after deploying the admin/frontend changes that expose it.
+Enable or disable them with the admin "App Review Access" control after deploying the admin changes that expose it.
 
 If you need to toggle them from the CLI instead, run the Convex helper against the same deployment configured in [Patchwork/Core/AppConfig.swift](/Users/daldwinc/Documents/nosync/development/patchwork/Patchwork_iOS/Patchwork/Core/AppConfig.swift):
 

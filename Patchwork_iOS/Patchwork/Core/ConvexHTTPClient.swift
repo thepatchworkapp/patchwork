@@ -339,7 +339,7 @@ struct ConvexHTTPClient {
     }
 
     private var betterAuthOrigins: [String] {
-        var origins: [String] = [betterAuthOrigin, "https://admin.ddga.ltd", "https://patchwork-client-staging.pages.dev", "http://localhost:5173"]
+        var origins: [String] = [betterAuthOrigin, "https://admin.ddga.ltd", "http://localhost:4321"]
         origins = origins.filter { !$0.isEmpty }
         var deduped: [String] = []
         for origin in origins where !deduped.contains(origin) {

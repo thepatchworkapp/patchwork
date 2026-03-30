@@ -33,7 +33,7 @@ Workspace: `/Users/daldwinc/Documents/nosync/development/patchwork/Patchwork_MCP
 - March 9, 2026: `convex-doctor` improved to `79/100` with `0` errors, `236` warnings, and `8` infos.
 - March 9, 2026: Production deploy completed successfully to `https://vibrant-caribou-150.convex.cloud`.
 - March 9, 2026: Verified live production reads with `npx convex run --prod categories:listCategories '{}'` and `npx convex run --prod search:searchTaskers '{"lat":43.6532,"lng":-79.3832,"radiusKm":25,"limit":5}'`.
-- March 9, 2026: Verified the web client against production configuration with `npm run build` and `npm run test:run` using `VITE_CONVEX_URL=https://vibrant-caribou-150.convex.cloud` and `VITE_CONVEX_SITE_URL=https://vibrant-caribou-150.convex.site`.
+- March 9, 2026: Verified the then-existing web client against production configuration with `npm run build` and `npm run test:run` using the production Convex cloud and site URLs. The web client has since been removed from this repo.
 - March 9, 2026: Updated iOS production endpoints in `Patchwork/Core/AppConfig.swift`, `Patchwork/Core/ConvexHTTPClient.swift`, and `PatchworkUITests/PatchworkUITests.swift` from `aware-meerkat-572` to `vibrant-caribou-150`.
 - March 9, 2026: Verified iOS production configuration with `xcodebuild ... build` and `xcodebuild ... test` for the main scheme. App/unit-test coverage passed; UI-test coverage is only partially production-safe.
 - March 9, 2026: Confirmed `https://vibrant-caribou-150.convex.site/test-proxy` returns `403 {"error":"Testing helpers are disabled"}` in production, which is the expected behavior because `ENABLE_TESTING_HELPERS=false` on prod.

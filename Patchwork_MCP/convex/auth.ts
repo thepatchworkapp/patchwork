@@ -7,10 +7,10 @@ import { betterAuth } from "better-auth/minimal";
 import { emailOTP } from "better-auth/plugins";
 import authConfig from "./auth.config";
 
-const siteUrl = process.env.SITE_URL || "http://localhost:5173";
+const siteUrl = process.env.SITE_URL || "http://localhost:3000";
 const trustedOrigins = Array.from(
   new Set(
-    (process.env.TRUSTED_ORIGINS || `${siteUrl},http://localhost:5173,http://localhost:5174`)
+    (process.env.TRUSTED_ORIGINS || `${siteUrl},http://localhost:4321`)
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean)
