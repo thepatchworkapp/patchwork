@@ -643,14 +643,6 @@ private struct ProfileSetupView: View {
             Text("Step \(onboardingStepIndex) of 3")
                 .font(.patchworkCaption)
                 .foregroundStyle(PatchworkTheme.textTertiary)
-
-            Spacer()
-
-            ForEach(0..<3, id: \.self) { index in
-                Capsule()
-                    .fill(index == onboardingStepIndex - 1 ? PatchworkTheme.brand : PatchworkTheme.stroke)
-                    .frame(width: index == onboardingStepIndex - 1 ? 24 : 8, height: 8)
-            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)

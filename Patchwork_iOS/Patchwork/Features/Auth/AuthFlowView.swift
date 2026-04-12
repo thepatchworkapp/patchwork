@@ -243,16 +243,6 @@ struct AuthFlowView: View {
                     message: slide.description
                 )
 
-                HStack(spacing: 8) {
-                    ForEach(0 ..< onboardingSlides.count, id: \.self) { idx in
-                        Capsule()
-                            .fill(idx == onboardingIndex ? PatchworkTheme.brand : PatchworkTheme.stroke)
-                            .frame(width: idx == onboardingIndex ? 34 : 10, height: 10)
-                    }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Onboarding slide \(onboardingIndex + 1) of \(onboardingSlides.count)")
-
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
