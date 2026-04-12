@@ -1,5 +1,6 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { internalQuery } from "./_generated/server";
 
 export const APP_REVIEW_EMAIL = "review@apple.com";
 export const APP_REVIEW_SEEKER_EMAIL = "seeker@apple.com";
@@ -66,6 +67,17 @@ async function getReviewAccessRecord(ctx: any, email: string = PRIMARY_REVIEW_EM
     .withIndex("by_email", (q: any) => q.eq("email", email))
     .unique();
 }
+
+export const isReviewAccessEnabled = internalQuery({
+  args: {
+    email: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const record = await getReviewAccessRecord(ctx, args.email);
+    return record?.enabled ?? false;
+  },
+});
 
 async function upsertReviewAccessRecord(
   ctx: any,
@@ -442,8 +454,10 @@ export async function createReviewSession(ctx: any, email: string) {
   const normalizedEmail = email.trim().toLowerCase();
   const config = getReviewAccessConfig(normalizedEmail);
 
-  const status = await getReviewAccessRecord(ctx, config.email);
-  if (!status?.enabled) {
+  const enabled = await ctx.runQuery(internal.reviewAccess.isReviewAccessEnabled, {
+    email: config.email,
+  });
+  if (!enabled) {
     throw new ConvexError("App review access is disabled");
   }
 

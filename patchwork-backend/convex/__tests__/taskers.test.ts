@@ -547,6 +547,63 @@ describe("taskers", () => {
     expect(hvacCategory?.fixedRate).toBe(25000);
   });
 
+  test("addTaskerCategory supports a third category on the same profile", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|404-third",
+      email: "addcat-third@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Three Category Test",
+      city: "Kitchener",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const carWash = await t.query(api.categories.getCategoryBySlug, {
+      slug: "car-wash",
+    });
+    const makeupArtist = await t.query(api.categories.getCategoryBySlug, {
+      slug: "makeup-artist",
+    });
+    const hairStylist = await t.query(api.categories.getCategoryBySlug, {
+      slug: "hair-stylist",
+    });
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Multi-service Pro",
+      categoryId: carWash!._id,
+      categoryBio: "Car wash services",
+      rateType: "hourly",
+      hourlyRate: 2200,
+      serviceRadius: 15,
+    });
+
+    await asUser.mutation(api.taskers.addTaskerCategory, {
+      categoryId: makeupArtist!._id,
+      categoryBio: "Makeup services",
+      rateType: "fixed",
+      fixedRate: 12500,
+      serviceRadius: 30,
+    });
+
+    await asUser.mutation(api.taskers.addTaskerCategory, {
+      categoryId: hairStylist!._id,
+      categoryBio: "Hair styling services",
+      rateType: "fixed",
+      fixedRate: 9500,
+      serviceRadius: 20,
+    });
+
+    const profile = await asUser.query(api.taskers.getTaskerProfile);
+    expect(profile?.categories).toHaveLength(3);
+    expect(profile?.categories.map((category) => category.categoryId).sort()).toEqual(
+      [carWash!._id, makeupArtist!._id, hairStylist!._id].sort()
+    );
+  });
+
    test("removeTaskerCategory removes category (keeps profile if other categories exist)", async () => {
      const t = convexTest(schema, modules);
      

@@ -2064,10 +2064,23 @@ private struct AddCategorySheet: View {
             .scrollIndicators(.hidden)
         }
         .patchworkKeyboardDismissToolbar()
+        .onAppear {
+            resetSelectionIfNeeded()
+        }
+        .onChange(of: existingCategoryIDs) { _, _ in
+            resetSelectionIfNeeded()
+        }
     }
 
     private var availableCategories: [Category] {
         categories.filter { !existingCategoryIDs.contains($0.id) }
+    }
+
+    private var hasValidSelection: Bool {
+        guard let selectedCategoryId else {
+            return false
+        }
+        return availableCategories.contains(where: { $0.id == selectedCategoryId })
     }
 
     private var selectedCategoryName: String {
@@ -2079,7 +2092,7 @@ private struct AddCategorySheet: View {
     }
 
     private var canSubmit: Bool {
-        guard selectedCategoryId != nil,
+        guard hasValidSelection,
               !categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
@@ -2087,6 +2100,16 @@ private struct AddCategorySheet: View {
             return (Double(hourlyRate) ?? 0) > 0
         }
         return (Double(fixedRate) ?? 0) > 0
+    }
+
+    private func resetSelectionIfNeeded() {
+        guard let selectedCategoryId else {
+            return
+        }
+
+        if !availableCategories.contains(where: { $0.id == selectedCategoryId }) {
+            self.selectedCategoryId = nil
+        }
     }
 }
 
