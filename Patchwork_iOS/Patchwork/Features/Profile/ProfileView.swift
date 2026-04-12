@@ -537,7 +537,7 @@ private struct ProfileTaskerSection: View {
                     .accessibilityValue(ghostModeValue ? "On" : "Off")
             }
 
-            if let feedbackMessage {
+            if let feedbackMessage, feedbackMessage.tone == .error {
                 PatchworkInlineStatusBanner(tone: feedbackMessage.tone, text: feedbackMessage.text)
                     .accessibilityIdentifier("Profile.ghostModeBanner")
             }
@@ -744,10 +744,7 @@ private struct ProfileTaskerSection: View {
             appState.taskerProfile = updatedProfile
             ghostModeValue = effectiveGhostMode(for: updatedProfile)
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
-            feedbackMessage = SubscriptionFeedbackMessage(
-                tone: .success,
-                text: enabled ? "Ghost Mode turned on." : "Ghost Mode turned off."
-            )
+            feedbackMessage = nil
         } catch {
             ghostModeValue = effectiveGhostMode(for: appState.taskerProfile)
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
