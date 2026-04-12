@@ -5,6 +5,7 @@ struct HomeView: View {
     private enum MainLayout {
         static let horizontalGutter: CGFloat = 20
         static let topRhythm: CGFloat = 16
+        static let categoryMenuMinWidth: CGFloat = 280
     }
 
     private struct TaskerRoute: Hashable, Identifiable {
@@ -147,11 +148,14 @@ struct HomeView: View {
                         Task { await reload() }
                     } label: {
                         Text(categoryMenuLabel(for: category))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
             } label: {
                 HStack {
                     Text(selectedCategoryLabel)
+                        .lineLimit(1)
                         .foregroundStyle(PatchworkTheme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.down")
@@ -159,6 +163,8 @@ struct HomeView: View {
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 }
                 .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .frame(minWidth: MainLayout.categoryMenuMinWidth)
                 .frame(height: 50)
                 .background(PatchworkTheme.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
