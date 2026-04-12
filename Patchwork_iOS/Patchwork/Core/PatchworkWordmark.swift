@@ -9,11 +9,10 @@ struct PatchworkWordmark: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image("PatchworkLogo")
+            Image("PatchworkMark")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
-                .clipShape(.rect(cornerRadius: size * 0.22))
                 .shadow(color: PatchworkTheme.brand.opacity(0.18), radius: 18, y: 10)
                 .accessibilityHidden(true)
 

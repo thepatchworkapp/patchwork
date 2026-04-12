@@ -195,20 +195,16 @@ struct AuthFlowView: View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(Color.white.opacity(0.12))
+                    .fill(.white.opacity(0.10))
+                    .frame(width: 108, height: 108)
+                    .blur(radius: 20)
 
-                Image("PatchworkLogo")
+                Image("PatchworkMark")
                     .resizable()
-                    .scaledToFill()
-                    .frame(width: 128, height: 128)
-                    .clipped()
+                    .scaledToFit()
+                    .frame(width: 104, height: 104)
             }
             .frame(width: 140, height: 140)
-            .clipShape(Circle())
-            .overlay(
-                Circle()
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-            )
             .shadow(color: .black.opacity(0.16), radius: 28, y: 14)
             .accessibilityHidden(true)
 
