@@ -46,9 +46,17 @@ struct RootView: View {
                     PatchworkBrandLoadingCard()
                         .task {
                             await appState.loadBootstrapData(client: sessionStore.client)
+                            await invalidateStalePersistedSessionIfNeeded()
                         }
                 } else if appState.currentUser == nil {
-                    ProfileSetupView()
+                    if sessionStore.launchedWithPersistedSession {
+                        PatchworkBrandLoadingCard()
+                            .task {
+                                await invalidateStalePersistedSessionIfNeeded()
+                            }
+                    } else {
+                        ProfileSetupView()
+                    }
                 } else if needsLocationPrompt {
                     LocationPermissionGateView(
                         onAllow: {
@@ -73,6 +81,7 @@ struct RootView: View {
             set: { _ in appState.lastError = nil }
         )) {
             Button("OK", role: .cancel) {}
+                .accessibilityLabel("Dismiss error")
                 .accessibilityIdentifier("Root.errorAlertOKButton")
         } message: {
             Text(appState.lastError ?? "")
@@ -413,7 +422,19 @@ struct RootView: View {
 
         if appState.isBootstrapped {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+            await invalidateStalePersistedSessionIfNeeded()
         }
+    }
+
+    private func invalidateStalePersistedSessionIfNeeded() async {
+        guard sessionStore.isAuthenticated,
+              sessionStore.launchedWithPersistedSession,
+              appState.currentUser == nil else {
+            return
+        }
+
+        await sessionStore.signOut()
+        appState.resetForSignedOutSession()
     }
 }
 
@@ -614,6 +635,7 @@ private struct ProfileSetupView: View {
                     .font(.system(size: 30, weight: .semibold))
                     .foregroundStyle(tint)
             }
+            .accessibilityHidden(true)
     }
 
     private var onboardingProgress: some View {
@@ -631,6 +653,8 @@ private struct ProfileSetupView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(onboardingStepIndex) of 3")
     }
 
     private var onboardingStepIndex: Int {
@@ -774,6 +798,7 @@ private struct LocationPermissionGateView: View {
                             .font(.system(size: 38, weight: .semibold))
                             .foregroundStyle(PatchworkTheme.accent)
                     }
+                    .accessibilityHidden(true)
 
                 PatchworkSectionIntro(
                     eyebrow: "Local search",

@@ -95,6 +95,7 @@ final class SessionStore {
     private(set) var token: String?
     private(set) var betterAuthCookie: String?
     private(set) var betterAuthSessionToken: String?
+    private(set) var launchedWithPersistedSession = false
     private(set) var isLoading = false
     private(set) var isRestoringSession = false
     private(set) var errorMessage: String?
@@ -125,6 +126,7 @@ final class SessionStore {
             token = storedSession.convexAuthToken
             betterAuthCookie = storedSession.betterAuthCookie
             betterAuthSessionToken = storedSession.betterAuthSessionToken
+            launchedWithPersistedSession = true
         }
     }
 
@@ -297,6 +299,9 @@ final class SessionStore {
         token = session?.convexAuthToken
         betterAuthCookie = session?.betterAuthCookie
         betterAuthSessionToken = session?.betterAuthSessionToken
+        if session == nil {
+            launchedWithPersistedSession = false
+        }
         sessionPersistence.saveSession(session)
     }
 

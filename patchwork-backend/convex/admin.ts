@@ -29,6 +29,16 @@ const reviewAccessStatusValidator = v.object({
   lastDisabledAt: v.union(v.number(), v.null()),
   updatedAt: v.union(v.number(), v.null()),
 });
+const feedbackSubmissionAdminValidator = v.object({
+  _id: v.id("feedbackSubmissions"),
+  _creationTime: v.number(),
+  userId: v.id("users"),
+  userName: v.string(),
+  userEmail: v.union(v.string(), v.null()),
+  message: v.string(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
@@ -100,6 +110,7 @@ async function resetApplicationData(ctx: any) {
     await taskerGeo.remove(ctx, taskerProfile._id);
   });
   const deletedSeekerProfiles = await deleteTableRows(ctx, "seekerProfiles");
+  const deletedFeedbackSubmissions = await deleteTableRows(ctx, "feedbackSubmissions");
   const deletedReviewAccess = await deleteTableRows(ctx, "reviewAccess");
   const deletedOtps = await deleteTableRows(ctx, "otps");
   const deletedAdminOtps = await deleteTableRows(ctx, "adminOtps");
@@ -121,6 +132,7 @@ async function resetApplicationData(ctx: any) {
     deletedTaskerCategories,
     deletedTaskerProfiles,
     deletedSeekerProfiles,
+    deletedFeedbackSubmissions,
     deletedReviewAccess,
     deletedOtps,
     deletedAdminOtps,
@@ -130,7 +142,7 @@ async function resetApplicationData(ctx: any) {
 }
 
 async function resetBetterAuthNonAdmin(ctx: any) {
-  const authAdapter = authComponent.adapter(ctx);
+  const authAdapter = await authComponent.adapter(ctx)({});
   const adminAuthUserIds = new Set<string>();
 
   const adminAuthUsers = await Promise.all(
@@ -156,38 +168,30 @@ async function resetBetterAuthNonAdmin(ctx: any) {
     ? [{ field: "userId", operator: "not_in" as const, value: Array.from(adminAuthUserIds) }]
     : undefined;
 
+  const deleteAuthModelIfPresent = async (model: string, where?: Array<any>) => {
+    try {
+      await authAdapter.deleteMany({
+        model,
+        where,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes(`Model "${model}" not found in schema`)) {
+        return;
+      }
+      throw error;
+    }
+  };
+
   await Promise.all([
-    authAdapter.deleteMany({
-      model: "session",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "account",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "twoFactor",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "passkey",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "oauthAccessToken",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "oauthConsent",
-      where: nonAdminAuthIdFilter,
-    }),
-    authAdapter.deleteMany({
-      model: "verification",
-    }),
-    authAdapter.deleteMany({
-      model: "user",
-      where: nonAdminUserFilter,
-    }),
+    deleteAuthModelIfPresent("session", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("account", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("twoFactor", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("passkey", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("oauthAccessToken", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("oauthConsent", nonAdminAuthIdFilter),
+    deleteAuthModelIfPresent("verification"),
+    deleteAuthModelIfPresent("user", nonAdminUserFilter),
   ]);
 }
 
@@ -201,6 +205,15 @@ async function requireAdminOrThrow(ctx: any) {
   if (!(await requireAdmin(ctx))) {
     throw new ConvexError("Unauthorized");
   }
+}
+
+async function enrichFeedbackSubmission(ctx: any, submission: any) {
+  const user = await ctx.db.get(submission.userId);
+  return {
+    ...submission,
+    userName: user?.name ?? "Unknown user",
+    userEmail: user?.email ?? null,
+  };
 }
 
 export const listAllUsers = query({
@@ -321,8 +334,8 @@ export const resetDatabase = mutation({
   args: {},
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
-    const resetCounts = await resetApplicationData(ctx);
     await resetBetterAuthNonAdmin(ctx);
+    const resetCounts = await resetApplicationData(ctx);
 
     return {
       resetAt: Date.now(),
@@ -427,6 +440,16 @@ export const getUserDetail = query({
       })
     );
 
+    const feedbackSubmissions = await ctx.db
+      .query("feedbackSubmissions")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(20);
+
+    const feedbackSubmissionsEnriched = await Promise.all(
+      feedbackSubmissions.map(async (submission) => await enrichFeedbackSubmission(ctx, submission))
+    );
+
     return {
       user,
       userPhotoUrl,
@@ -436,6 +459,26 @@ export const getUserDetail = query({
       jobsAsTasker,
       reviewsGiven: reviewsGivenEnriched,
       reviewsReceived: reviewsReceivedEnriched,
+      feedbackSubmissions: feedbackSubmissionsEnriched,
     };
+  },
+});
+
+export const listRecentFeedback = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(feedbackSubmissionAdminValidator),
+  handler: async (ctx, args) => {
+    if (!(await requireAdmin(ctx))) return [];
+
+    const limit = Math.max(1, Math.min(args.limit ?? 12, 50));
+    const submissions = await ctx.db
+      .query("feedbackSubmissions")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(limit);
+
+    return await Promise.all(submissions.map(async (submission) => await enrichFeedbackSubmission(ctx, submission)));
   },
 });

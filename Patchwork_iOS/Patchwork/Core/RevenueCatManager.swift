@@ -14,6 +14,10 @@ final class RevenueCatManager {
     private(set) var isLoading = false
     private(set) var lastError: String?
 
+    private func log(_ message: String) {
+        print("[RevenueCatManager] \(message)")
+    }
+
     func configureIfNeeded() {
         guard !isConfigured else {
             return
@@ -37,6 +41,7 @@ final class RevenueCatManager {
         do {
             guard let currentUserID else {
                 if currentAppUserID != nil {
+                    log("Logging out current App User ID \(currentAppUserID ?? "unknown")")
                     _ = try await Purchases.shared.logOut()
                 }
                 currentAppUserID = nil
@@ -47,12 +52,14 @@ final class RevenueCatManager {
             }
 
             if currentAppUserID != currentUserID {
+                log("Logging in App User ID \(currentUserID)")
                 _ = try await Purchases.shared.logIn(currentUserID)
                 currentAppUserID = currentUserID
             }
 
             await refresh(appState: appState, client: client)
         } catch {
+            log("syncIdentity failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
         }
     }
@@ -63,6 +70,7 @@ final class RevenueCatManager {
         defer { isLoading = false }
 
         do {
+            log("Refreshing offerings and customer info")
             async let offeringsCall = Purchases.shared.offerings()
             async let customerInfoCall = Purchases.shared.customerInfo()
 
@@ -71,6 +79,7 @@ final class RevenueCatManager {
 
             apply(offerings: offerings, customerInfo: customerInfo)
         } catch {
+            log("refresh failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
         }
     }
@@ -81,9 +90,11 @@ final class RevenueCatManager {
         defer { isLoading = false }
 
         do {
+            log("Restoring purchases")
             let customerInfo = try await Purchases.shared.restorePurchases()
             apply(customerInfo: customerInfo)
         } catch {
+            log("restorePurchases failed: \(error.localizedDescription)")
             lastError = error.localizedDescription
         }
     }
@@ -95,17 +106,21 @@ final class RevenueCatManager {
         defer { isLoading = false }
 
         do {
+            log("Purchasing product \(package.storeProduct.productIdentifier)")
             let result = try await Purchases.shared.purchase(package: package)
             apply(customerInfo: result.customerInfo)
 
             if result.userCancelled {
+                log("Purchase cancelled by user for \(package.storeProduct.productIdentifier)")
                 lastError = nil
                 return false
             }
 
+            log("Purchase succeeded for \(package.storeProduct.productIdentifier)")
             lastError = nil
             return true
         } catch {
+            log("purchase failed for \(package.storeProduct.productIdentifier): \(error.localizedDescription)")
             lastError = error.localizedDescription
             return false
         }
@@ -115,11 +130,13 @@ final class RevenueCatManager {
         guard let offering = offerings.offering(identifier: AppConfig.revenueCatOfferingLookupKey) else {
             currentOffering = nil
             apply(customerInfo: customerInfo)
+            log("Required offering \(AppConfig.revenueCatOfferingLookupKey) is unavailable")
             lastError = "Required App Store offering is unavailable."
             return
         }
 
         currentOffering = offering
+        log("Loaded offering \(offering.identifier) with \(offering.availablePackages.count) packages")
         lastError = nil
         apply(customerInfo: customerInfo)
     }
@@ -134,6 +151,7 @@ final class RevenueCatManager {
             expiresAt: entitlement?.expirationDate.map { Int($0.timeIntervalSince1970 * 1000) }
         )
         managementURL = customerInfo.managementURL
+        log("Applied customer info with active plan \(activePlan?.rawValue ?? "none")")
     }
 
     private func plan(for productIdentifier: String) -> SubscriptionPlanChoice? {

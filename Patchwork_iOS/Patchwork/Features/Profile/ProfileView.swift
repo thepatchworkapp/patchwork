@@ -10,7 +10,7 @@ private enum ProfileSidebarDestination: String, Identifiable {
 struct ProfileView: View {
     private enum MainLayout {
         static let horizontalGutter: CGFloat = 20
-        static let topRhythm: CGFloat = 16
+        static let topRhythm: CGFloat = 10
         static let bottomPadding: CGFloat = 16
     }
 
@@ -28,16 +28,15 @@ struct ProfileView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ProfileHeaderCard {
+                    ProfileAccountSection(
+                        user: appState.currentUser,
+                        taskerProfile: appState.taskerProfile
+                    ) {
                         withAnimation(.snappy(duration: 0.24)) {
                             isSidebarPresented = true
                         }
                     }
 
-                    ProfileAccountSection(
-                        user: appState.currentUser,
-                        taskerProfile: appState.taskerProfile
-                    )
                     ProfileTaskerSection(
                         userName: appState.currentUser?.name,
                         taskerProfile: appState.taskerProfile
@@ -63,6 +62,7 @@ struct ProfileView: View {
                     .onTapGesture {
                         closeSidebar()
                     }
+                    .accessibilityHidden(true)
                     .transition(.opacity)
             }
 
@@ -137,45 +137,19 @@ struct ProfileView: View {
     }
 }
 
-private struct ProfileHeaderCard: View {
+private struct ProfileAccountSection: View {
+    let user: CurrentUser?
+    let taskerProfile: TaskerProfileSelf?
     let onOpenMenu: () -> Void
 
     var body: some View {
         PatchworkSurfaceCard {
-            HStack(spacing: 16) {
-                Text("Profile")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-
-                Spacer(minLength: 12)
-
-                Button(action: onOpenMenu) {
-                    Label("Menu", systemImage: "line.3.horizontal")
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(PatchworkTheme.brand)
-                        .frame(width: 44, height: 44)
-                        .background(PatchworkTheme.brandSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Menu")
-                .accessibilityIdentifier("Profile.menuButton")
-            }
-        }
-    }
-}
-
-private struct ProfileAccountSection: View {
-    let user: CurrentUser?
-    let taskerProfile: TaskerProfileSelf?
-
-    var body: some View {
-        PatchworkSurfaceCard {
             VStack(spacing: 16) {
+                HStack {
+                    Spacer()
+                    ProfileMenuButton(action: onOpenMenu)
+                }
+
                 avatar
 
                 VStack(spacing: 8) {
@@ -249,6 +223,7 @@ private struct ProfileAccountSection: View {
                 .offset(x: 4, y: 4)
             }
         }
+        .accessibilityHidden(true)
     }
 
     private func roleBadge(
@@ -354,6 +329,7 @@ private struct ProfileAccountSection: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private func statColumn(
@@ -371,6 +347,7 @@ private struct ProfileAccountSection: View {
                     Image(systemName: icon)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(tint)
+                        .accessibilityHidden(true)
                 }
 
             VStack(spacing: 4) {
@@ -397,8 +374,11 @@ private struct ProfileAccountSection: View {
                         Circle()
                             .stroke(PatchworkTheme.stroke, lineWidth: 1)
                     )
+                    .accessibilityHidden(true)
             }
         }
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityValue(isUnlocked ? "Unlocked" : "Locked")
     }
 
     private var ratingValue: String {
@@ -433,6 +413,28 @@ private struct ProfileAccountSection: View {
 
     private var initial: String {
         String((user?.name ?? "?").prefix(1)).uppercased()
+    }
+}
+
+private struct ProfileMenuButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Menu", systemImage: "line.3.horizontal")
+                .labelStyle(.iconOnly)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 44, height: 44)
+                .background(PatchworkTheme.brandSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open settings menu")
+        .accessibilityIdentifier("Profile.menuButton")
     }
 }
 
@@ -472,16 +474,21 @@ private struct ProfileTaskerSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                NavigationLink(taskerProfile == nil ? "Complete Tasker Setup" : "Manage Tasker Profile") {
+                NavigationLink {
                     TaskerOnboardingView()
+                } label: {
+                    ProfileLinkRowLabel(title: taskerProfile == nil ? "Complete Tasker Setup" : "Manage Tasker Profile")
                 }
+                .buttonStyle(.plain)
                 .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
 
                 if let taskerProfile {
                     let billingTitle = taskerProfile.hasActiveSubscription == true ? "Billing & access" : "Unlock tasker mode"
 
-                    Button(billingTitle) {
+                    Button {
                         isShowingSubscriptions = true
+                    } label: {
+                        ProfileLinkRowLabel(title: billingTitle)
                     }
                     .buttonStyle(.plain)
                     .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.visibilitySubscriptionLink"))
@@ -526,6 +533,8 @@ private struct ProfileTaskerSection: View {
                     .labelsHidden()
                     .disabled(isUpdating || !canToggleGhostMode(for: profile))
                     .tint(PatchworkTheme.brand)
+                    .accessibilityLabel("Ghost Mode")
+                    .accessibilityValue(ghostModeValue ? "On" : "Off")
             }
 
             if let feedbackMessage {
@@ -545,6 +554,7 @@ private struct ProfileTaskerSection: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private func accessSummaryCard(_ profile: TaskerProfileSelf) -> some View {
@@ -569,6 +579,7 @@ private struct ProfileTaskerSection: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private func ghostModeBinding(for profile: TaskerProfileSelf) -> Binding<Bool> {
@@ -749,6 +760,7 @@ private struct ProfileSidebarMenu: View {
                         .background(PatchworkTheme.surfaceMuted, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close settings")
             }
 
             if let userName, !userName.isEmpty {
@@ -764,6 +776,7 @@ private struct ProfileSidebarMenu: View {
                         .foregroundStyle(PatchworkTheme.brand)
                         .frame(width: 42, height: 42)
                         .background(PatchworkTheme.brandSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Favourites")
@@ -779,6 +792,7 @@ private struct ProfileSidebarMenu: View {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PatchworkTheme.textTertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(16)
                 .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -786,9 +800,11 @@ private struct ProfileSidebarMenu: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(PatchworkTheme.stroke, lineWidth: 1)
                 )
+                .accessibilityElement(children: .combine)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("Profile.sidebarFavouritesButton")
+            .accessibilityLabel("Open favourites")
 
             Spacer(minLength: 0)
         }
@@ -831,6 +847,7 @@ private struct FavouriteTaskersPanel: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Back to settings")
                         .accessibilityIdentifier("Profile.favouritesBackButton")
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -903,6 +920,7 @@ private struct FavouriteTaskersPanel: View {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.caption)
                                 .foregroundStyle(PatchworkTheme.success)
+                                .accessibilityHidden(true)
                         }
                     }
 
@@ -939,6 +957,7 @@ private struct FavouriteTaskersPanel: View {
             }
         }
         .accessibilityIdentifier("Profile.favouriteTasker.\(tasker.id)")
+        .accessibilityElement(children: .combine)
     }
 
     private func favouriteAvatar(for tasker: TaskerSummary) -> some View {
@@ -963,6 +982,7 @@ private struct FavouriteTaskersPanel: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityHidden(true)
     }
 
     private func avatarPlaceholder(for tasker: TaskerSummary) -> some View {
@@ -979,6 +999,7 @@ private struct FavouriteTaskersPanel: View {
             Image(systemName: icon)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(tint)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.patchworkCaption)
                 .foregroundStyle(PatchworkTheme.textPrimary)
@@ -992,9 +1013,12 @@ private struct ProfileSupportSection: View {
     var body: some View {
         PatchworkSurfaceCard {
             VStack(spacing: 14) {
-                NavigationLink("Help & Support") {
+                NavigationLink {
                     HelpView()
+                } label: {
+                    ProfileLinkRowLabel(title: "Help & Support")
                 }
+                .buttonStyle(.plain)
                 .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.helpLink"))
 
                 Button("Sign Out", role: .destructive) {
@@ -1019,21 +1043,31 @@ private struct ProfileLinkRowStyle: ViewModifier {
             .foregroundStyle(PatchworkTheme.textPrimary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
-            .padding(.trailing, 34)
             .frame(height: 48)
             .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(PatchworkTheme.stroke, lineWidth: 1)
             )
-            .overlay(alignment: .trailing) {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PatchworkTheme.textTertiary)
-                    .padding(.trailing, 16)
-            }
             .contentShape(Rectangle())
             .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+private struct ProfileLinkRowLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PatchworkTheme.textTertiary)
+                .accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1338,6 +1372,7 @@ private struct TaskerCreateFlowView: View {
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(PatchworkTheme.textTertiary)
+                                .accessibilityHidden(true)
                         }
                         .padding(16)
                         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1345,6 +1380,7 @@ private struct TaskerCreateFlowView: View {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
                         )
+                        .accessibilityElement(children: .combine)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("TaskerOnboarding1.categoryPicker")
@@ -1409,6 +1445,7 @@ private struct TaskerCreateFlowView: View {
                             Image(systemName: acceptedTerms ? "checkmark.circle.fill" : "circle")
                                 .font(.title3.weight(.semibold))
                                 .foregroundStyle(acceptedTerms ? PatchworkTheme.brand : PatchworkTheme.strokeStrong)
+                                .accessibilityHidden(true)
                         }
                         .padding(16)
                         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1419,6 +1456,9 @@ private struct TaskerCreateFlowView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("I agree to the Tasker terms and community guidelines")
+                    .accessibilityValue(acceptedTerms ? "Selected" : "Not selected")
+                    .accessibilityHint("Required to complete setup")
                     .accessibilityIdentifier("TaskerOnboarding4.acceptTermsToggle")
 
                     HStack(spacing: 12) {
@@ -1446,6 +1486,7 @@ private struct TaskerCreateFlowView: View {
                 .font(.patchworkBodyStrong)
                 .foregroundStyle(PatchworkTheme.textPrimary)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var selectedCategoryName: String {
@@ -1525,10 +1566,13 @@ private struct TaskerProfileManageView: View {
                                 .font(.patchworkCardTitle)
                                 .foregroundStyle(PatchworkTheme.textPrimary)
 
-                            Button("Add Category") {
+                            Button {
                                 addCategorySheet = true
+                            } label: {
+                                ProfileLinkRowLabel(title: "Add Category")
                             }
                             .buttonStyle(.plain)
+                            .accessibilityElement(children: .combine)
                             .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "TaskerProfile.categoryLibraryLink"))
 
                             ForEach(appState.taskerProfile?.categories ?? []) { category in
@@ -1548,6 +1592,7 @@ private struct TaskerProfileManageView: View {
                                         Image(systemName: "chevron.right")
                                             .font(.caption)
                                             .foregroundStyle(PatchworkTheme.textTertiary)
+                                            .accessibilityHidden(true)
                                     }
                                     .padding(16)
                                     .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1558,13 +1603,9 @@ private struct TaskerProfileManageView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .contentShape(Rectangle())
+                                .accessibilityElement(children: .combine)
                                 .accessibilityIdentifier("TaskerProfile.category.\(category.categoryId)")
                             }
-
-                            NavigationLink("Category Help") {
-                                HelpView()
-                            }
-                            .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "TaskerProfile.categoryHelpLink"))
                         }
                     }
                 }
@@ -1821,6 +1862,8 @@ private struct CategoryServiceDetailsSection: View {
                     step: 1
                 )
                 .tint(PatchworkTheme.brand)
+                .accessibilityLabel("Service radius")
+                .accessibilityValue("\(serviceRadius) kilometers")
                 .accessibilityIdentifier("\(accessibilityPrefix).radiusStepper")
 
                 radiusStepButton(
@@ -1855,6 +1898,7 @@ private struct CategoryServiceDetailsSection: View {
             Text("$")
                 .font(.patchworkBodyStrong)
                 .foregroundStyle(PatchworkTheme.brand)
+                .accessibilityHidden(true)
 
             TextField(placeholder, text: text)
                 .keyboardType(.decimalPad)
@@ -1888,6 +1932,7 @@ private struct CategoryServiceDetailsSection: View {
                 .overlay(Circle().stroke(PatchworkTheme.strokeStrong, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(systemName == "minus" ? "Decrease service radius" : "Increase service radius")
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
@@ -1915,75 +1960,72 @@ private struct AddCategorySheet: View {
                     PatchworkTopBar(title: "Add Category", onBack: { dismiss() })
                         .accessibilityIdentifier("AddCategorySheet.cancelButton")
 
-                    PatchworkSurfaceCard {
-                        VStack(alignment: .leading, spacing: 18) {
-                            PatchworkSectionIntro(
-                                eyebrow: "Tasker profile",
-                                title: "Add another service",
-                                message: "Expand your listing with a new category, clear pricing, and service radius."
-                            )
+                    PatchworkSectionIntro(
+                        eyebrow: "Tasker profile",
+                        title: "Add another service",
+                        message: "Expand your listing with a new category, clear pricing, and service radius."
+                    )
 
-                            NavigationLink {
-                                CategoriesView(
-                                    title: "Select Category",
-                                    selectedCategoryID: selectedCategoryId,
-                                    excludedCategoryIDs: existingCategoryIDs,
-                                    dismissOnSelect: true,
-                                    onSelect: { category in
-                                        selectedCategoryId = category.id
-                                    }
-                                )
-                            } label: {
-                                HStack {
-                                    Text("Category")
-                                        .font(.patchworkCaption)
-                                        .foregroundStyle(PatchworkTheme.textSecondary)
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .font(.patchworkBody)
-                                        .foregroundStyle(PatchworkTheme.textPrimary)
-                                }
-                                .padding(16)
-                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                                )
-                                .contentShape(Rectangle())
+                    NavigationLink {
+                        CategoriesView(
+                            title: "Select Category",
+                            selectedCategoryID: selectedCategoryId,
+                            excludedCategoryIDs: existingCategoryIDs,
+                            dismissOnSelect: true,
+                            onSelect: { category in
+                                selectedCategoryId = category.id
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("AddCategorySheet.categoryPicker")
-
-                            CategoryServiceDetailsSection(
-                                title: "Details",
-                                eyebrow: nil,
-                                message: nil,
-                                bio: $categoryBio,
-                                rateType: $rateType,
-                                hourlyRate: $hourlyRate,
-                                fixedRate: $fixedRate,
-                                serviceRadius: $serviceRadius,
-                                accessibilityPrefix: "AddCategorySheet"
-                            )
-
-                            Button("Add") {
-                                guard let selectedCategoryId else { return }
-                                onAdd(
-                                    TaskerCategoryDraft(
-                                        categoryId: selectedCategoryId,
-                                        categoryBio: categoryBio,
-                                        rateType: rateType,
-                                        hourlyRate: hourlyRate,
-                                        fixedRate: fixedRate,
-                                        serviceRadius: serviceRadius
-                                    )
-                                )
-                            }
-                            .buttonStyle(PatchworkPrimaryButtonStyle())
-                            .disabled(!canSubmit)
-                            .accessibilityIdentifier("AddCategorySheet.addButton")
+                        )
+                    } label: {
+                        HStack {
+                            Text("Category")
+                                .font(.patchworkCaption)
+                                .foregroundStyle(PatchworkTheme.textSecondary)
+                            Spacer()
+                            Text(selectedCategoryName)
+                                .font(.patchworkBody)
+                                .foregroundStyle(PatchworkTheme.textPrimary)
                         }
+                        .padding(16)
+                        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("AddCategorySheet.categoryPicker")
+
+                    CategoryServiceDetailsSection(
+                        title: "Details",
+                        eyebrow: nil,
+                        message: nil,
+                        bio: $categoryBio,
+                        rateType: $rateType,
+                        hourlyRate: $hourlyRate,
+                        fixedRate: $fixedRate,
+                        serviceRadius: $serviceRadius,
+                        accessibilityPrefix: "AddCategorySheet"
+                    )
+
+                    Button("Add") {
+                        guard let selectedCategoryId else { return }
+                        onAdd(
+                            TaskerCategoryDraft(
+                                categoryId: selectedCategoryId,
+                                categoryBio: categoryBio,
+                                rateType: rateType,
+                                hourlyRate: hourlyRate,
+                                fixedRate: fixedRate,
+                                serviceRadius: serviceRadius
+                            )
+                        )
+                    }
+                    .buttonStyle(PatchworkPrimaryButtonStyle())
+                    .disabled(!canSubmit)
+                    .accessibilityIdentifier("AddCategorySheet.addButton")
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
@@ -2168,6 +2210,7 @@ private struct EditableTaskerCategorySheet: View {
                 .font(.patchworkBodyStrong)
                 .foregroundStyle(PatchworkTheme.textPrimary)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var ratingLabel: String {
@@ -2198,21 +2241,28 @@ private struct HelpView: View {
 
                     PatchworkSurfaceCard {
                         VStack(spacing: 14) {
-                            Button("Terms of Service") {
+                            Button {
                                 legalDocument = .terms
+                            } label: {
+                                ProfileLinkRowLabel(title: "Terms of Service")
                             }
                             .buttonStyle(.plain)
                             .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.termsLink"))
 
-                            Button("Privacy Policy") {
+                            Button {
                                 legalDocument = .privacy
+                            } label: {
+                                ProfileLinkRowLabel(title: "Privacy Policy")
                             }
                             .buttonStyle(.plain)
                             .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.privacyLink"))
 
-                            NavigationLink("Send Feedback") {
+                            NavigationLink {
                                 FeedbackView()
+                            } label: {
+                                ProfileLinkRowLabel(title: "Send Feedback")
                             }
+                            .buttonStyle(.plain)
                             .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Help.feedbackLink"))
                         }
                     }
@@ -2342,7 +2392,7 @@ private struct FeedbackView: View {
         defer { isSubmitting = false }
 
         do {
-            _ = try await sessionStore.client.mutation("feedback:submit", args: ["message": trimmedMessage]) as EmptyResponse
+            _ = try await sessionStore.client.mutation("feedback:submit", args: ["message": trimmedMessage]) as ConvexID
             feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Feedback sent. Thank you.")
             try? await Task.sleep(nanoseconds: 500_000_000)
             dismiss()

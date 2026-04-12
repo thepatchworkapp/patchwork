@@ -13,8 +13,8 @@ struct TaskerPaywallOptionCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
                     Text(title)
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(PatchworkTheme.textPrimary)
@@ -59,11 +59,12 @@ struct TaskerPaywallOptionCard: View {
                 Text(detail)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(PatchworkTheme.textSecondary)
-                    .lineSpacing(3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(isSelected ? accent.opacity(0.08) : PatchworkTheme.surface.opacity(0.9))
@@ -92,5 +93,23 @@ struct TaskerPaywallOptionCard: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var accessibilityLabelText: String {
+        var parts: [String] = [
+            title,
+            "\(priceAmount) \(priceSuffix)",
+            detail.replacingOccurrences(of: "\n", with: " ")
+        ]
+
+        if let badgeText {
+            parts.append(badgeText)
+        }
+
+        return parts.joined(separator: ", ")
     }
 }

@@ -90,6 +90,10 @@ struct TaskerBillingSheet: View {
     @State private var pendingPurchasePlan: TaskerBillingPlan?
     @State private var selectedPlan: TaskerBillingPlan = .founders
 
+    private func log(_ message: String) {
+        print("[TaskerBillingSheet] \(message)")
+    }
+
     private var hasActiveAccess: Bool {
         appState.taskerProfile?.hasActiveSubscription == true || revenueCatManager.storeState.activePlan != nil
     }
@@ -197,6 +201,7 @@ struct TaskerBillingSheet: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss paywall")
             .accessibilityIdentifier("Subscription.billingCloseButton")
         }
         .padding(.top, 4)
@@ -219,34 +224,42 @@ struct TaskerBillingSheet: View {
 
     private var heroArtwork: some View {
         ZStack {
-            Image("TaskerPaywallHero")
-                .resizable()
-                .scaledToFit()
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-        }
-        .frame(maxWidth: .infinity, minHeight: 96, maxHeight: 96)
-        .background(
             LinearGradient(
                 colors: [
-                    PatchworkTheme.surface,
                     PatchworkTheme.backgroundWarm,
-                    PatchworkTheme.brandSoft.opacity(0.3)
+                    PatchworkTheme.surface.opacity(0.65),
+                    PatchworkTheme.brandSoft.opacity(0.42)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .stroke(PatchworkTheme.strokeStrong.opacity(0.72), lineWidth: 1)
-        )
-        .shadow(color: PatchworkTheme.brand.opacity(0.08), radius: 18, y: 9)
+            )
+
+            Circle()
+                .fill(PatchworkTheme.accent.opacity(0.16))
+                .frame(width: 180, height: 180)
+                .blur(radius: 18)
+                .offset(x: 118, y: 34)
+
+            Circle()
+                .fill(PatchworkTheme.brand.opacity(0.12))
+                .frame(width: 220, height: 220)
+                .blur(radius: 22)
+                .offset(x: -132, y: -18)
+
+            Image("TaskerPaywallHero")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: 220)
+                .padding(.horizontal, -12)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, minHeight: 188, maxHeight: 210)
+        .clipShape(.rect(cornerRadius: 36))
+        .accessibilityHidden(true)
     }
 
     private var planLayout: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             paywallPlanCard(for: .subscription)
             paywallPlanCard(for: .founders)
         }
@@ -281,6 +294,12 @@ struct TaskerBillingSheet: View {
 
     private var restoreSection: some View {
         VStack(alignment: .center, spacing: 6) {
+            Button("Maybe later") {
+                dismiss()
+            }
+            .buttonStyle(PatchworkTextButtonStyle())
+            .accessibilityIdentifier("Subscription.maybeLaterButton")
+
             Button(isSyncingBackend ? "Restoring…" : "Restore purchases") {
                 Task { await restorePurchases() }
             }
@@ -332,6 +351,7 @@ struct TaskerBillingSheet: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private var currentAccessTitle: String {
@@ -368,6 +388,7 @@ struct TaskerBillingSheet: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(PatchworkTheme.success.opacity(0.14), in: Capsule())
+            .accessibilityHidden(true)
     }
 
     private var activeAccessCard: some View {
@@ -454,23 +475,28 @@ struct TaskerBillingSheet: View {
 
     private func purchase(plan: TaskerBillingPlan) async {
         guard let package = package(for: plan) else {
+            log("Purchase attempted for \(plan.rawValue) but package was unavailable")
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: "This billing option is not available right now.")
             return
         }
 
+        log("Starting purchase for \(plan.rawValue) with product \(package.storeProduct.productIdentifier)")
         pendingPurchasePlan = plan
         feedbackMessage = nil
         defer { pendingPurchasePlan = nil }
 
         let purchased = await revenueCatManager.purchase(package: package)
         if purchased {
+            log("Store purchase completed for \(plan.rawValue)")
             await handleCompletedStoreAction(successText: "Purchase confirmed in the App Store.")
         } else if let lastError = revenueCatManager.lastError, !lastError.isEmpty {
+            log("Store purchase failed for \(plan.rawValue): \(lastError)")
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: lastError)
         }
     }
 
     private func restorePurchases() async {
+        log("Starting restore purchases flow")
         isSyncingBackend = true
         feedbackMessage = nil
         defer { isSyncingBackend = false }
@@ -480,6 +506,7 @@ struct TaskerBillingSheet: View {
     }
 
     private func handleCompletedStoreAction(successText: String) async {
+        log("Refreshing store state after completed store action")
         isSyncingBackend = true
         feedbackMessage = nil
         defer { isSyncingBackend = false }
@@ -492,15 +519,18 @@ struct TaskerBillingSheet: View {
         syncManagerFeedback()
 
         guard revenueCatManager.storeState.activePlan != nil else {
+            log("No active store plan after store action; skipping backend sync")
             return
         }
 
+        log("Syncing backend after store action with active plan \(revenueCatManager.storeState.activePlan?.rawValue ?? "none")")
         feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: successText)
 
         for _ in 0 ..< 6 {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
 
             if appState.taskerProfile?.hasActiveSubscription == true {
+                log("Backend sync confirmed active tasker subscription")
                 dismiss()
                 return
             }
@@ -508,6 +538,7 @@ struct TaskerBillingSheet: View {
             try? await Task.sleep(for: .seconds(1))
         }
 
+        log("Backend sync did not confirm access after retry window")
         feedbackMessage = SubscriptionFeedbackMessage(
             tone: .warning,
             text: "Your App Store purchase is complete. Patchwork is still confirming tasker access."

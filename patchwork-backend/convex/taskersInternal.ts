@@ -123,14 +123,17 @@ export const applyRevenueCatWebhookEvent = internalMutation({
   },
   handler: async (ctx, args) => {
     if (args.appId && args.appId !== PATCHWORK_APP_ID) {
+      console.info("[RevenueCatWebhook] Ignoring event for different app", { appId: args.appId });
       return { applied: false, reason: "wrong_app" };
     }
 
     const mappedProduct = mapRevenueCatProduct(args.productId);
     if (mappedProduct === "legacy_weekly") {
+      console.info("[RevenueCatWebhook] Ignoring legacy weekly product", { productId: args.productId });
       return { applied: false, reason: "legacy_weekly_ignored" };
     }
     if (!mappedProduct) {
+      console.info("[RevenueCatWebhook] Ignoring untracked product", { productId: args.productId });
       return { applied: false, reason: "untracked_product" };
     }
 
@@ -141,6 +144,11 @@ export const applyRevenueCatWebhookEvent = internalMutation({
     ]);
 
     if (!profile) {
+      console.warn("[RevenueCatWebhook] No tasker profile found for purchase", {
+        appUserId: args.appUserId,
+        originalAppUserId: args.originalAppUserId,
+        aliases: args.aliases ?? [],
+      });
       return { applied: false, reason: "tasker_profile_not_found" };
     }
 
@@ -178,6 +186,11 @@ export const applyRevenueCatWebhookEvent = internalMutation({
           : undefined;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
+      console.info("[RevenueCatWebhook] Activated tasker access", {
+        profileId: profile._id,
+        accessType: mappedProduct,
+        eventType: args.type,
+      });
       return { applied: true, reason: "activated" };
     }
 
@@ -196,6 +209,10 @@ export const applyRevenueCatWebhookEvent = internalMutation({
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
       await scheduleTermEndExpiration(ctx, profile._id, endsAt);
+      console.info("[RevenueCatWebhook] Scheduled subscription cancellation", {
+        profileId: profile._id,
+        endsAt,
+      });
       return { applied: true, reason: "cancellation_scheduled" };
     }
 
@@ -205,9 +222,19 @@ export const applyRevenueCatWebhookEvent = internalMutation({
         mappedProduct === "subscription" ? expirationAt ?? profile.subscriptionEndsAt : undefined;
       updates.ghostMode = true;
       await ctx.db.patch(profile._id, updates);
+      console.info("[RevenueCatWebhook] Expired tasker access", {
+        profileId: profile._id,
+        accessType: mappedProduct,
+        eventType: args.type,
+      });
       return { applied: true, reason: "expired" };
     }
 
+    console.info("[RevenueCatWebhook] Ignored event type", {
+      profileId: profile._id,
+      eventType: args.type,
+      accessType: mappedProduct,
+    });
     return { applied: false, reason: "ignored_event_type" };
   },
 });

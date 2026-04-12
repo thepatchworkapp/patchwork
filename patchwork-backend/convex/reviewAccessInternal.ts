@@ -13,7 +13,7 @@ export const ensureReviewAuthSession = internalMutation({
     userAgent: v.string(),
   },
   handler: async (ctx, args) => {
-    const authAdapter = authComponent.adapter(ctx);
+    const authAdapter = await authComponent.adapter(ctx)({});
 
     let authUser = await authAdapter.findOne({
       model: "user",

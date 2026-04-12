@@ -17,7 +17,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Tabs } from "@cloudflare/kumo/components/tabs";
 import { CodeBlock } from "@cloudflare/kumo/components/code";
 
-import { ArrowRight, Briefcase, LogOut, MapPin, ShieldAlert, Star, User } from "lucide-react";
+import { ArrowRight, Briefcase, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
 
 const api = anyApi as any;
 
@@ -348,6 +348,17 @@ type AdminUserDetail = {
   jobsAsTasker: any[];
   reviewsGiven: any[];
   reviewsReceived: any[];
+  feedbackSubmissions: FeedbackSubmissionRow[];
+};
+
+type FeedbackSubmissionRow = {
+  _id: string;
+  userId: string;
+  message: string;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+  userName?: string | null;
+  userEmail?: string | null;
 };
 
 type ReviewAccessStatus = {
@@ -550,6 +561,9 @@ function DashboardShell({ email }: { email: string }) {
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(80);
   const reviewAccess = useQuery(api.admin.getReviewAccess, {}) as ReviewAccessStatus | null | undefined;
+  const recentFeedback = useQuery(api.admin.listRecentFeedback, { limit: 12 }) as
+    | FeedbackSubmissionRow[]
+    | undefined;
 
   const data = useQuery(api.admin.listAllUsers, { limit }) as
     | { users: UserRow[]; cursor: string | null }
@@ -599,6 +613,50 @@ function DashboardShell({ email }: { email: string }) {
       <div className="mb-6">
         <AdminMaintenanceCard />
       </div>
+
+      <Surface className="pw-card pw-fade-up mb-6 rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
+        <div className="mb-3 flex items-center gap-2">
+          <MessageSquare className="size-4 text-kumo-muted" />
+          <div className="pw-display text-base tracking-tight">Recent feedback</div>
+          <Badge variant="outline" className="pw-badge-tight">
+            {recentFeedback?.length ?? 0}
+          </Badge>
+        </div>
+
+        {!recentFeedback ? (
+          <EmptyHint title="Loading feedback…" body="Fetching the latest user feedback from Convex." />
+        ) : recentFeedback.length === 0 ? (
+          <EmptyHint title="No feedback yet" body="Feedback submissions will appear here once users send them from the app." />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {recentFeedback.map((item) => (
+              <button
+                key={item._id}
+                type="button"
+                className="pw-subcard text-left transition hover:bg-kumo-tint"
+                onClick={() => setSelectedUserId(item.userId)}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-semibold text-kumo-strong">
+                        {item.userName || item.userEmail || shortId(item.userId)}
+                      </div>
+                      <div className="pw-mono text-[11px] text-kumo-muted">{formatDate(item.createdAt)}</div>
+                    </div>
+                    {item.userEmail && (
+                      <div className="mt-1 text-xs text-kumo-muted">{item.userEmail}</div>
+                    )}
+                    <div className="mt-2 line-clamp-3 text-sm leading-relaxed text-kumo-default whitespace-pre-wrap">
+                      {item.message}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Surface>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
         <Surface className="pw-card pw-fade-up rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
@@ -769,7 +827,7 @@ function UserDetailView({
 
   type PhotoLightboxItem = { url: string; label: string; meta?: string };
 
-  const [tab, setTab] = useState<"overview" | "seeker" | "tasker" | "jobs" | "reviews" | "photos" | "raw">("overview");
+  const [tab, setTab] = useState<"overview" | "seeker" | "tasker" | "jobs" | "reviews" | "feedback" | "photos" | "raw">("overview");
   const [rawOpen, setRawOpen] = useState(false);
   const [lightbox, setLightbox] = useState<PhotoLightboxItem | null>(null);
 
@@ -787,6 +845,7 @@ function UserDetailView({
   const taskerCategoriesWithPhotos = taskerCategories.filter(
     (c) => Array.isArray(c?.photoUrls) && c.photoUrls.length > 0
   );
+  const feedbackSubmissions = Array.isArray(detail.feedbackSubmissions) ? detail.feedbackSubmissions : [];
 
   useEffect(() => {
     setTab("overview");
@@ -800,6 +859,7 @@ function UserDetailView({
     { value: "tasker", label: `Tasker (${taskerCategoryCount})` },
     { value: "jobs", label: `Jobs (${(detail.jobsAsSeeker?.length ?? 0) + (detail.jobsAsTasker?.length ?? 0)})` },
     { value: "reviews", label: `Reviews (${(detail.reviewsReceived?.length ?? 0) + (detail.reviewsGiven?.length ?? 0)})` },
+    { value: "feedback", label: `Feedback (${feedbackSubmissions.length})` },
     { value: "photos", label: `Photos (${totalPhotoCount})` },
     { value: "raw", label: "Raw" },
   ] as const;
@@ -928,6 +988,28 @@ function UserDetailView({
             </div>
           );
         })}
+      </div>
+    );
+  };
+
+  const renderFeedback = (items: FeedbackSubmissionRow[]) => {
+    if (!items.length) {
+      return <EmptyHint title="No feedback submitted" body="This user has not sent any in-app feedback yet." />;
+    }
+
+    return (
+      <div className="grid gap-4">
+        {items.map((item) => (
+          <div key={item._id} className="pw-subcard p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">feedback</Badge>
+              <div className="pw-mono text-xs text-kumo-muted">{formatDate(item.createdAt)}</div>
+            </div>
+            <div className="mt-3 text-sm leading-relaxed text-kumo-default whitespace-pre-wrap">
+              {item.message}
+            </div>
+          </div>
+        ))}
       </div>
     );
   };
@@ -1335,6 +1417,17 @@ function UserDetailView({
             </div>
             {renderReviews(detail.reviewsGiven ?? [], "given")}
           </div>
+        </div>
+      )}
+
+      {tab === "feedback" && (
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <MessageSquare className="size-4 text-kumo-muted" />
+            <div className="pw-display text-sm tracking-tight">Feedback</div>
+            <Badge variant="outline">{feedbackSubmissions.length}</Badge>
+          </div>
+          {renderFeedback(feedbackSubmissions)}
         </div>
       )}
 

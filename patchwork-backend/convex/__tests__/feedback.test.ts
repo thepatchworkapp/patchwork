@@ -1,22 +1,60 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api } from "../_generated/api";
 import schema from "../schema";
-import * as feedbackModule from "../feedback";
-import * as usersModule from "../users";
-import * as authModule from "../auth";
 
-const modules: Record<string, () => Promise<any>> = {
-  "../feedback.ts": async () => feedbackModule,
-  "../users.ts": async () => usersModule,
-  "../auth.ts": async () => authModule,
-  "../_generated/api.ts": async () => ({ default: api }),
-  "../schema.ts": async () => ({ default: schema }),
-};
+async function feedbackModules() {
+  const feedbackModule = await import("../feedback");
+  const usersModule = await import("../users");
+  const authModule = await import("../auth");
+
+  return {
+    "../feedback.ts": async () => feedbackModule,
+    "../users.ts": async () => usersModule,
+    "../auth.ts": async () => authModule,
+    "../_generated/api.ts": async () => ({ default: api }),
+    "../schema.ts": async () => ({ default: schema }),
+  };
+}
+
+async function adminFeedbackModules() {
+  vi.resetModules();
+  vi.doMock("../auth", () => ({
+    authComponent: {
+      adapter: () =>
+        async () => ({
+          findOne: async ({ where }: { where?: Array<{ value?: string }> }) => {
+            const email = where?.[0]?.value;
+            if (email === "admin@example.com") {
+              return { id: "admin-auth-user-id" };
+            }
+            return null;
+          },
+          deleteMany: async () => undefined,
+        }),
+    },
+  }));
+  vi.doMock("../reviewAccess", () => ({
+    getReviewAccessStatus: vi.fn(),
+    setReviewAccessEnabled: vi.fn(),
+  }));
+  vi.doMock("../geospatial", () => ({
+    taskerGeo: {
+      remove: vi.fn(async () => undefined),
+    },
+  }));
+  const baseModules = await feedbackModules();
+  const adminModule = await import("../admin");
+
+  return {
+    ...baseModules,
+    "../admin.ts": async () => adminModule,
+  };
+}
 
 describe("feedback", () => {
   test("submit stores authenticated feedback with timestamp and user", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, await feedbackModules());
 
     const asUser = t.withIdentity({
       tokenIdentifier: "google|feedback1",
@@ -44,12 +82,143 @@ describe("feedback", () => {
   });
 
   test("submit rejects anonymous feedback", async () => {
-    const t = convexTest(schema, modules);
+    const t = convexTest(schema, await feedbackModules());
 
     await expect(
       t.mutation(api.feedback.submit, {
         message: "Anonymous feedback should not work.",
       })
     ).rejects.toThrow("Unauthorized");
+  });
+
+  test("admin queries expose recent feedback and per-user feedback", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules());
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-user",
+        email: "feedback-detail@example.com",
+      });
+
+      const userId = await asUser.mutation(api.users.createProfile, {
+        name: "Feedback Detail User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      await asUser.mutation(api.feedback.submit, {
+        message: "The feedback form should not error after sending.",
+      });
+
+      const recentFeedback = await asAdmin.query((api as any).admin.listRecentFeedback, {
+        limit: 10,
+      });
+
+      expect(recentFeedback).toHaveLength(1);
+      expect(recentFeedback[0]?.userId).toBe(userId);
+      expect(recentFeedback[0]?.userEmail).toBe("feedback-detail@example.com");
+      expect(recentFeedback[0]?.message).toBe("The feedback form should not error after sending.");
+
+      const detail = await asAdmin.query((api as any).admin.getUserDetail, {
+        userId,
+      });
+
+      expect(detail?.feedbackSubmissions).toHaveLength(1);
+      expect(detail?.feedbackSubmissions[0]?.message).toBe("The feedback form should not error after sending.");
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
+  });
+
+  test("admin resetDatabase does not wipe app data if auth cleanup fails first", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+
+    try {
+      vi.resetModules();
+      vi.doMock("../auth", () => ({
+        authComponent: {
+          adapter: () =>
+            async () => ({
+              findOne: async ({ where }: { where?: Array<{ value?: string }> }) => {
+                const email = where?.[0]?.value;
+                if (email === "admin@example.com") {
+                  return { id: "admin-auth-user-id" };
+                }
+                return null;
+              },
+              deleteMany: async ({ model }: { model: string }) => {
+                if (model === "session") {
+                  throw new Error("session cleanup failed");
+                }
+              },
+            }),
+        },
+      }));
+      vi.doMock("../reviewAccess", () => ({
+        getReviewAccessStatus: vi.fn(),
+        setReviewAccessEnabled: vi.fn(),
+      }));
+      vi.doMock("../geospatial", () => ({
+        taskerGeo: {
+          remove: vi.fn(async () => undefined),
+        },
+      }));
+
+      const adminModule = await import("../admin");
+      const modules = await feedbackModules();
+      const t = convexTest(schema, {
+        ...modules,
+        "../admin.ts": async () => adminModule,
+      });
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reset-fail",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-user-reset-fail",
+        email: "feedback-reset-fail@example.com",
+      });
+
+      const userId = await asUser.mutation(api.users.createProfile, {
+        name: "Feedback Reset Failure User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      await asUser.mutation(api.feedback.submit, {
+        message: "This feedback should survive a failed reset.",
+      });
+
+      await expect(
+        asAdmin.mutation((api as any).admin.resetDatabase, {})
+      ).rejects.toThrow("session cleanup failed");
+
+      const user = await t.run(async (ctx) => await ctx.db.get(userId));
+      expect(user?.email).toBe("feedback-reset-fail@example.com");
+
+      const feedbackRows = await t.run(async (ctx) =>
+        await ctx.db
+          .query("feedbackSubmissions")
+          .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+          .order("desc")
+          .take(5)
+      );
+      expect(feedbackRows).toHaveLength(1);
+      expect(feedbackRows[0]?.userId).toBe(userId);
+      expect(feedbackRows[0]?.message).toBe("This feedback should survive a failed reset.");
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
   });
 });

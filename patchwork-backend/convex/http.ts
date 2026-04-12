@@ -187,10 +187,12 @@ http.route({
 
 const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
   if (!revenueCatWebhookAuthorization) {
+    console.error("[RevenueCatWebhook] Missing REVENUECAT_WEBHOOK_AUTHORIZATION");
     return jsonResponse({ error: "RevenueCat webhook authorization is not configured" }, 500);
   }
 
   if (!validateRevenueCatAuthorization(request)) {
+    console.warn("[RevenueCatWebhook] Authorization rejected");
     return jsonResponse({ error: "Forbidden" }, 403);
   }
 
@@ -198,6 +200,7 @@ const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
   const event = body?.event;
 
   if (!event || typeof event.type !== "string") {
+    console.warn("[RevenueCatWebhook] Missing event payload");
     return jsonResponse({ error: "Missing RevenueCat event payload" }, 400);
   }
 
@@ -213,6 +216,13 @@ const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
       : undefined,
     expirationAtMs:
       typeof event.expiration_at_ms === "number" ? event.expiration_at_ms : null,
+  });
+
+  console.info("[RevenueCatWebhook] Processed event", {
+    type: event.type,
+    productId: typeof event.product_id === "string" ? event.product_id : null,
+    appUserId: typeof event.app_user_id === "string" ? event.app_user_id : null,
+    result,
   });
 
   return jsonResponse({ ok: true, result }, 200);

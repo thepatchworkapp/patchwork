@@ -239,6 +239,7 @@ export const reviewDocValidator = v.object({
 
 export const conversationValidator = v.object({
   _id: v.id("conversations"),
+  _creationTime: v.number(),
   seekerId: v.id("users"),
   taskerId: v.id("users"),
   jobRequestId: v.optional(v.id("jobRequests")),
@@ -269,6 +270,7 @@ export const locationUpdateResultValidator = v.object({
 
 export const jobValidator = v.object({
   _id: v.id("jobs"),
+  _creationTime: v.number(),
   seekerId: v.id("users"),
   taskerId: v.id("users"),
   requestId: v.optional(v.id("jobRequests")),
@@ -296,6 +298,7 @@ export const jobValidator = v.object({
 
 export const listedJobValidator = v.object({
   _id: v.id("jobs"),
+  _creationTime: v.number(),
   seekerId: v.id("users"),
   taskerId: v.id("users"),
   requestId: v.optional(v.id("jobRequests")),
@@ -325,6 +328,7 @@ export const listedJobValidator = v.object({
 
 export const jobRequestValidator = v.object({
   _id: v.id("jobRequests"),
+  _creationTime: v.number(),
   seekerId: v.id("users"),
   categoryId: v.id("categories"),
   categoryName: v.string(),

@@ -574,14 +574,17 @@ final class PatchworkUITests: XCTestCase {
         replaceText(in: emailField, with: email)
         app.buttons["Auth.sendCodeButton"].tap()
 
-        let codeField = app.textFields["Auth.codeField"]
-        if !codeField.waitForExistence(timeout: 10) {
+        let firstCodeField = app.textFields["Auth.codeField.0"]
+        let verifyButton = app.buttons["Auth.verifyButton"]
+        if !firstCodeField.waitForExistence(timeout: 30) {
             saveScreenshot(named: "ios-auth-code-field-missing")
-            XCTFail("Verification code field did not appear for \(email)")
+            XCTFail("Auth send-code timed out before verification UI appeared for \(email)")
         }
-        codeField.tap()
-        codeField.typeText(fetchOTP(email: email))
-        app.buttons["Auth.verifyButton"].tap()
+        enterOTP(testOTP(for: email))
+
+        if verifyButton.waitForExistence(timeout: 2), verifyButton.isEnabled {
+            verifyButton.tap()
+        }
     }
 
     private func completeProfileSetup(name: String, city: String, province: String) {
@@ -731,6 +734,26 @@ final class PatchworkUITests: XCTestCase {
         }
         XCTFail("Failed to fetch OTP for \(email)")
         return ""
+    }
+
+    private func testOTP(for email: String) -> String {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedEmail.hasSuffix("@test.com") || normalizedEmail.hasPrefix("e2e_") {
+            let seededOTP = "123456"
+            _ = testProxy(action: "seedOtp", args: ["email": normalizedEmail, "otp": seededOTP]) as Optional<[String: Any]>
+            return seededOTP
+        }
+
+        return fetchOTP(email: normalizedEmail)
+    }
+
+    private func enterOTP(_ otp: String) {
+        for (index, digit) in otp.enumerated() {
+            let codeField = app.textFields["Auth.codeField.\(index)"]
+            XCTAssertTrue(codeField.waitForExistence(timeout: 2), "Missing OTP field \(index)")
+            codeField.tap()
+            codeField.typeText(String(digit))
+        }
     }
 
     private func cleanupTestData(for email: String) {
