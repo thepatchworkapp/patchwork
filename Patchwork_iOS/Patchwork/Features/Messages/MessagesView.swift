@@ -29,11 +29,15 @@ struct MessagesView: View {
                 topControls
 
                 if isTaskerLocked {
-                    Spacer(minLength: 24)
-                    lockedTaskerState
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            lockedTaskerState
+                        }
                         .padding(.horizontal, MainLayout.horizontalGutter)
                         .padding(.top, MainLayout.topRhythm)
-                    Spacer()
+                        .padding(.bottom, MainLayout.bottomPadding)
+                    }
+                    .scrollIndicators(.hidden)
                 } else {
                     if filteredConversations.isEmpty {
                         emptyState
