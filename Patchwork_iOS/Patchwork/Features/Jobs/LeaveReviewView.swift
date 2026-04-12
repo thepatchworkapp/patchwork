@@ -17,6 +17,13 @@ struct LeaveReviewView: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.accent)
 
             ScrollView {
@@ -39,6 +46,7 @@ struct LeaveReviewView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
         .safeAreaInset(edge: .bottom) {
@@ -57,6 +65,7 @@ struct LeaveReviewView: View {
             .padding(.bottom, 12)
         }
         .navigationTitle("Leave Review")
+        .patchworkKeyboardDismissToolbar()
         .task(id: jobId) {
             await loadJobDetail()
         }

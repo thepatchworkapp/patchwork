@@ -1185,6 +1185,13 @@ private struct ProposalFormSheet: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.brand)
 
             ScrollView {
@@ -1257,8 +1264,10 @@ private struct ProposalFormSheet: View {
                 }
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
+        .patchworkKeyboardDismissToolbar()
     }
 }
 
@@ -1271,6 +1280,13 @@ private struct ReviewFormSheet: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.accent)
 
             ScrollView {
@@ -1340,7 +1356,9 @@ private struct ReviewFormSheet: View {
                 }
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
+        .patchworkKeyboardDismissToolbar()
     }
 }

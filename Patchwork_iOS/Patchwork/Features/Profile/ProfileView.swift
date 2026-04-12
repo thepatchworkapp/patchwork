@@ -1303,6 +1303,13 @@ private struct TaskerCreateFlowView: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.brand)
 
             ScrollView {
@@ -1343,10 +1350,12 @@ private struct TaskerCreateFlowView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
             .scrollIndicators(.hidden)
         }
+        .patchworkKeyboardDismissToolbar()
     }
 
     @ViewBuilder
@@ -1970,6 +1979,13 @@ private struct AddCategorySheet: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.accent)
 
             ScrollView {
@@ -2047,8 +2063,10 @@ private struct AddCategorySheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
+        .patchworkKeyboardDismissToolbar()
     }
 
     private var availableCategories: [Category] {
@@ -2110,6 +2128,13 @@ private struct EditableTaskerCategorySheet: View {
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    PatchworkKeyboard.dismiss()
+                }
+
             PatchworkBackdrop(tint: PatchworkTheme.accent)
 
             ScrollView {
@@ -2162,8 +2187,10 @@ private struct EditableTaskerCategorySheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
+        .patchworkKeyboardDismissToolbar()
     }
 
     private var canSubmit: Bool {

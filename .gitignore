@@ -16,6 +16,7 @@ Patchwork_iOS/builds/
 # Tooling
 .opencode/
 .codex/
+.codex-artifacts/
 .agents/
 .astro/
 .asc/

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private struct PatchworkInputFieldModifier: ViewModifier {
     func body(content: Content) -> some View {
@@ -21,5 +22,22 @@ private struct PatchworkInputFieldModifier: ViewModifier {
 extension View {
     func patchworkInputFieldStyle() -> some View {
         modifier(PatchworkInputFieldModifier())
+    }
+
+    func patchworkKeyboardDismissToolbar() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    PatchworkKeyboard.dismiss()
+                }
+            }
+        }
+    }
+}
+
+enum PatchworkKeyboard {
+    static func dismiss() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
