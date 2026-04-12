@@ -18,6 +18,7 @@ Patchwork_iOS/builds/
 .codex/
 .agents/
 .astro/
+.asc/
 .wrangler/
 .vscode/
 .sisyphus/
