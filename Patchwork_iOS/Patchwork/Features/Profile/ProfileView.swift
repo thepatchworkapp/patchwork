@@ -571,7 +571,9 @@ private struct ProfileTaskerSection: View {
 
             Spacer()
 
-            statusBadge(for: profile)
+            if shouldShowStatusBadge(for: profile) {
+                statusBadge(for: profile)
+            }
         }
         .padding(14)
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -663,7 +665,22 @@ private struct ProfileTaskerSection: View {
             .background(background, in: Capsule())
     }
 
+    private func shouldShowStatusBadge(for taskerProfile: TaskerProfileSelf) -> Bool {
+        taskerProfile.subscriptionStatus != "active"
+    }
+
     private func planTitle(for taskerProfile: TaskerProfileSelf) -> String {
+        if taskerProfile.subscriptionStatus == "active" {
+            switch taskerProfile.subscriptionAccessType {
+            case "lifetime":
+                return "Founders Club"
+            case "subscription":
+                return "Subscribed"
+            default:
+                return "Tasker access active"
+            }
+        }
+
         switch taskerProfile.subscriptionPlan {
         case "tasker":
             switch taskerProfile.subscriptionAccessType {
