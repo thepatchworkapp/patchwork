@@ -3,6 +3,13 @@
 This guide defines the operating rules for coding agents and contributors working in the
 `Patchwork_iOS` project.
 
+## Agent workflow
+
+- For independent parallel work, use subagents to split the task into non-overlapping areas.
+- For cross-cutting changes that touch multiple UI or feature areas, prefer one coordinating agent plus narrowly scoped worker tasks.
+- Prefer the `Build iOS Apps` plugin capabilities for simulator builds, runs, tests, screenshots, and debugging when available.
+- Use `xcodebuildmcp` tooling for simulator workflows and screenshots instead of ad hoc local scripting.
+
 ## Scope
 
 - Scope: native iOS client in `Patchwork_iOS` only.
@@ -15,8 +22,8 @@ This guide defines the operating rules for coding agents and contributors workin
 - Fix the primary implementation path end-to-end rather than adding alternate branches for older OSes, compatibility layers, feature flags, or degraded behavior.
 - Use available platform tools for workflows:
   - Use the `revenuecat` MCP server for RevenueCat paywall generation and project/configuration operations.
-  - Use the `xcodebuildmcp` CLI tool for simulator, build, archive, and test operations.
-  - Do not use the `xcodebuildmcp` MCP server for this project; prefer the CLI path instead.
+  - Use `xcodebuildmcp` project-aware tooling for simulator, build, archive, screenshot, and test operations.
+  - Prefer the shared project tooling path over ad hoc shell scripts or raw `xcodebuild` command strings when both are available.
 - Use the `asc` CLI for all App Store Connect operations (build distribution, testflight orchestration, release flow, and submission health).
 
 ## Product/Target truth
@@ -57,6 +64,7 @@ This guide defines the operating rules for coding agents and contributors workin
   - UI tests: `ltd.ddga.patchwork.uitests`
 - Keep `project.yml` and `Patchwork.xcodeproj` aligned by regenerating when settings change:
   - `xcodegen generate`
+- Treat `project.yml` as the source of truth for versioning and build settings; do not hand-edit `Patchwork.xcodeproj` without regenerating if the setting is owned by XcodeGen.
 
 ## App configuration
 
@@ -142,6 +150,7 @@ This guide defines the operating rules for coding agents and contributors workin
   3. Run on simulator
 - If using CLI:
   - build scheme `Patchwork`
+  - use `xcodebuildmcp` or equivalent project-aware tooling instead of one-off simulator commands
   - run tests for both unit + UI as part of release-adjacent changes
 - Use a current local simulator identifier for the target device family.
 
@@ -165,7 +174,7 @@ This guide defines the operating rules for coding agents and contributors workin
 - If upload reports duplicate bundle version, increment `CURRENT_PROJECT_VERSION`.
 - Current release metadata source in source-of-truth config:
   - `MARKETING_VERSION=3.2`
-  - `CURRENT_PROJECT_VERSION=11`
+  - `CURRENT_PROJECT_VERSION=29`
 
 ## Info.plist / packaging specifics
 
@@ -192,3 +201,4 @@ This guide defines the operating rules for coding agents and contributors workin
 - Confirm location and auth flows still succeed with explicit headers/cookies.
 - Confirm tests are green or fix root cause rather than bypassing.
 - Confirm release-critical values (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) in `project.yml` reflect intent.
+- Confirm any new accessibility-critical controls expose meaningful labels and identifiers where the surrounding screen already uses them.
