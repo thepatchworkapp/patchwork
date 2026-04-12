@@ -79,6 +79,9 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("Home.radiusButton")
+                    .accessibilityLabel("Search radius")
+                    .accessibilityValue("\(locationDisplayLabel), \(radiusKm) kilometers")
+                    .accessibilityHint("Opens radius settings")
                 }
 
                 categoryPicker
@@ -130,6 +133,8 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("Home.categoryRetryButton")
+            .accessibilityLabel("Retry categories")
+            .accessibilityHint(categoryAvailabilityMessage)
         } else {
             Menu {
                 Button("All categories") {
@@ -141,10 +146,7 @@ struct HomeView: View {
                         selectedCategorySlug = category.slug
                         Task { await reload() }
                     } label: {
-                        HStack(spacing: 10) {
-                            Text(category.emoji ?? "📋")
-                            Text(category.name)
-                        }
+                        Text(categoryMenuLabel(for: category))
                     }
                 }
             } label: {
@@ -165,6 +167,9 @@ struct HomeView: View {
                 )
             }
             .accessibilityIdentifier("Home.categoryMenu")
+            .accessibilityLabel("Category filter")
+            .accessibilityValue(selectedCategoryLabel)
+            .accessibilityHint("Choose a category")
         }
     }
 
@@ -195,6 +200,7 @@ struct HomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .padding(.top, 14)
+                    .accessibilityLabel("Profile \(currentCardIndex + 1) of \(appState.taskers.count)")
             }
 
             Spacer(minLength: 0)
@@ -213,6 +219,7 @@ struct HomeView: View {
             .frame(height: 270)
             .frame(maxWidth: .infinity)
             .clipped()
+            .accessibilityHidden(true)
             .overlay(alignment: .bottomLeading) {
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.22)],
@@ -301,6 +308,8 @@ struct HomeView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("Home.skipButton")
+                    .accessibilityLabel("Skip tasker")
+                    .accessibilityHint("Shows the next profile")
 
                     Button {
                         Task { await startChat(with: tasker.userId) }
@@ -385,10 +394,14 @@ struct HomeView: View {
     private var selectedCategoryLabel: String {
         if let selectedCategorySlug,
            let category = appState.categories.first(where: { $0.slug == selectedCategorySlug }) {
-            let emoji = category.emoji.map { "\($0) " } ?? ""
-            return "\(emoji)\(category.name)"
+            return categoryMenuLabel(for: category)
         }
         return "All categories"
+    }
+
+    private func categoryMenuLabel(for category: Category) -> String {
+        let emoji = category.emoji.map { "\($0) " } ?? ""
+        return "\(emoji)\(category.name)"
     }
 
     private var categoriesUnavailable: Bool {
@@ -444,7 +457,14 @@ struct HomeView: View {
                     .font(.footnote)
                     .foregroundStyle(PatchworkTheme.textSecondary)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(reviewSummaryAccessibilityLabel(averageRating: averageRating, reviewCount: reviewCount))
         }
+    }
+
+    private func reviewSummaryAccessibilityLabel(averageRating: Double, reviewCount: Int) -> String {
+        let rating = averageRating.formatted(.number.precision(.fractionLength(1)))
+        return "\(rating) stars from \(reviewCount) review\(reviewCount == 1 ? "" : "s")"
     }
 
     private func retryCategories() async {

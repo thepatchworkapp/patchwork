@@ -49,6 +49,8 @@ struct LeaveReviewView: View {
                 .buttonStyle(PatchworkPrimaryButtonStyle())
                 .disabled(isSubmitting || !canSubmit)
                 .accessibilityIdentifier("LeaveReview.submitButton")
+                .accessibilityLabel("Submit review")
+                .accessibilityHint("Posts your review")
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -92,6 +94,7 @@ struct LeaveReviewView: View {
                 Text("How was your experience?")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 HStack(spacing: 10) {
                     ForEach(1 ... 5, id: \.self) { star in
@@ -111,6 +114,8 @@ struct LeaveReviewView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(star) star\(star == 1 ? "" : "s")")
+                        .accessibilityValue(rating == star ? "Selected" : "Not selected")
+                        .accessibilityHint("Sets the rating to \(star) star\(star == 1 ? "" : "s")")
                         .accessibilityIdentifier("LeaveReview.star.\(star)")
                     }
                 }
@@ -128,6 +133,7 @@ struct LeaveReviewView: View {
                 Text("Tell others about your experience")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 TextEditor(text: $text)
                     .font(.patchworkBody)
@@ -140,6 +146,8 @@ struct LeaveReviewView: View {
                             .stroke(PatchworkTheme.stroke, lineWidth: 1)
                     )
                     .accessibilityIdentifier("LeaveReview.textField")
+                    .accessibilityLabel("Review text")
+                    .accessibilityHint("Describe the work, communication, and timeliness")
 
                 Text("Share details about quality, professionalism, communication, and timeliness.")
                     .font(.patchworkCaption)
@@ -158,6 +166,7 @@ struct LeaveReviewView: View {
                 Text("Add photos (optional)")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 5, matching: .images) {
                     Label("Upload photos of completed work", systemImage: "photo.on.rectangle")
@@ -172,6 +181,8 @@ struct LeaveReviewView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("LeaveReview.photosPicker")
+                .accessibilityLabel("Upload photos of completed work")
+                .accessibilityHint("Optional, select up to five images")
 
                 if !selectedPhotos.isEmpty {
                     Text("\(selectedPhotos.count) photo\(selectedPhotos.count == 1 ? "" : "s") selected")
@@ -192,6 +203,7 @@ struct LeaveReviewView: View {
                 Text("Review policy")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
                 Text("Only verified job participants can leave reviews. Reviews are public and help maintain trust and quality in Patchwork.")
                     .font(.patchworkBody)
                     .foregroundStyle(PatchworkTheme.textSecondary)
@@ -201,6 +213,7 @@ struct LeaveReviewView: View {
             }
         }
         .accessibilityIdentifier("LeaveReview.policySection")
+        .accessibilityElement(children: .combine)
     }
 
     private func reviewContextCard(detail: JobDetail) -> some View {
@@ -230,6 +243,8 @@ struct LeaveReviewView: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(reviewContextAccessibilityLabel(detail))
     }
 
     private func formatDate(_ value: String?) -> String? {
@@ -268,6 +283,18 @@ struct LeaveReviewView: View {
         } catch {
             appState.lastError = error.localizedDescription
         }
+    }
+
+    private func reviewContextAccessibilityLabel(_ detail: JobDetail) -> String {
+        let category = detail.categoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = detail.status.replacingOccurrences(of: "_", with: " ").capitalized
+        let description = detail.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let categoryPart = category.isEmpty ? "Reviewing job." : "Reviewing job in \(category)."
+        var parts = [categoryPart, description.isEmpty ? nil : description, status == "Completed" ? "Completed job." : nil]
+        if let completedDate = formatDate(detail.completedDate) {
+            parts.append("Completed on \(completedDate).")
+        }
+        return parts.compactMap { $0 }.joined(separator: " ")
     }
 
     private static let iso8601FormatterWithFractional: ISO8601DateFormatter = {

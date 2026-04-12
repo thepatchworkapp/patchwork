@@ -136,6 +136,8 @@ struct ProviderDetailView: View {
                 .stroke(PatchworkTheme.stroke.opacity(0.4), lineWidth: 1)
         )
         .shadow(color: PatchworkTheme.brand.opacity(0.12), radius: 26, y: 14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(heroAccessibilityLabel(tasker))
     }
 
     @ViewBuilder
@@ -159,6 +161,10 @@ struct ProviderDetailView: View {
                         )
                         .overlay(Capsule().stroke(PatchworkTheme.stroke, lineWidth: isSelected ? 0 : 1))
                         .accessibilityIdentifier("ProviderDetail.serviceCategory.\(profile.id)")
+                        .accessibilityLabel(profile.categoryName)
+                        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+                        .accessibilityHint(isSelected ? "Currently selected" : "Selects this service category")
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
                 .padding(.horizontal, 2)
@@ -173,6 +179,7 @@ struct ProviderDetailView: View {
                 Text("About")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 Text(selectedProfile?.categoryBio ?? "Profile details unavailable.")
                     .font(.patchworkBody)
@@ -180,6 +187,7 @@ struct ProviderDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func pricingSection(_ tasker: TaskerDetail) -> some View {
@@ -188,6 +196,7 @@ struct ProviderDetailView: View {
                 Text("Pricing and service details")
                     .font(.patchworkCardTitle)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 VStack(spacing: 10) {
                     if let rateLabel = rateLabel(for: selectedProfile) {
@@ -216,6 +225,7 @@ struct ProviderDetailView: View {
                     Text("Recent reviews")
                         .font(.patchworkCardTitle)
                         .foregroundStyle(PatchworkTheme.textPrimary)
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                     if (tasker.reviewCount ?? 0) > 0 {
                         Text("\(tasker.reviewCount ?? 0) total")
@@ -239,6 +249,7 @@ struct ProviderDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
+                    .accessibilityElement(children: .combine)
                 } else {
                     ForEach(tasker.reviews.prefix(3)) { review in
                         ProviderReviewRow(review: review)
@@ -261,6 +272,7 @@ struct ProviderDetailView: View {
                 Text("Ready to reach out?")
                     .font(.patchworkBodyStrong)
                     .foregroundStyle(PatchworkTheme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
 
                 Button {
                     Task { await startChat(with: tasker.userId) }
@@ -280,6 +292,7 @@ struct ProviderDetailView: View {
                 .disabled(isStartingChat)
                 .accessibilityLabel(isStartingChat ? "Opening chat" : "Start chat")
                 .accessibilityIdentifier("ProviderDetail.startChatButton")
+                .accessibilityHint("Starts a chat with this provider")
             }
         }
     }
@@ -297,6 +310,8 @@ struct ProviderDetailView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(value)")
     }
 
     @ViewBuilder
@@ -328,6 +343,35 @@ struct ProviderDetailView: View {
             return url
         }
         return nil
+    }
+
+    private func heroAccessibilityLabel(_ tasker: TaskerDetail) -> String {
+        let name = tasker.displayName
+        let category = selectedProfile?.categoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let verified = tasker.verified == true ? "Verified." : ""
+
+        let ratingSummary: String
+        if let averageRating = tasker.averageRating,
+           let reviewCount = tasker.reviewCount,
+           reviewCount > 0 {
+            let rating = averageRating.formatted(.number.precision(.fractionLength(1)))
+            ratingSummary = "\(rating) stars from \(reviewCount) review\(reviewCount == 1 ? "" : "s")."
+        } else {
+            ratingSummary = "New on Patchwork."
+        }
+
+        let completedJobs = selectedProfile?.completedJobs ?? tasker.completedJobs
+        let jobsSummary = completedJobs.map { "\($0) jobs completed." } ?? ""
+
+        let parts = [
+            "Provider profile for \(name).",
+            category?.isEmpty == false ? "\(category!)." : nil,
+            verified.isEmpty ? nil : verified,
+            ratingSummary,
+            jobsSummary.isEmpty ? nil : jobsSummary
+        ].compactMap { $0 }
+
+        return parts.joined(separator: " ")
     }
 
     private func rateLabel(for profile: TaskerCategoryProfile?) -> String? {
@@ -417,6 +461,8 @@ private struct ProviderReviewRow: View {
         }
         .padding(14)
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(reviewAccessibilityLabel)
     }
 
     private var avatarURL: URL? {
@@ -427,5 +473,10 @@ private struct ProviderReviewRow: View {
     private var reviewDate: String {
         let date = Date(timeIntervalSince1970: TimeInterval(review.createdAt) / 1000)
         return date.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    private var reviewAccessibilityLabel: String {
+        let rating = "\(review.rating) star\(review.rating == 1 ? "" : "s")"
+        return "Review from \(review.reviewerName), \(rating), verified hire. \(review.text)"
     }
 }

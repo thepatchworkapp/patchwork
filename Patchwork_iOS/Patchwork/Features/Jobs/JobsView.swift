@@ -90,6 +90,7 @@ struct JobsView: View {
     private var searchField: some View {
         PatchworkSearchField(placeholder: "Search jobs or people...", text: $searchText)
             .accessibilityIdentifier("Jobs.searchField")
+            .accessibilityLabel("Search jobs or people")
     }
 
     private func tabButton(title: String, value: String, systemImage: String) -> some View {
@@ -114,6 +115,10 @@ struct JobsView: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("Jobs.statusTab.\(value)")
+        .accessibilityLabel(title)
+        .accessibilityValue(statusGroup == value ? "Selected" : "Not selected")
+        .accessibilityHint("Filters jobs by \(title.lowercased())")
+        .accessibilityAddTraits(statusGroup == value ? .isSelected : [])
     }
 
     private func jobCard(_ job: JobSummary) -> some View {
@@ -157,6 +162,9 @@ struct JobsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(jobCardAccessibilityLabel(job))
+        .accessibilityHint("Opens job details")
     }
 
     private func statusBadge(_ status: String) -> some View {
@@ -253,6 +261,26 @@ struct JobsView: View {
         let dollars = Double(rate) / 100
         let base = dollars.formatted(.currency(code: "USD"))
         return job.rateType == "hourly" ? "\(base)/hr" : base
+    }
+
+    private func jobCardAccessibilityLabel(_ job: JobSummary) -> String {
+        let title = jobTitle(job) ?? "Job details unavailable"
+        let category = job.categoryName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = job.status.replacingOccurrences(of: "_", with: " ").capitalized
+        let date = dateLabel(job)
+        let rate = rateLabel(job)
+        let counterparty = counterpartyLabel(for: job)
+
+        let parts = [
+            category?.isEmpty == false ? "\(category!)." : nil,
+            "\(title).",
+            "\(status).",
+            "\(date).",
+            "\(rate).",
+            counterparty == "Counterparty unavailable" ? nil : "With \(counterparty)."
+        ].compactMap { $0 }
+
+        return parts.joined(separator: " ")
     }
 
     private func dateLabel(_ job: JobSummary) -> String {

@@ -167,6 +167,9 @@ struct MessagesView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title) messages")
+        .accessibilityValue(locked ? "Locked" : (isSelected ? "Selected" : ""))
+        .accessibilityHint(locked ? "Switch to tasker mode from your profile to open this inbox." : "Shows your \(title.lowercased()) conversations.")
         .accessibilityIdentifier("Messages.roleTab.\(value)")
     }
 
@@ -180,15 +183,6 @@ struct MessagesView: View {
             title: "Open your tasker inbox",
             message: "Enable tasker mode to receive seeker messages, proposals, and active job updates."
         )
-        .overlay(alignment: .bottom) {
-            Button("Go to Profile") {
-                appState.selectedTab = .profile
-            }
-            .buttonStyle(PatchworkPrimaryButtonStyle())
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-            .accessibilityIdentifier("Messages.taskerSignupContinueButton")
-        }
     }
 
     private var emptyState: some View {
@@ -203,6 +197,10 @@ struct MessagesView: View {
 
     private func conversationRow(_ conversation: ConversationSummary) -> some View {
         let unread = unreadCount(for: conversation)
+        let participantName = conversation.participantName ?? "Conversation"
+        let preview = conversation.lastMessagePreview ?? "No messages yet"
+        let timeLabel = conversationTimestampLabel(conversation.lastMessageAt)
+        let roleLabel = activeRole == "tasker" ? "Tasker" : "Seeker"
         return HStack(alignment: .top, spacing: 12) {
             AsyncImage(url: URL(string: conversation.participantPhotoUrl ?? "")) { image in
                 image.resizable().scaledToFill()
@@ -211,19 +209,20 @@ struct MessagesView: View {
             }
             .frame(width: 54, height: 54)
             .clipShape(.rect(cornerRadius: 14))
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(conversation.participantName ?? "Conversation")
+                    Text(participantName)
                         .font(unread > 0 ? .patchworkBodyStrong : .patchworkBody)
                         .foregroundStyle(PatchworkTheme.textPrimary)
                     Spacer()
-                    Text(conversationTimestampLabel(conversation.lastMessageAt))
+                    Text(timeLabel)
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 }
 
-                Text(conversation.lastMessagePreview ?? "No messages yet")
+                Text(preview)
                     .lineLimit(1)
                     .font(.patchworkBody)
                     .foregroundStyle(unread > 0 ? PatchworkTheme.textPrimary : PatchworkTheme.textSecondary)
@@ -265,6 +264,15 @@ struct MessagesView: View {
                 .stroke(unread > 0 ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
         )
         .shadow(color: PatchworkTheme.brand.opacity(0.06), radius: 16, y: 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(participantName)
+        .accessibilityValue([
+            preview,
+            timeLabel.isEmpty ? nil : "Updated \(timeLabel)",
+            unread > 0 ? "\(unread) unread message\(unread == 1 ? "" : "s")" : "No unread messages",
+            "\(roleLabel) conversation",
+            conversation.jobId != nil ? "Job linked" : nil,
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 
     private func conversationTimestampLabel(_ millis: Int?) -> String {
@@ -447,6 +455,7 @@ struct ChatView: View {
             .background(PatchworkTheme.surface.opacity(0.9), in: Circle())
             .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
             .buttonStyle(.plain)
+            .accessibilityLabel("Back to messages")
             .accessibilityIdentifier("Chat.backButton")
 
             AsyncImage(url: URL(string: conversation?.participantPhotoUrl ?? "")) { image in
@@ -458,6 +467,7 @@ struct ChatView: View {
             }
             .frame(width: 44, height: 44)
             .clipShape(.rect(cornerRadius: 14))
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(conversation?.participantName ?? "Chat")
@@ -476,6 +486,7 @@ struct ChatView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private var hasAcceptedProposal: Bool {
@@ -818,6 +829,14 @@ private struct ProposalMessageCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Proposal")
+        .accessibilityValue([
+            rateLabel,
+            scheduleLabel,
+            proposal.notes?.isEmpty == false ? proposal.notes : nil,
+            "Status \(proposal.status)",
+        ].compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("Chat.proposal.\(proposal.id)")
     }
 
@@ -974,6 +993,7 @@ private struct ChatAcceptedBanner: View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(PatchworkTheme.success)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.patchworkBodyStrong)
                 .foregroundStyle(PatchworkTheme.success)
@@ -985,6 +1005,7 @@ private struct ChatAcceptedBanner: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(PatchworkTheme.success.opacity(0.24), lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1049,6 +1070,7 @@ private struct ChatComposerBar: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityLabel("Message")
                 .accessibilityIdentifier("Chat.messageField")
 
             Button("Send", systemImage: "arrow.up") {
@@ -1060,6 +1082,8 @@ private struct ChatComposerBar: View {
             .background(PatchworkTheme.heroGradient, in: Circle())
             .buttonStyle(.plain)
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Send message")
+            .accessibilityHint("Sends your message to this conversation.")
             .accessibilityIdentifier("Chat.sendButton")
         }
         .padding(12)
@@ -1095,6 +1119,9 @@ private struct ChatMessageRow: View {
             }
             if !isMine { Spacer() }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isMine ? "You" : "Message")
+        .accessibilityValue("\(text), sent at \(time)")
     }
 }
 
@@ -1120,6 +1147,7 @@ private struct CompleteJobSheet: View {
                         }
                         .buttonStyle(PatchworkSecondaryButtonStyle())
                         .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Cancel completion")
                         .accessibilityIdentifier("Chat.completeJob.cancelButton")
 
                         Button("Complete Job") {
@@ -1127,6 +1155,7 @@ private struct CompleteJobSheet: View {
                         }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
+                        .accessibilityHint("Marks this job as complete.")
                         .accessibilityIdentifier("Chat.completeJob.confirmButton")
                     }
                 }
@@ -1168,20 +1197,24 @@ private struct ProposalFormSheet: View {
                                 Text("Flat").tag("flat")
                             }
                             .pickerStyle(.segmented)
+                            .accessibilityLabel("Rate type")
                             .accessibilityIdentifier("ProposalForm.rateType")
 
                             TextField("Rate", text: $rate)
                                 .keyboardType(.decimalPad)
                                 .patchworkInputFieldStyle()
+                                .accessibilityLabel("Rate amount")
                                 .accessibilityIdentifier("ProposalForm.rateField")
 
                             HStack(spacing: 12) {
                                 TextField("Date (YYYY-MM-DD)", text: $date)
                                     .patchworkInputFieldStyle()
+                                    .accessibilityLabel("Start date")
                                     .accessibilityIdentifier("ProposalForm.dateField")
 
                                 TextField("Time (HH:MM)", text: $time)
                                     .patchworkInputFieldStyle()
+                                    .accessibilityLabel("Start time")
                                     .accessibilityIdentifier("ProposalForm.timeField")
                             }
 
@@ -1199,6 +1232,7 @@ private struct ProposalFormSheet: View {
                                         RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
                                             .stroke(PatchworkTheme.stroke, lineWidth: 1)
                                     )
+                                    .accessibilityLabel("Proposal notes")
                                     .accessibilityIdentifier("ProposalForm.notesField")
                             }
 
@@ -1207,6 +1241,7 @@ private struct ProposalFormSheet: View {
                             }
                             .buttonStyle(PatchworkPrimaryButtonStyle())
                             .disabled(rate.isEmpty || date.isEmpty || time.isEmpty)
+                            .accessibilityLabel(isCounter ? "Send counter proposal" : "Send proposal")
                             .accessibilityIdentifier("ProposalForm.submitButton")
                         }
                     }
@@ -1267,6 +1302,7 @@ private struct ReviewFormSheet: View {
                                             .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityLabel("\(star) star\(star == 1 ? "" : "s")")
                                 }
                             }
 
@@ -1280,6 +1316,7 @@ private struct ReviewFormSheet: View {
                                     RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
                                         .stroke(PatchworkTheme.stroke, lineWidth: 1)
                                 )
+                                .accessibilityLabel("Review details")
                                 .accessibilityIdentifier("ReviewForm.textField")
 
                             Button("Submit") {
@@ -1287,6 +1324,7 @@ private struct ReviewFormSheet: View {
                             }
                             .buttonStyle(PatchworkPrimaryButtonStyle())
                             .disabled(rating == 0 || text.trimmingCharacters(in: .whitespacesAndNewlines).count < 10)
+                            .accessibilityLabel("Submit review")
                             .accessibilityIdentifier("ReviewForm.submitButton")
                         }
                     }

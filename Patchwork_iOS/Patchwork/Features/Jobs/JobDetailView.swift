@@ -45,12 +45,14 @@ struct JobDetailView: View {
                                     Text("Description")
                                         .font(.patchworkCardTitle)
                                         .foregroundStyle(PatchworkTheme.textPrimary)
+                                        .accessibilityAddTraits(.isHeader)
                                     Text(detail.notes?.isEmpty == false ? detail.notes ?? "" : detail.description)
                                         .font(.patchworkBody)
                                         .foregroundStyle(PatchworkTheme.textSecondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
+                            .accessibilityElement(children: .combine)
 
                             JobMetaGrid(detail: detail)
 
@@ -61,6 +63,8 @@ struct JobDetailView: View {
                                 .buttonStyle(PatchworkPrimaryButtonStyle())
                                 .disabled(isCompleting)
                                 .accessibilityIdentifier("JobDetail.completeButton")
+                                .accessibilityLabel("Complete job")
+                                .accessibilityHint("Marks this job as complete")
                             }
                         }
                         .padding(.horizontal, 20)
@@ -76,6 +80,7 @@ struct JobDetailView: View {
                             }
                             .buttonStyle(PatchworkPrimaryButtonStyle())
                             .accessibilityIdentifier("JobDetail.leaveReviewButton")
+                            .accessibilityHint("Opens the review composer")
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
@@ -106,6 +111,7 @@ struct JobDetailView: View {
                         .labelStyle(.titleAndIcon)
                 }
                 .accessibilityIdentifier("JobDetail.backButton")
+                .accessibilityLabel("Back")
             }
         }
         .task(id: jobId) {
@@ -191,6 +197,8 @@ private struct JobHeaderCard: View {
                     .foregroundStyle(PatchworkTheme.textSecondary)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(headerAccessibilityLabel)
     }
 
     private var title: String {
@@ -210,6 +218,16 @@ private struct JobHeaderCard: View {
         default:
             return PatchworkTheme.textSecondary
         }
+    }
+
+    private var headerAccessibilityLabel: String {
+        let title = title
+        let status = detail.status.replacingOccurrences(of: "_", with: " ").capitalized
+        let category = detail.categoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let categoryPart = category.isEmpty ? nil : "\(category)."
+        return [categoryPart, "\(title).", "\(status).", "Verified job record."]
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 }
 
@@ -281,5 +299,7 @@ private struct JobMetaCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(value)")
     }
 }

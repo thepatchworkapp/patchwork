@@ -66,6 +66,8 @@ struct CategoriesView: View {
                                 }
                                 .buttonStyle(PatchworkPrimaryButtonStyle())
                                 .accessibilityIdentifier("Categories.retryButton")
+                                .accessibilityLabel("Retry categories")
+                                .accessibilityHint(categoryAvailabilityMessage)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -102,6 +104,7 @@ struct CategoriesView: View {
                                     .font(.patchworkCaption)
                                     .tracking(1.1)
                                     .foregroundStyle(PatchworkTheme.textSecondary)
+                                    .accessibilityAddTraits(.isHeader)
 
                                 ForEach(categories) { category in
                                     Button {
@@ -113,6 +116,7 @@ struct CategoriesView: View {
                                         HStack(spacing: 14) {
                                             Text(category.emoji ?? "📋")
                                                 .font(.title3)
+                                                .accessibilityHidden(true)
 
                                             Text(category.name)
                                                 .font(.patchworkBody)
@@ -124,10 +128,12 @@ struct CategoriesView: View {
                                                 Image(systemName: "checkmark.circle.fill")
                                                     .foregroundStyle(PatchworkTheme.brand)
                                                     .accessibilityIdentifier("Categories.selectedBadge")
+                                                    .accessibilityHidden(true)
                                             } else {
                                                 Image(systemName: "chevron.right")
                                                     .font(.caption.weight(.bold))
                                                     .foregroundStyle(PatchworkTheme.textTertiary)
+                                                    .accessibilityHidden(true)
                                             }
                                         }
                                         .padding(16)
@@ -140,6 +146,10 @@ struct CategoriesView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityIdentifier("Categories.row.\(category.slug)")
+                                    .accessibilityLabel(category.name)
+                                    .accessibilityValue(category.id == selectedCategoryID ? "Selected" : "Not selected")
+                                    .accessibilityHint("Selects this category")
+                                    .accessibilityAddTraits(category.id == selectedCategoryID ? .isSelected : [])
                                 }
                             }
                             .padding(.bottom, 6)

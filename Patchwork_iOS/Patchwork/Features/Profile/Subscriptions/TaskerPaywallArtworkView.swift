@@ -159,5 +159,6 @@ struct TaskerPaywallArtworkView: View {
                 .shadow(color: PatchworkTheme.brand.opacity(0.08), radius: 12, y: 6)
         }
         .frame(height: 220)
+        .accessibilityHidden(true)
     }
 }

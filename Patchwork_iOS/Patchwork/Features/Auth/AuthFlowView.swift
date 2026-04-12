@@ -239,6 +239,7 @@ struct AuthFlowView: View {
                             .font(.system(size: slide.iconSize, weight: .semibold))
                             .foregroundStyle(PatchworkTheme.brand)
                     }
+                    .accessibilityHidden(true)
 
                 PatchworkSectionIntro(
                     eyebrow: nil,
@@ -253,6 +254,8 @@ struct AuthFlowView: View {
                             .frame(width: idx == onboardingIndex ? 34 : 10, height: 10)
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Onboarding slide \(onboardingIndex + 1) of \(onboardingSlides.count)")
 
                 Spacer(minLength: 0)
             }

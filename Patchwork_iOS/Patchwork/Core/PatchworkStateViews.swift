@@ -30,6 +30,7 @@ struct PatchworkEmptyStateCard: View {
             }
             .frame(maxWidth: PatchworkMetrics.emptyStateContentMaxWidth)
             .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -43,12 +44,14 @@ struct PatchworkSearchField: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(PatchworkTheme.textSecondary)
+                .accessibilityHidden(true)
 
             TextField(placeholder, text: $text)
                 .autocorrectionDisabled(true)
                 .font(.patchworkBody)
                 .foregroundStyle(PatchworkTheme.textPrimary)
                 .disabled(!isEnabled)
+                .accessibilityLabel(placeholder)
         }
         .padding(.horizontal, 16)
         .frame(height: PatchworkMetrics.fieldHeight)
@@ -69,6 +72,7 @@ struct PatchworkLoadingCard: View {
             VStack(spacing: 16) {
                 ProgressView()
                     .tint(PatchworkTheme.brand)
+                    .accessibilityHidden(true)
 
                 Text(title)
                     .font(.patchworkBodyStrong)
@@ -82,6 +86,7 @@ struct PatchworkLoadingCard: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
         }
     }
 }
@@ -111,6 +116,7 @@ struct PatchworkBrandLoadingCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
         .padding(.top, title == nil && message == nil ? 0 : 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -193,6 +199,7 @@ struct PatchworkInlineStatusBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: tone.systemImage)
                 .foregroundStyle(tone.color)
+                .accessibilityHidden(true)
 
             Text(text)
                 .font(.patchworkBodyStrong)
@@ -206,5 +213,6 @@ struct PatchworkInlineStatusBanner: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(tone.color.opacity(0.2), lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 }
