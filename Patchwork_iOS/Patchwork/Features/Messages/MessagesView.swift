@@ -181,7 +181,11 @@ struct MessagesView: View {
         PatchworkEmptyStateCard(
             systemImage: "lock.shield.fill",
             title: "Open your tasker inbox",
-            message: "Enable tasker mode to receive seeker messages, proposals, and active job updates."
+            message: "Enable tasker mode to receive seeker messages, proposals, and active job updates.",
+            actionTitle: "Go to Profile",
+            action: {
+                appState.selectedTab = .profile
+            }
         )
     }
 

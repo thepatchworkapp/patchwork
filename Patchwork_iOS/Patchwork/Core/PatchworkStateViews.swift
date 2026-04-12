@@ -5,6 +5,8 @@ struct PatchworkEmptyStateCard: View {
     let title: String
     let message: String
     var tint: Color = PatchworkTheme.brand
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
         PatchworkSurfaceCard {
@@ -27,6 +29,12 @@ struct PatchworkEmptyStateCard: View {
                     .font(.patchworkBody)
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .multilineTextAlignment(.center)
+
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.borderedProminent)
+                        .tint(PatchworkTheme.brand)
+                }
             }
             .frame(maxWidth: PatchworkMetrics.emptyStateContentMaxWidth)
             .frame(maxWidth: .infinity)
