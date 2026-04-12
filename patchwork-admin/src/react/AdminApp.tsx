@@ -242,7 +242,7 @@ function AdminMaintenanceCard() {
 
   const onReset = async () => {
     const confirmed = window.confirm(
-      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records."
+      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records. The dashboard will then attempt to reseed the Apple reviewer accounts."
     );
     if (!confirmed) {
       return;
@@ -253,9 +253,24 @@ function AdminMaintenanceCard() {
     setNotice(null);
     try {
       const result = (await resetDatabase({})) as ResetDatabaseResult;
-      setNotice(
-        `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, and ${result.deletedStorageFiles} files.`
-      );
+      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, and ${result.deletedStorageFiles} files.`;
+
+      setIsReseeding(true);
+      try {
+        const reviewResult = (await reseedReviewerAccounts({})) as ReviewAccessStatus;
+        nextNotice += ` Apple reviewer accounts were reseeded at ${formatDate(reviewResult.updatedAt)} and review access is ${reviewResult.enabled ? "enabled" : "disabled"}.`;
+      } catch (reseedError) {
+        nextNotice += " Reviewer accounts were not reseeded automatically.";
+        setError(
+          reseedError instanceof Error
+            ? `Database reset succeeded, but reseeding Apple reviewer accounts failed: ${redactBackendUrls(reseedError.message)}`
+            : "Database reset succeeded, but reseeding Apple reviewer accounts failed."
+        );
+      } finally {
+        setIsReseeding(false);
+      }
+
+      setNotice(nextNotice);
     } catch (err) {
       setError(err instanceof Error ? redactBackendUrls(err.message) : "Failed to reset database.");
     } finally {
@@ -288,7 +303,7 @@ function AdminMaintenanceCard() {
             <Badge variant="outline">production</Badge>
           </div>
           <div className="mt-1 text-sm text-kumo-muted">
-            Database reset is destructive. Reseed restores the Apple reviewer accounts after a reset.
+            Database reset is destructive. A successful reset now attempts to reseed the Apple reviewer accounts automatically, and you can still run reseed manually if needed.
           </div>
         </div>
       </div>
