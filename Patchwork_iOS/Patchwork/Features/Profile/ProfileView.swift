@@ -440,6 +440,7 @@ private struct ProfileMenuButton: View {
 
 private struct ProfileTaskerSection: View {
     @Environment(AppState.self) private var appState
+    @Environment(RevenueCatManager.self) private var revenueCatManager
     @Environment(SessionStore.self) private var sessionStore
 
     let userName: String?
@@ -483,7 +484,9 @@ private struct ProfileTaskerSection: View {
                 .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
 
                 if let taskerProfile {
-                    let billingTitle = taskerProfile.hasActiveSubscription == true ? "Billing & access" : "Unlock tasker mode"
+                    let billingTitle = effectiveHasActiveAccess(for: taskerProfile)
+                        ? "Billing & access"
+                        : "Unlock tasker mode"
 
                     Button {
                         isShowingSubscriptions = true
@@ -633,6 +636,15 @@ private struct ProfileTaskerSection: View {
     }
 
     private func statusBadge(for taskerProfile: TaskerProfileSelf) -> some View {
+        if hasStoreAccessPendingBackend(for: taskerProfile) {
+            return Text("Confirming")
+                .font(.patchworkCaption)
+                .foregroundStyle(PatchworkTheme.brand)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(PatchworkTheme.brand.opacity(0.12), in: Capsule())
+        }
+
         let status = taskerProfile.subscriptionStatus ?? "inactive"
         let title: String
         let foreground: Color
@@ -666,10 +678,21 @@ private struct ProfileTaskerSection: View {
     }
 
     private func shouldShowStatusBadge(for taskerProfile: TaskerProfileSelf) -> Bool {
-        taskerProfile.subscriptionStatus != "active"
+        hasStoreAccessPendingBackend(for: taskerProfile) || taskerProfile.subscriptionStatus != "active"
     }
 
     private func planTitle(for taskerProfile: TaskerProfileSelf) -> String {
+        if hasStoreAccessPendingBackend(for: taskerProfile) {
+            switch revenueCatManager.storeState.activePlan {
+            case .lifetime:
+                return "Founders Club"
+            case .subscription:
+                return "Subscribed"
+            case .none:
+                break
+            }
+        }
+
         if taskerProfile.subscriptionStatus == "active" {
             switch taskerProfile.subscriptionAccessType {
             case "lifetime":
@@ -697,6 +720,10 @@ private struct ProfileTaskerSection: View {
     }
 
     private func planTitleColor(for taskerProfile: TaskerProfileSelf) -> Color {
+        if hasStoreAccessPendingBackend(for: taskerProfile) {
+            return PatchworkTheme.brand
+        }
+
         switch taskerProfile.subscriptionStatus ?? "inactive" {
         case "active":
             return PatchworkTheme.brand
@@ -710,6 +737,10 @@ private struct ProfileTaskerSection: View {
     }
 
     private func planDescription(for taskerProfile: TaskerProfileSelf) -> String {
+        if hasStoreAccessPendingBackend(for: taskerProfile) {
+            return "Your App Store purchase is confirmed. Patchwork is finishing account sync."
+        }
+
         let status = taskerProfile.subscriptionStatus ?? "inactive"
 
         switch status {
@@ -728,6 +759,14 @@ private struct ProfileTaskerSection: View {
         default:
             return "Activate paid tasker access to be listed as a tasker."
         }
+    }
+
+    private func effectiveHasActiveAccess(for profile: TaskerProfileSelf) -> Bool {
+        profile.hasActiveSubscription == true || revenueCatManager.storeState.activePlan != nil
+    }
+
+    private func hasStoreAccessPendingBackend(for profile: TaskerProfileSelf) -> Bool {
+        revenueCatManager.storeState.activePlan != nil && profile.hasActiveSubscription != true
     }
 
     private func formattedMonthDayYear(_ millis: Int) -> String {
