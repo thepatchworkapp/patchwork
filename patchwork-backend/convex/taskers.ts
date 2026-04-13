@@ -1,5 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { action, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
+import { api, internal } from "./_generated/api";
 import {
   getEffectiveGhostMode,
   getEffectiveSubscriptionPlan,
@@ -18,6 +19,7 @@ const MAX_CATEGORY_BIO_LENGTH = 500;
 function buildSubscriptionView(profile: {
   subscriptionPlan: "none" | "tasker";
   subscriptionAccessType?: "subscription" | "lifetime";
+  subscriptionActiveAccessTypes?: Array<"subscription" | "lifetime">;
   subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
   subscriptionEndsAt?: number;
   ghostMode: boolean;
@@ -73,6 +75,7 @@ async function buildTaskerProfileResponse(
     verified: boolean;
     subscriptionPlan: "none" | "tasker";
     subscriptionAccessType?: "subscription" | "lifetime";
+    subscriptionActiveAccessTypes?: Array<"subscription" | "lifetime">;
     subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
     subscriptionEndsAt?: number;
     ghostMode: boolean;
@@ -132,6 +135,7 @@ async function buildTaskerProfileResponse(
     verified: profile.verified,
     subscriptionPlan: profile.subscriptionPlan,
     subscriptionAccessType: profile.subscriptionAccessType,
+    subscriptionActiveAccessTypes: profile.subscriptionActiveAccessTypes,
     subscriptionStatus: profile.subscriptionStatus,
     subscriptionEndsAt: profile.subscriptionEndsAt,
     ghostMode: profile.ghostMode,
@@ -190,6 +194,7 @@ export const createTaskerProfile = mutation({
       completedJobs: 0,
       verified: false,
       subscriptionPlan: "none",
+      subscriptionActiveAccessTypes: [],
       subscriptionStatus: "inactive",
       ghostMode: true,
       createdAt: now,
@@ -588,6 +593,24 @@ export const cancelSubscription = mutation({
   returns: taskerProfileResponseValidator,
   handler: async (_ctx) => {
     throw new ConvexError("Direct billing cancellation is disabled. Subscription state is managed through RevenueCat webhooks.");
+  },
+});
+
+export const reconcileRevenueCatSubscription = action({
+  args: {},
+  returns: v.union(taskerProfileResponseValidator, v.null()),
+  handler: async (ctx) => {
+    const currentUser = await ctx.runQuery(api.users.getCurrentUser, {});
+    if (!currentUser) {
+      throw new ConvexError("Unauthorized");
+    }
+
+    await ctx.runAction(internal.taskersInternal.reconcileRevenueCatCustomer, {
+      candidateAppUserIds: [String(currentUser._id)],
+      source: "client_manual_reconciliation",
+    });
+
+    return await ctx.runQuery(api.taskers.getTaskerProfile, {});
   },
 });
 

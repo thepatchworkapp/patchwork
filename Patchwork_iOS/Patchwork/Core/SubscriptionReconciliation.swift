@@ -32,9 +32,22 @@ enum SubscriptionPlanChoice: String, CaseIterable, Hashable {
 }
 
 struct StoreSubscriptionState: Equatable {
-    var activePlan: SubscriptionPlanChoice?
+    var activePlans: [SubscriptionPlanChoice]
+    var effectivePlan: SubscriptionPlanChoice?
     var willRenew: Bool?
     var expiresAt: Int?
 
-    static let empty = StoreSubscriptionState(activePlan: nil, willRenew: nil, expiresAt: nil)
+    var hasAccess: Bool {
+        effectivePlan != nil
+    }
+
+    var hasRenewableAccess: Bool {
+        activePlans.contains(.subscription) || willRenew == true
+    }
+
+    var hasMultipleActivePlans: Bool {
+        activePlans.count > 1
+    }
+
+    static let empty = StoreSubscriptionState(activePlans: [], effectivePlan: nil, willRenew: nil, expiresAt: nil)
 }

@@ -635,6 +635,46 @@ private struct ProfileTaskerSection: View {
             : "Your profile will appear in search."
     }
 
+    private func backendConfirmedPlans(for taskerProfile: TaskerProfileSelf) -> [SubscriptionPlanChoice] {
+        guard taskerProfile.hasActiveSubscription == true else {
+            return []
+        }
+
+        let rawAccessTypes = taskerProfile.subscriptionActiveAccessTypes ?? []
+        let mappedAccessTypes = rawAccessTypes.compactMap { planChoice(forBackendAccessType: $0) }
+        if !mappedAccessTypes.isEmpty {
+            return mappedAccessTypes
+        }
+
+        if let fallbackPlan = planChoice(forBackendAccessType: taskerProfile.subscriptionAccessType) {
+            return [fallbackPlan]
+        }
+
+        return []
+    }
+
+    private func backendConfirmedPlan(for taskerProfile: TaskerProfileSelf) -> SubscriptionPlanChoice? {
+        let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
+        if confirmedPlans.contains(.lifetime) {
+            return .lifetime
+        }
+        if confirmedPlans.contains(.subscription) {
+            return .subscription
+        }
+        return nil
+    }
+
+    private func planChoice(forBackendAccessType accessType: String?) -> SubscriptionPlanChoice? {
+        switch accessType {
+        case "lifetime":
+            return .lifetime
+        case "subscription":
+            return .subscription
+        default:
+            return nil
+        }
+    }
+
     private func statusBadge(for taskerProfile: TaskerProfileSelf) -> some View {
         if hasStoreAccessPendingBackend(for: taskerProfile) {
             return Text("Confirming")
@@ -686,11 +726,18 @@ private struct ProfileTaskerSection: View {
             return "Purchase detected"
         }
 
+        let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
+        let confirmedPlan = backendConfirmedPlan(for: taskerProfile)
+
         if taskerProfile.subscriptionStatus == "active" {
-            switch taskerProfile.subscriptionAccessType {
-            case "lifetime":
+            if confirmedPlans.count > 1 {
+                return "Tasker access active"
+            }
+
+            switch confirmedPlan {
+            case .lifetime:
                 return "Founders Club"
-            case "subscription":
+            case .subscription:
                 return "Subscribed"
             default:
                 return "Tasker access active"
@@ -699,10 +746,14 @@ private struct ProfileTaskerSection: View {
 
         switch taskerProfile.subscriptionPlan {
         case "tasker":
-            switch taskerProfile.subscriptionAccessType {
-            case "lifetime":
+            if confirmedPlans.count > 1 {
+                return "Tasker access"
+            }
+
+            switch confirmedPlan {
+            case .lifetime:
                 return "Founders Club"
-            case "subscription":
+            case .subscription:
                 return "Subscribe"
             default:
                 return "Tasker access"
@@ -734,11 +785,17 @@ private struct ProfileTaskerSection: View {
             return "Your App Store purchase was detected. Patchwork is still finishing account sync."
         }
 
+        let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
+        let confirmedPlan = backendConfirmedPlan(for: taskerProfile)
         let status = taskerProfile.subscriptionStatus ?? "inactive"
 
         switch status {
         case "active":
-            if taskerProfile.subscriptionAccessType == "lifetime" {
+            if confirmedPlans.count > 1 {
+                return "Multiple App Store billing products are active on this account. Patchwork is using the broadest access level while keeping restores and renewals available."
+            }
+
+            if confirmedPlan == .lifetime {
                 return "Founders Club is active on this account."
             }
             return "Your subscription is active on this account."
@@ -755,11 +812,11 @@ private struct ProfileTaskerSection: View {
     }
 
     private func effectiveHasActiveAccess(for profile: TaskerProfileSelf) -> Bool {
-        profile.hasActiveSubscription == true || revenueCatManager.storeState.activePlan != nil
+        profile.hasActiveSubscription == true || revenueCatManager.storeState.hasAccess
     }
 
     private func hasStoreAccessPendingBackend(for profile: TaskerProfileSelf) -> Bool {
-        revenueCatManager.storeState.activePlan != nil && profile.hasActiveSubscription != true
+        revenueCatManager.storeState.hasAccess && profile.hasActiveSubscription != true
     }
 
     private func formattedMonthDayYear(_ millis: Int) -> String {

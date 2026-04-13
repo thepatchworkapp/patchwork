@@ -204,7 +204,7 @@ const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
     return jsonResponse({ error: "Missing RevenueCat event payload" }, 400);
   }
 
-  const result = await ctx.runMutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+  const result = await ctx.runAction(internal.taskersInternal.reconcileRevenueCatWebhookEvent, {
     type: event.type,
     appId: typeof event.app_id === "string" ? event.app_id : undefined,
     productId: typeof event.product_id === "string" ? event.product_id : undefined,
@@ -213,6 +213,12 @@ const revenueCatWebhookHandler = httpAction(async (ctx, request) => {
       typeof event.original_app_user_id === "string" ? event.original_app_user_id : undefined,
     aliases: Array.isArray(event.aliases)
       ? event.aliases.filter((value: unknown): value is string => typeof value === "string")
+      : undefined,
+    transferredFrom: Array.isArray(event.transferred_from)
+      ? event.transferred_from.filter((value: unknown): value is string => typeof value === "string")
+      : undefined,
+    transferredTo: Array.isArray(event.transferred_to)
+      ? event.transferred_to.filter((value: unknown): value is string => typeof value === "string")
       : undefined,
     expirationAtMs:
       typeof event.expiration_at_ms === "number" ? event.expiration_at_ms : null,

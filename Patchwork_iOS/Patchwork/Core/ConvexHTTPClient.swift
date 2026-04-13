@@ -59,6 +59,13 @@ struct ConvexHTTPClient {
         return try await call(functionType: "mutation", path: path, args: args)
     }
 
+    func action<T: Decodable>(_ path: String, args: [String: Any], requiresAuth: Bool = true) async throws -> T {
+        if requiresAuth && authToken == nil && !hasRefreshCredential {
+            throw PatchworkError.missingToken
+        }
+        return try await call(functionType: "action", path: path, args: args)
+    }
+
     func sendEmailOTP(email: String) async throws {
         let payload: [String: Any] = ["email": email, "type": "sign-in"]
         try await postBetterAuth(path: "/api/auth/email-otp/send-verification-otp", payload: payload)

@@ -110,6 +110,7 @@ export const taskerProfileResponseValidator = v.object({
   verified: v.boolean(),
   subscriptionPlan: subscriptionPlanValidator,
   subscriptionAccessType: v.optional(subscriptionAccessTypeValidator),
+  subscriptionActiveAccessTypes: v.optional(v.array(subscriptionAccessTypeValidator)),
   subscriptionStatus: v.optional(subscriptionStatusValidator),
   subscriptionEndsAt: v.optional(v.number()),
   ghostMode: v.boolean(),

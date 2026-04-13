@@ -69,6 +69,9 @@ export default defineSchema({
     subscriptionAccessType: v.optional(
       v.union(v.literal("subscription"), v.literal("lifetime"))
     ),
+    subscriptionActiveAccessTypes: v.optional(
+      v.array(v.union(v.literal("subscription"), v.literal("lifetime")))
+    ),
     subscriptionStatus: v.optional(
       v.union(
         v.literal("inactive"),

@@ -99,6 +99,7 @@ struct RootView: View {
                 appState: appState,
                 client: sessionStore.client
             )
+            await reconcileRevenueCatWithBackendIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else {
@@ -111,6 +112,7 @@ struct RootView: View {
             Task { @MainActor in
                 defer { isForegroundRefreshPending = false }
                 await restoreSessionAndRefreshIfNeeded(forceRefresh: true)
+                await reconcileRevenueCatWithBackendIfNeeded()
             }
         }
         .onChange(of: sessionStore.isAuthenticated) { _, isAuthenticated in
@@ -177,6 +179,7 @@ struct RootView: View {
             bio: "Reliable local help for same-week household jobs.",
             subscriptionPlan: showsBillingPreview ? "none" : "tasker",
             subscriptionAccessType: showsBillingPreview ? nil : "subscription",
+            subscriptionActiveAccessTypes: showsBillingPreview ? [] : ["subscription"],
             subscriptionStatus: showsBillingPreview ? "inactive" : "active",
             subscriptionEndsAt: nil,
             hasActiveSubscription: !showsBillingPreview,
@@ -290,6 +293,26 @@ struct RootView: View {
         }
 
         return "\(user.id)|\(city)|\(province)"
+    }
+
+    private func reconcileRevenueCatWithBackendIfNeeded() async {
+        guard sessionStore.isAuthenticated,
+              revenueCatManager.storeState.hasAccess,
+              appState.taskerProfile?.hasActiveSubscription != true else {
+            return
+        }
+
+        do {
+            let reconciledProfile: TaskerProfileSelf? = try await sessionStore.client.action(
+                "taskers:reconcileRevenueCatSubscription",
+                args: [:]
+            )
+            if let reconciledProfile {
+                appState.taskerProfile = reconciledProfile
+            }
+        } catch {
+            print("[RootView] RevenueCat reconciliation failed: \(error.localizedDescription)")
+        }
     }
 
     private func markLocationPromptCompleted() {

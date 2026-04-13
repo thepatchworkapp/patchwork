@@ -143,15 +143,33 @@ final class RevenueCatManager {
 
     private func apply(customerInfo: CustomerInfo) {
         let entitlement = customerInfo.entitlements.active[AppConfig.revenueCatEntitlementID]
-        let activePlan = entitlement.flatMap { plan(for: $0.productIdentifier) }
+        let managementURL = customerInfo.managementURL
+        var activePlans = Set<SubscriptionPlanChoice>()
+        if let entitlementPlan = entitlement.flatMap({ plan(for: $0.productIdentifier) }) {
+            activePlans.insert(entitlementPlan)
+        }
+        if managementURL != nil {
+            activePlans.insert(.subscription)
+        }
+
+        let orderedActivePlans = SubscriptionPlanChoice.allCases.filter { activePlans.contains($0) }
+        let effectivePlan: SubscriptionPlanChoice?
+        if activePlans.contains(.lifetime) {
+            effectivePlan = .lifetime
+        } else if activePlans.contains(.subscription) {
+            effectivePlan = .subscription
+        } else {
+            effectivePlan = nil
+        }
 
         storeState = StoreSubscriptionState(
-            activePlan: activePlan,
+            activePlans: orderedActivePlans,
+            effectivePlan: effectivePlan,
             willRenew: entitlement?.willRenew,
             expiresAt: entitlement?.expirationDate.map { Int($0.timeIntervalSince1970 * 1000) }
         )
-        managementURL = customerInfo.managementURL
-        log("Applied customer info with active plan \(activePlan?.rawValue ?? "none")")
+        self.managementURL = managementURL
+        log("Applied customer info with active plans \(orderedActivePlans.map(\.rawValue).joined(separator: ","))")
     }
 
     private func plan(for productIdentifier: String) -> SubscriptionPlanChoice? {

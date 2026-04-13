@@ -325,6 +325,7 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let bio: String?
     let subscriptionPlan: String
     let subscriptionAccessType: String?
+    let subscriptionActiveAccessTypes: [String]?
     let subscriptionStatus: String?
     let subscriptionEndsAt: Int?
     let hasActiveSubscription: Bool?
@@ -343,6 +344,7 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case bio
         case subscriptionPlan
         case subscriptionAccessType
+        case subscriptionActiveAccessTypes
         case subscriptionStatus
         case subscriptionEndsAt
         case hasActiveSubscription

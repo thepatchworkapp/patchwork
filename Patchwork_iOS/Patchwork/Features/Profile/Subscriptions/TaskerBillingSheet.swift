@@ -95,19 +95,43 @@ struct TaskerBillingSheet: View {
     }
 
     private var hasActiveAccess: Bool {
-        appState.taskerProfile?.hasActiveSubscription == true || revenueCatManager.storeState.activePlan != nil
+        appState.taskerProfile?.hasActiveSubscription == true || revenueCatManager.storeState.hasAccess
     }
 
     private var hasStoreAccessPendingBackend: Bool {
-        revenueCatManager.storeState.activePlan != nil && appState.taskerProfile?.hasActiveSubscription != true
+        revenueCatManager.storeState.hasAccess && appState.taskerProfile?.hasActiveSubscription != true
+    }
+
+    private var backendConfirmedPlans: [SubscriptionPlanChoice] {
+        guard appState.taskerProfile?.hasActiveSubscription == true else {
+            return []
+        }
+
+        let rawAccessTypes = appState.taskerProfile?.subscriptionActiveAccessTypes ?? []
+        let mappedAccessTypes = rawAccessTypes.compactMap { planChoice(forBackendAccessType: $0) }
+        if !mappedAccessTypes.isEmpty {
+            return mappedAccessTypes
+        }
+
+        if let fallbackPlan = planChoice(forBackendAccessType: appState.taskerProfile?.subscriptionAccessType) {
+            return [fallbackPlan]
+        }
+
+        return []
     }
 
     private var backendConfirmedPlan: SubscriptionPlanChoice? {
-        guard appState.taskerProfile?.hasActiveSubscription == true else {
-            return nil
+        if backendConfirmedPlans.contains(.lifetime) {
+            return .lifetime
         }
+        if backendConfirmedPlans.contains(.subscription) {
+            return .subscription
+        }
+        return nil
+    }
 
-        switch appState.taskerProfile?.subscriptionAccessType {
+    private func planChoice(forBackendAccessType accessType: String?) -> SubscriptionPlanChoice? {
+        switch accessType {
         case "lifetime":
             return .lifetime
         case "subscription":
@@ -378,6 +402,10 @@ struct TaskerBillingSheet: View {
             return "Purchase detected"
         }
 
+        if backendConfirmedPlans.count > 1 {
+            return "Tasker access active"
+        }
+
         if backendConfirmedPlan == .lifetime {
             return "Founders Club active"
         }
@@ -396,6 +424,10 @@ struct TaskerBillingSheet: View {
     private var currentAccessDetail: String {
         if hasStoreAccessPendingBackend {
             return "Your App Store purchase was detected. Patchwork is still finishing account sync."
+        }
+
+        if backendConfirmedPlans.count > 1 {
+            return "Multiple App Store billing products are active on this account. Patchwork is using the broadest access level while keeping restores and renewals available."
         }
 
         if backendConfirmedPlan == .lifetime {
@@ -458,7 +490,7 @@ struct TaskerBillingSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let managementURL = revenueCatManager.managementURL,
-               revenueCatManager.storeState.activePlan?.isRenewable != false {
+               revenueCatManager.storeState.hasRenewableAccess || backendConfirmedPlans.contains(.subscription) {
                 Button("Manage subscription in App Store") {
                     openURL(managementURL)
                 }
@@ -573,15 +605,16 @@ struct TaskerBillingSheet: View {
     private func syncBackendAfterStoreChange(successText: String) async {
         syncManagerFeedback()
 
-        guard revenueCatManager.storeState.activePlan != nil else {
+        guard revenueCatManager.storeState.hasAccess else {
             log("No active store plan after store action; skipping backend sync")
             return
         }
 
-        log("Syncing backend after store action with active plan \(revenueCatManager.storeState.activePlan?.rawValue ?? "none")")
+        log("Syncing backend after store action with active plans \(revenueCatManager.storeState.activePlans.map(\.rawValue).joined(separator: ","))")
         feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: successText)
 
         for _ in 0 ..< 6 {
+            await reconcileRevenueCatWithBackend()
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
 
             if appState.taskerProfile?.hasActiveSubscription == true {
@@ -598,6 +631,20 @@ struct TaskerBillingSheet: View {
             tone: .warning,
             text: "Your App Store purchase is complete. Patchwork is still confirming tasker access."
         )
+    }
+
+    private func reconcileRevenueCatWithBackend() async {
+        do {
+            let reconciledProfile: TaskerProfileSelf? = try await sessionStore.client.action(
+                "taskers:reconcileRevenueCatSubscription",
+                args: [:]
+            )
+            if let reconciledProfile {
+                appState.taskerProfile = reconciledProfile
+            }
+        } catch {
+            log("Backend reconciliation action failed: \(error.localizedDescription)")
+        }
     }
 
     private func syncManagerFeedback(preferredMessage: String? = nil) {

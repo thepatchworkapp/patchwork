@@ -1,6 +1,6 @@
 // convex/__tests__/taskers.test.ts
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as taskersModule from "../taskers";
@@ -26,6 +26,7 @@ const modules: Record<string, () => Promise<any>> = {
 const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
 const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
 const PATCHWORK_LIFETIME_PRODUCT_ID = "ltd.ddga.patchwork.tasker.lifetime";
+const originalRevenueCatSecretApiKey = process.env.REVENUECAT_SECRET_API_KEY;
 
 async function applyRevenueCatEvent(
   t: ReturnType<typeof convexTest>,
@@ -45,6 +46,11 @@ async function applyRevenueCatEvent(
     expirationAtMs: args.expirationAtMs ?? null,
   });
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  process.env.REVENUECAT_SECRET_API_KEY = originalRevenueCatSecretApiKey;
+});
 
 describe("taskers", () => {
   test("createTaskerProfile creates taskerProfile + first taskerCategory", async () => {
@@ -1156,5 +1162,167 @@ describe("taskers", () => {
      expect(profile?.subscriptionAccessType).toBeUndefined();
      expect(profile?.subscriptionStatus).toBe("inactive");
      expect(profile?.ghostMode).toBe(true);
+   });
+
+   test("reconcileRevenueCatWebhookEvent repairs transfer events by fetching canonical customer state", async () => {
+     const t = convexTest(schema, modules);
+
+     process.env.REVENUECAT_SECRET_API_KEY = "secret_test_key";
+     vi.stubGlobal("fetch", vi.fn(async () => ({
+       ok: true,
+       status: 200,
+       json: async () => ({
+         subscriber: {
+           entitlements: {
+             tasker_access: {
+               product_identifier: PATCHWORK_ANNUAL_PRODUCT_ID,
+               purchase_date_ms: 1_890_000_000_000,
+               expires_date_ms: 1_900_000_000_000,
+             },
+           },
+           subscriptions: {
+             [PATCHWORK_ANNUAL_PRODUCT_ID]: {
+               purchase_date_ms: 1_890_000_000_000,
+               expires_date_ms: 1_900_000_000_000,
+             },
+           },
+         },
+       }),
+       text: async () => "",
+     })) as typeof fetch);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|608",
+       email: "transfer@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Transfer Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Transferred Tasker",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await t.action(internal.taskersInternal.reconcileRevenueCatWebhookEvent, {
+       type: "TRANSFER",
+       appId: PATCHWORK_REVENUECAT_APP_ID,
+       appUserId: undefined,
+       originalAppUserId: undefined,
+       aliases: [],
+       transferredFrom: ["$RCAnonymousID:source-transfer-user"],
+       transferredTo: [user!._id],
+       expirationAtMs: null,
+     });
+
+     expect(result).toEqual({ applied: true, reason: "canonical_state_applied" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("subscription");
+     expect(profile?.subscriptionActiveAccessTypes).toEqual(["subscription"]);
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
+     expect(profile?.hasActiveSubscription).toBe(true);
+     expect(profile?.ghostMode).toBe(false);
+   });
+
+   test("reconcileRevenueCatWebhookEvent keeps lifetime active when yearly and lifetime coexist", async () => {
+     const t = convexTest(schema, modules);
+
+     process.env.REVENUECAT_SECRET_API_KEY = "secret_test_key";
+     vi.stubGlobal("fetch", vi.fn(async () => ({
+       ok: true,
+       status: 200,
+       json: async () => ({
+         subscriber: {
+           entitlements: {
+             tasker_access: {
+               product_identifier: PATCHWORK_LIFETIME_PRODUCT_ID,
+               purchase_date_ms: 1_880_000_000_000,
+             },
+           },
+           subscriptions: {
+             [PATCHWORK_ANNUAL_PRODUCT_ID]: {
+               purchase_date_ms: 1_890_000_000_000,
+               expires_date_ms: 1_900_000_000_000,
+             },
+           },
+           non_subscriptions: {
+             [PATCHWORK_LIFETIME_PRODUCT_ID]: [
+               {
+                 purchase_date_ms: 1_880_000_000_000,
+               },
+             ],
+           },
+         },
+       }),
+       text: async () => "",
+     })) as typeof fetch);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|609",
+       email: "mixed@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Mixed Access Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumbing",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Mixed Access Tasker",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await t.action(internal.taskersInternal.reconcileRevenueCatWebhookEvent, {
+       type: "EXPIRATION",
+       appId: PATCHWORK_REVENUECAT_APP_ID,
+       productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+       appUserId: user!._id,
+       originalAppUserId: user!._id,
+       aliases: [],
+       transferredFrom: [],
+       transferredTo: [],
+       expirationAtMs: 1_900_000_000_000,
+     });
+
+     expect(result).toEqual({ applied: true, reason: "canonical_state_applied" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("lifetime");
+     expect(profile?.subscriptionActiveAccessTypes).toEqual(["subscription", "lifetime"]);
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.hasActiveSubscription).toBe(true);
+     expect(profile?.ghostMode).toBe(false);
    });
 });
