@@ -21,7 +21,8 @@ final class SubscriptionReconciliationTests: XCTestCase {
     }
 
     func testEmptyStoreSubscriptionStateHasNoActivePlan() {
-        XCTAssertNil(StoreSubscriptionState.empty.activePlan)
+        XCTAssertTrue(StoreSubscriptionState.empty.activePlans.isEmpty)
+        XCTAssertNil(StoreSubscriptionState.empty.effectivePlan)
         XCTAssertNil(StoreSubscriptionState.empty.willRenew)
         XCTAssertNil(StoreSubscriptionState.empty.expiresAt)
     }

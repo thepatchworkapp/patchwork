@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var selectedCategorySlug: String?
     @State private var radiusKm = 25
     @State private var showRadiusSheet = false
+    @State private var showCategorySheet = false
     @State private var isStartingChat = false
     @State private var currentCardIndex = 0
     @State private var cardDragOffset: CGFloat = 0
@@ -37,6 +38,10 @@ struct HomeView: View {
         .sheet(isPresented: $showRadiusSheet) {
             radiusSheet
                 .patchworkSheetChrome(detents: [.height(360)])
+        }
+        .sheet(isPresented: $showCategorySheet) {
+            categorySheet
+                .patchworkSheetChrome(detents: [.medium, .large])
         }
         .navigationDestination(item: $taskerRoute) { route in
             ProviderDetailView(taskerId: route.id)
@@ -137,21 +142,8 @@ struct HomeView: View {
             .accessibilityLabel("Retry categories")
             .accessibilityHint(categoryAvailabilityMessage)
         } else {
-            Menu {
-                Button("All categories") {
-                    selectedCategorySlug = nil
-                    Task { await reload() }
-                }
-                ForEach(appState.categories, id: \.id) { category in
-                    Button {
-                        selectedCategorySlug = category.slug
-                        Task { await reload() }
-                    } label: {
-                        Text(categoryMenuLabel(for: category))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                }
+            Button {
+                showCategorySheet = true
             } label: {
                 HStack {
                     Text(selectedCategoryLabel)
@@ -172,10 +164,11 @@ struct HomeView: View {
                         .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
                 )
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("Home.categoryMenu")
             .accessibilityLabel("Category filter")
             .accessibilityValue(selectedCategoryLabel)
-            .accessibilityHint("Choose a category")
+            .accessibilityHint("Opens category choices")
         }
     }
 
@@ -397,6 +390,83 @@ struct HomeView: View {
         .padding(.top, 20)
     }
 
+    private var categorySheet: some View {
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+
+            PatchworkSurfaceCard {
+                VStack(spacing: 18) {
+                    PatchworkTopBar(title: "Category", onBack: { showCategorySheet = false })
+
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            categorySheetRow(
+                                label: "All categories",
+                                isSelected: selectedCategorySlug == nil,
+                                accessibilityIdentifier: "Home.categoryOption.all"
+                            ) {
+                                selectCategory(nil)
+                            }
+
+                            ForEach(appState.categories, id: \.id) { category in
+                                categorySheetRow(
+                                    label: categoryMenuLabel(for: category),
+                                    isSelected: selectedCategorySlug == category.slug,
+                                    accessibilityIdentifier: "Home.categoryOption.\(category.slug)"
+                                ) {
+                                    selectCategory(category.slug)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 4)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(.top, 20)
+    }
+
+    private func categorySheetRow(
+        label: String,
+        isSelected: Bool,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.95)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(PatchworkTheme.brand)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 56)
+            .background(
+                isSelected ? PatchworkTheme.brandSoft.opacity(0.7) : PatchworkTheme.surface.opacity(0.92),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
     private var selectedCategoryLabel: String {
         if let selectedCategorySlug,
            let category = appState.categories.first(where: { $0.slug == selectedCategorySlug }) {
@@ -478,6 +548,12 @@ struct HomeView: View {
         if appState.currentUser != nil {
             await reload()
         }
+    }
+
+    private func selectCategory(_ slug: String?) {
+        selectedCategorySlug = slug
+        showCategorySheet = false
+        Task { await reload() }
     }
 
     private func reload() async {

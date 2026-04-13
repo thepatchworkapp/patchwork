@@ -61,6 +61,18 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Auth.sendCodeButton"].exists)
     }
 
+    func testAppReviewShortcutSignsInWithoutOTP() throws {
+        launchToEmailEntry()
+
+        let emailField = app.textFields["Auth.emailField"]
+        replaceText(in: emailField, with: "review@apple.com")
+        app.buttons["Auth.sendCodeButton"].tap()
+
+        XCTAssertFalse(app.textFields["Auth.codeField.0"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(tabButton(named: "Profile").exists)
+    }
+
     func testEmailAuthCompletesProfileSetup() throws {
         let email = uniqueTestEmail(prefix: "ios-auth")
         cleanupTestData(for: email)
