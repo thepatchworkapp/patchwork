@@ -683,14 +683,7 @@ private struct ProfileTaskerSection: View {
 
     private func planTitle(for taskerProfile: TaskerProfileSelf) -> String {
         if hasStoreAccessPendingBackend(for: taskerProfile) {
-            switch revenueCatManager.storeState.activePlan {
-            case .lifetime:
-                return "Founders Club"
-            case .subscription:
-                return "Subscribed"
-            case .none:
-                break
-            }
+            return "Purchase detected"
         }
 
         if taskerProfile.subscriptionStatus == "active" {
@@ -738,7 +731,7 @@ private struct ProfileTaskerSection: View {
 
     private func planDescription(for taskerProfile: TaskerProfileSelf) -> String {
         if hasStoreAccessPendingBackend(for: taskerProfile) {
-            return "Your App Store purchase is confirmed. Patchwork is finishing account sync."
+            return "Your App Store purchase was detected. Patchwork is still finishing account sync."
         }
 
         let status = taskerProfile.subscriptionStatus ?? "inactive"

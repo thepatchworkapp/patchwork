@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ConvexReactClient, useMutation, useQuery } from "convex/react";
+import { ConvexReactClient, useAction, useMutation, useQuery } from "convex/react";
 import { anyApi } from "convex/server";
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 
@@ -230,10 +230,18 @@ type ResetDatabaseResult = {
   deletedUsers: number;
   deletedStorageFiles: number;
   preservedAdminEmails: string[];
+  revenueCatCleanup?: {
+    status: "completed" | "partial" | "skipped";
+    attemptedCustomers: number;
+    deletedCustomers: number;
+    missingCustomers: number;
+    failedCustomers: number;
+    message: string;
+  };
 };
 
 function AdminMaintenanceCard() {
-  const resetDatabase = useMutation(api.admin.resetDatabase);
+  const resetDatabase = useAction(api.admin.resetDatabaseAndRevenueCat);
   const reseedReviewerAccounts = useMutation(api.admin.reseedReviewerAccounts);
   const [isResetting, setIsResetting] = useState(false);
   const [isReseeding, setIsReseeding] = useState(false);
@@ -242,7 +250,7 @@ function AdminMaintenanceCard() {
 
   const onReset = async () => {
     const confirmed = window.confirm(
-      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records. The dashboard will then attempt to reseed the Apple reviewer accounts."
+      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records, then attempt to delete the matching RevenueCat customer records before reseeding the Apple reviewer accounts."
     );
     if (!confirmed) {
       return;
@@ -254,6 +262,18 @@ function AdminMaintenanceCard() {
     try {
       const result = (await resetDatabase({})) as ResetDatabaseResult;
       let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, and ${result.deletedStorageFiles} files.`;
+
+      if (result.revenueCatCleanup) {
+        nextNotice += ` ${result.revenueCatCleanup.message}`;
+
+        if (result.revenueCatCleanup.status !== "completed") {
+          setError(
+            result.revenueCatCleanup.status === "skipped"
+              ? result.revenueCatCleanup.message
+              : `Database reset succeeded, but RevenueCat cleanup was incomplete. ${result.revenueCatCleanup.message}`
+          );
+        }
+      }
 
       setIsReseeding(true);
       try {
@@ -303,7 +323,7 @@ function AdminMaintenanceCard() {
             <Badge variant="outline">production</Badge>
           </div>
           <div className="mt-1 text-sm text-kumo-muted">
-            Database reset is destructive. A successful reset now attempts to reseed the Apple reviewer accounts automatically, and you can still run reseed manually if needed.
+            Database reset is destructive. A successful reset now attempts to delete matching RevenueCat customer data before reseeding the Apple reviewer accounts automatically, and you can still run reseed manually if needed.
           </div>
         </div>
       </div>

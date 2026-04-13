@@ -88,7 +88,7 @@ struct TaskerBillingSheet: View {
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var isSyncingBackend = false
     @State private var pendingPurchasePlan: TaskerBillingPlan?
-    @State private var selectedPlan: TaskerBillingPlan = .founders
+    @State private var selectedPlan: TaskerBillingPlan = .subscription
 
     private func log(_ message: String) {
         print("[TaskerBillingSheet] \(message)")
@@ -96,6 +96,25 @@ struct TaskerBillingSheet: View {
 
     private var hasActiveAccess: Bool {
         appState.taskerProfile?.hasActiveSubscription == true || revenueCatManager.storeState.activePlan != nil
+    }
+
+    private var hasStoreAccessPendingBackend: Bool {
+        revenueCatManager.storeState.activePlan != nil && appState.taskerProfile?.hasActiveSubscription != true
+    }
+
+    private var backendConfirmedPlan: SubscriptionPlanChoice? {
+        guard appState.taskerProfile?.hasActiveSubscription == true else {
+            return nil
+        }
+
+        switch appState.taskerProfile?.subscriptionAccessType {
+        case "lifetime":
+            return .lifetime
+        case "subscription":
+            return .subscription
+        default:
+            return nil
+        }
     }
 
     private var annualPackage: Package? {
@@ -355,17 +374,31 @@ struct TaskerBillingSheet: View {
     }
 
     private var currentAccessTitle: String {
-        if revenueCatManager.storeState.activePlan == .lifetime || appState.taskerProfile?.subscriptionAccessType == "lifetime" {
+        if hasStoreAccessPendingBackend {
+            return "Purchase detected"
+        }
+
+        if backendConfirmedPlan == .lifetime {
             return "Founders Club active"
         }
-        if revenueCatManager.storeState.activePlan == .subscription || appState.taskerProfile?.subscriptionAccessType == "subscription" {
+
+        if backendConfirmedPlan == .subscription {
             return "Subscription active"
         }
+
+        if appState.taskerProfile?.hasActiveSubscription == true {
+            return "Tasker access active"
+        }
+
         return "Tasker access inactive"
     }
 
     private var currentAccessDetail: String {
-        if revenueCatManager.storeState.activePlan == .lifetime || appState.taskerProfile?.subscriptionAccessType == "lifetime" {
+        if hasStoreAccessPendingBackend {
+            return "Your App Store purchase was detected. Patchwork is still finishing account sync."
+        }
+
+        if backendConfirmedPlan == .lifetime {
             return "You have permanent tasker access through the App Store."
         }
 
@@ -374,20 +407,42 @@ struct TaskerBillingSheet: View {
             return "Your subscription stays active until \(formattedDate(endsAt))."
         }
 
-        if revenueCatManager.storeState.activePlan == .subscription || appState.taskerProfile?.subscriptionAccessType == "subscription" {
+        if backendConfirmedPlan == .subscription {
             return "Your yearly tasker access is active and managed through the App Store."
+        }
+
+        if appState.taskerProfile?.hasActiveSubscription == true {
+            return "Your tasker access is active on this account."
         }
 
         return "Choose a billing option to start tasking."
     }
 
     private var accessBadge: some View {
-        Text("Active")
+        let title: String
+        let foreground: Color
+        let background: Color
+
+        if hasStoreAccessPendingBackend {
+            title = "Confirming"
+            foreground = PatchworkTheme.brand
+            background = PatchworkTheme.brand.opacity(0.14)
+        } else if appState.taskerProfile?.subscriptionStatus == "cancel_at_period_end" {
+            title = "Ending soon"
+            foreground = PatchworkTheme.warning
+            background = PatchworkTheme.warning.opacity(0.14)
+        } else {
+            title = "Active"
+            foreground = PatchworkTheme.success
+            background = PatchworkTheme.success.opacity(0.14)
+        }
+
+        return Text(title)
             .font(.patchworkCaption)
-            .foregroundStyle(PatchworkTheme.success)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(PatchworkTheme.success.opacity(0.14), in: Capsule())
+            .background(background, in: Capsule())
             .accessibilityHidden(true)
     }
 

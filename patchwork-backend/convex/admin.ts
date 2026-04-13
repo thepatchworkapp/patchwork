@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { authComponent } from "./auth";
 import { getReviewAccessStatus, setReviewAccessEnabled } from "./reviewAccess";
 import { taskerGeo } from "./geospatial";
+import { internal } from "./_generated/api";
 
 function getAdminEmailAllowlist(): Set<string> {
   // Support both ADMIN_EMAILS (comma-separated) and legacy ADMIN_EMAIL (single).
@@ -19,6 +20,7 @@ function getAdminEmailAllowlist(): Set<string> {
 
 const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
+const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
 const reviewAccessStatusValidator = v.object({
   email: v.string(),
   allowedEmails: v.array(v.string()),
@@ -92,6 +94,7 @@ async function collectStorageIdsForRows(
 
 async function resetApplicationData(ctx: any) {
   const storageIds = new Set<any>();
+  const deletedUserAppUserIds: string[] = [];
 
   const deletedMessages = await deleteTableRows(ctx, "messages", async (message) => {
     await collectStorageIdsForRows([message], storageIds, (row) => row.attachments ?? []);
@@ -115,6 +118,7 @@ async function resetApplicationData(ctx: any) {
   const deletedOtps = await deleteTableRows(ctx, "otps");
   const deletedAdminOtps = await deleteTableRows(ctx, "adminOtps");
   const deletedUsers = await deleteTableRows(ctx, "users", async (user) => {
+    deletedUserAppUserIds.push(String(user._id));
     if (user.photo) {
       storageIds.add(user.photo);
     }
@@ -138,6 +142,115 @@ async function resetApplicationData(ctx: any) {
     deletedAdminOtps,
     deletedUsers,
     deletedStorageFiles,
+    deletedUserAppUserIds,
+  };
+}
+
+async function performDatabaseReset(ctx: any) {
+  await resetBetterAuthNonAdmin(ctx);
+  const resetCounts = await resetApplicationData(ctx);
+
+  return {
+    resetAt: Date.now(),
+    ...resetCounts,
+    preservedAdminEmails: Array.from(ADMIN_EMAILS),
+  };
+}
+
+type RevenueCatCleanupSummary = {
+  status: "completed" | "partial" | "skipped";
+  attemptedCustomers: number;
+  deletedCustomers: number;
+  missingCustomers: number;
+  failedCustomers: number;
+  message: string;
+};
+
+async function deleteRevenueCatCustomer(appUserId: string, secretApiKey: string) {
+  const response = await fetch(
+    `${REVENUECAT_SUBSCRIBER_API_BASE_URL}/${encodeURIComponent(appUserId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${secretApiKey}`,
+      },
+    },
+  );
+
+  if (response.ok) {
+    return "deleted" as const;
+  }
+
+  if (response.status === 404) {
+    return "missing" as const;
+  }
+
+  const responseText = await response.text();
+  throw new Error(
+    `RevenueCat delete failed for ${appUserId} (${response.status}): ${responseText || "No response body"}`
+  );
+}
+
+async function clearRevenueCatCustomers(appUserIds: string[]): Promise<RevenueCatCleanupSummary> {
+  const secretApiKey = process.env.REVENUECAT_SECRET_API_KEY;
+  const uniqueAppUserIds = Array.from(new Set(appUserIds.filter(Boolean)));
+
+  if (!uniqueAppUserIds.length) {
+    return {
+      status: "completed",
+      attemptedCustomers: 0,
+      deletedCustomers: 0,
+      missingCustomers: 0,
+      failedCustomers: 0,
+      message: "No app users were present, so no RevenueCat customers needed cleanup.",
+    };
+  }
+
+  if (!secretApiKey) {
+    return {
+      status: "skipped",
+      attemptedCustomers: uniqueAppUserIds.length,
+      deletedCustomers: 0,
+      missingCustomers: 0,
+      failedCustomers: uniqueAppUserIds.length,
+      message: "RevenueCat cleanup skipped because REVENUECAT_SECRET_API_KEY is not configured.",
+    };
+  }
+
+  let deletedCustomers = 0;
+  let missingCustomers = 0;
+  let failedCustomers = 0;
+
+  for (const appUserId of uniqueAppUserIds) {
+    try {
+      const result = await deleteRevenueCatCustomer(appUserId, secretApiKey);
+      if (result === "deleted") {
+        deletedCustomers += 1;
+      } else {
+        missingCustomers += 1;
+      }
+    } catch (error) {
+      failedCustomers += 1;
+      console.error("[AdminReset] RevenueCat cleanup failed", {
+        appUserId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const status = failedCustomers > 0 ? "partial" : "completed";
+  const message =
+    status === "completed"
+      ? `RevenueCat cleanup deleted ${deletedCustomers} customer(s) and skipped ${missingCustomers} missing record(s).`
+      : `RevenueCat cleanup deleted ${deletedCustomers} customer(s), skipped ${missingCustomers} missing record(s), and hit ${failedCustomers} failure(s).`;
+
+  return {
+    status,
+    attemptedCustomers: uniqueAppUserIds.length,
+    deletedCustomers,
+    missingCustomers,
+    failedCustomers,
+    message,
   };
 }
 
@@ -330,17 +443,36 @@ export const reseedReviewerAccounts = mutation({
   },
 });
 
+export const resetDatabaseCore = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    return await performDatabaseReset(ctx);
+  },
+});
+
 export const resetDatabase = mutation({
   args: {},
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
-    await resetBetterAuthNonAdmin(ctx);
-    const resetCounts = await resetApplicationData(ctx);
+    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await performDatabaseReset(ctx);
+    return result;
+  },
+});
+
+export const resetDatabaseAndRevenueCat = action({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || !ADMIN_EMAILS.has((identity.email || "").toLowerCase())) {
+      throw new ConvexError("Unauthorized");
+    }
+
+    const { deletedUserAppUserIds, ...result } = await ctx.runMutation(internal.admin.resetDatabaseCore, {});
+    const revenueCatCleanup = await clearRevenueCatCustomers(deletedUserAppUserIds);
 
     return {
-      resetAt: Date.now(),
-      ...resetCounts,
-      preservedAdminEmails: Array.from(ADMIN_EMAILS),
+      ...result,
+      revenueCatCleanup,
     };
   },
 });

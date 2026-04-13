@@ -50,6 +50,7 @@ Important variables:
 - `RESEND_API_KEY`
 - `OTP_FROM_EMAIL`
 - `REVENUECAT_WEBHOOK_AUTHORIZATION`
+- `REVENUECAT_SECRET_API_KEY`
 
 ## Billing Contract
 
