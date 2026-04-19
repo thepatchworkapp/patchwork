@@ -1129,8 +1129,7 @@ private struct ProfileSupportSection: View {
                         await onSignOut()
                     }
                 }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .tint(PatchworkTheme.danger)
+                .buttonStyle(PatchworkDestructiveButtonStyle())
                 .accessibilityIdentifier("Profile.signOutButton")
             }
         }
@@ -1866,15 +1865,7 @@ private struct CategoryServiceDetailsSection: View {
     @ViewBuilder
     private var bioField: some View {
         let field = TextEditor(text: $bio)
-            .font(.patchworkBody)
-            .foregroundStyle(PatchworkTheme.textPrimary)
-            .frame(minHeight: 110)
-            .padding(10)
-            .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                    .stroke(PatchworkTheme.stroke, lineWidth: 1)
-            )
+            .patchworkTextEditorStyle(minHeight: 110)
             .onChange(of: bio) { _, newValue in
                 if newValue.count > maxBioLength {
                     bio = String(newValue.prefix(maxBioLength))
@@ -2038,12 +2029,13 @@ private struct CategoryServiceDetailsSection: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.body.weight(.bold))
-                .foregroundStyle(PatchworkTheme.brand)
-                .frame(width: 36, height: 36)
-                .background(PatchworkTheme.surface, in: Circle())
-                .overlay(Circle().stroke(PatchworkTheme.strokeStrong, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PatchworkIconButtonStyle(
+            size: 36,
+            foreground: PatchworkTheme.brand,
+            fill: PatchworkTheme.surface,
+            stroke: PatchworkTheme.strokeStrong
+        ))
         .accessibilityLabel(systemName == "minus" ? "Decrease service radius" : "Increase service radius")
         .accessibilityIdentifier(accessibilityIdentifier)
     }
@@ -2217,6 +2209,7 @@ private struct EditableTaskerCategorySheet: View {
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var isSaving = false
     @State private var isRemoving = false
+    @State private var showsRemoveConfirmation = false
 
     init(
         category: TaskerManagedCategory,
@@ -2287,9 +2280,9 @@ private struct EditableTaskerCategorySheet: View {
                     .accessibilityIdentifier("TaskerProfile.categorySaveButton")
 
                     Button("Remove Category", role: .destructive) {
-                        Task { await removeCategory() }
+                        showsRemoveConfirmation = true
                     }
-                    .buttonStyle(PatchworkSecondaryButtonStyle())
+                    .buttonStyle(PatchworkDestructiveButtonStyle())
                     .disabled(isSaving || isRemoving)
                     .accessibilityIdentifier("TaskerProfile.removeCategoryButton")
                 }
@@ -2300,6 +2293,18 @@ private struct EditableTaskerCategorySheet: View {
             .scrollIndicators(.hidden)
         }
         .patchworkKeyboardDismissToolbar()
+        .confirmationDialog(
+            "Remove \(category.categoryName)?",
+            isPresented: $showsRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Category", role: .destructive) {
+                Task { await removeCategory() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the service from your public tasker profile.")
+        }
     }
 
     private var canSubmit: Bool {
@@ -2493,15 +2498,7 @@ private struct FeedbackView: View {
                             }
 
                             TextEditor(text: $message)
-                                .font(.patchworkBody)
-                                .foregroundStyle(PatchworkTheme.textPrimary)
-                                .frame(minHeight: 160)
-                                .padding(10)
-                                .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                                )
+                                .patchworkTextEditorStyle(minHeight: 160)
                                 .onChange(of: message) { _, newValue in
                                     if newValue.count > maxFeedbackLength {
                                         message = String(newValue.prefix(maxFeedbackLength))
@@ -2562,12 +2559,12 @@ private struct StepHeader: View {
         HStack(spacing: 12) {
             ForEach(1 ... 3, id: \.self) { value in
                 Circle()
-                    .fill(value <= currentStep ? Color.indigo : Color.gray.opacity(0.2))
+                    .fill(value <= currentStep ? PatchworkTheme.brand : PatchworkTheme.stroke)
                     .frame(width: 28, height: 28)
                     .overlay {
                         Text(value <= currentStep && value < currentStep ? "\u{2713}" : "\(value)")
                             .font(.caption.bold())
-                            .foregroundStyle(value <= currentStep ? .white : .secondary)
+                            .foregroundStyle(value <= currentStep ? Color.white : PatchworkTheme.textSecondary)
                     }
             }
         }

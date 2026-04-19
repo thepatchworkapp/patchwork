@@ -32,8 +32,7 @@ struct PatchworkEmptyStateCard: View {
 
                 if let actionTitle, let action {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.borderedProminent)
-                        .tint(PatchworkTheme.brand)
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
                 }
             }
             .frame(maxWidth: PatchworkMetrics.emptyStateContentMaxWidth)
@@ -124,6 +123,33 @@ struct PatchworkBrandLoadingCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
         .padding(.top, title == nil && message == nil ? 0 : 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct PatchworkPill: View {
+    let title: String
+    var systemImage: String? = nil
+    var foreground: Color = PatchworkTheme.brand
+    var fill: Color?
+    var horizontalPadding: CGFloat = 10
+    var verticalPadding: CGFloat = 6
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+
+            Text(title)
+        }
+        .font(.patchworkCaption)
+        .foregroundStyle(foreground)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
+        .background(fill ?? foreground.opacity(0.12), in: Capsule())
         .accessibilityElement(children: .combine)
     }
 }

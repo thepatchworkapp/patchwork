@@ -170,12 +170,7 @@ struct JobsView: View {
     private func statusBadge(_ status: String) -> some View {
         let title = status.replacingOccurrences(of: "_", with: " ").capitalized
         let foreground: Color = status == "completed" ? PatchworkTheme.success : PatchworkTheme.brand
-        return Text(title)
-            .font(.patchworkCaption)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(foreground.opacity(0.12), in: Capsule())
+        return PatchworkPill(title: title, foreground: foreground)
     }
 
     private func metaCell(_ title: String, value: String, systemImage: String) -> some View {
@@ -190,11 +185,7 @@ struct JobsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(PatchworkTheme.stroke, lineWidth: 1)
-        )
+        .patchworkInsetSurface()
     }
 
     private var emptyState: some View {

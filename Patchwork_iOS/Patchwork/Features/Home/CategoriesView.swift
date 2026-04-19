@@ -121,6 +121,9 @@ struct CategoriesView: View {
                                             Text(category.name)
                                                 .font(.patchworkBody)
                                                 .foregroundStyle(PatchworkTheme.textPrimary)
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.82)
+                                                .allowsTightening(true)
 
                                             Spacer()
 

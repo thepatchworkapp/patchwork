@@ -237,20 +237,14 @@ struct MessagesView: View {
                     .padding(.bottom, 6)
 
                 HStack(spacing: 8) {
-                    Text(activeRole == "tasker" ? "Tasker" : "Seeker")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.brand)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(PatchworkTheme.brandSoft, in: Capsule())
+                    PatchworkPill(
+                        title: activeRole == "tasker" ? "Tasker" : "Seeker",
+                        foreground: PatchworkTheme.brand,
+                        fill: PatchworkTheme.brandSoft
+                    )
 
                     if conversation.jobId != nil {
-                        Text("Job linked")
-                            .font(.patchworkCaption)
-                            .foregroundStyle(PatchworkTheme.success)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(PatchworkTheme.success.opacity(0.12), in: Capsule())
+                        PatchworkPill(title: "Job linked", foreground: PatchworkTheme.success)
                     }
                 }
             }
@@ -457,12 +451,7 @@ struct ChatView: View {
                 dismiss()
             }
             .labelStyle(.iconOnly)
-            .font(.patchworkBodyStrong)
-            .foregroundStyle(PatchworkTheme.textPrimary)
-            .frame(width: 44, height: 44)
-            .background(PatchworkTheme.surface.opacity(0.9), in: Circle())
-            .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
-            .buttonStyle(.plain)
+            .buttonStyle(PatchworkIconButtonStyle(fill: PatchworkTheme.surface.opacity(0.9)))
             .accessibilityLabel("Back to messages")
             .accessibilityIdentifier("Chat.backButton")
 
@@ -795,35 +784,20 @@ private struct ProposalMessageCard: View {
 
             if canActOnProposal {
                 HStack(spacing: 8) {
-                    actionButton(
-                        title: "Decline",
-                        fill: Color(.systemBackground),
-                        foreground: .secondary,
-                        border: Color(.systemGray4),
-                        borderWidth: 1,
-                        identifier: "Chat.proposal.declineButton",
-                        action: onDecline
-                    )
+                    actionButton(title: "Decline", identifier: "Chat.proposal.declineButton", action: onDecline)
+                        .buttonStyle(PatchworkDestructiveButtonStyle())
 
-                    actionButton(
-                        title: "Counter",
-                        fill: Color(.systemBackground),
-                        foreground: .indigo,
-                        border: Color.indigo.opacity(0.25),
-                        borderWidth: 1,
-                        identifier: "Chat.proposal.counterButton",
-                        action: onCounter
-                    )
+                    actionButton(title: "Counter", identifier: "Chat.proposal.counterButton", action: onCounter)
+                        .buttonStyle(
+                            PatchworkSecondaryButtonStyle(
+                                foreground: PatchworkTheme.brand,
+                                stroke: PatchworkTheme.brand.opacity(0.26),
+                                fill: PatchworkTheme.surface
+                            )
+                        )
 
-                    actionButton(
-                        title: "Accept",
-                        fill: .indigo,
-                        foreground: .white,
-                        border: .indigo,
-                        borderWidth: 0,
-                        identifier: "Chat.proposal.acceptButton",
-                        action: onAccept
-                    )
+                    actionButton(title: "Accept", identifier: "Chat.proposal.acceptButton", action: onAccept)
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
                 }
                 .accessibilityIdentifier("Chat.proposalActions")
             }
@@ -857,53 +831,24 @@ private struct ProposalMessageCard: View {
     private var proposalStatus: some View {
         switch proposal.status {
         case "accepted":
-            statusPill(title: "Accepted", color: .green)
+            PatchworkPill(title: "Accepted", foreground: PatchworkTheme.success)
         case "declined":
-            statusPill(title: "Declined", color: .secondary)
+            PatchworkPill(title: "Declined", foreground: PatchworkTheme.textSecondary)
         case "countered":
-            statusPill(title: "Countered", color: .secondary)
+            PatchworkPill(title: "Countered", foreground: PatchworkTheme.brand)
         default:
-            statusPill(title: "Pending", color: .orange)
+            PatchworkPill(title: "Pending", foreground: PatchworkTheme.warning)
         }
-    }
-
-    private func statusPill(title: String, color: Color) -> some View {
-        Text(title)
-            .font(.patchworkCaption)
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color.opacity(0.12), in: Capsule())
     }
 
     private func actionButton(
         title: String,
-        fill: Color,
-        foreground: Color,
-        border: Color,
-        borderWidth: CGFloat,
         identifier: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.patchworkBodyStrong)
-                .foregroundStyle(foreground)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .background(fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(border, lineWidth: borderWidth)
-                )
-        }
-        .buttonStyle(.plain)
+        Button(title, action: action)
         .accessibilityLabel(title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityElement(children: .combine)
-        .contentShape(Rectangle())
-        .frame(maxWidth: .infinity)
-            .accessibilityIdentifier(identifier)
+        .accessibilityIdentifier(identifier)
     }
 
     private var rateLabel: String {
@@ -1025,43 +970,45 @@ private struct ChatActionBar: View {
 
     var body: some View {
         if canShowCompleteButton {
-            primaryActionButton(
+            actionButton(
                 title: "Complete Job",
                 identifier: "Chat.completeJobButton",
+                style: .primary,
                 action: onCompleteTap
             )
         } else if !hasAcceptedProposal {
-            primaryActionButton(
+            actionButton(
                 title: "Propose terms",
                 identifier: "Chat.proposeTermsButton",
+                style: .secondary,
                 action: onProposeTap
             )
         }
     }
 
-    private func primaryActionButton(title: String, identifier: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.patchworkBodyStrong)
-                .foregroundStyle(canShowCompleteButton ? .white : PatchworkTheme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: PatchworkMetrics.buttonHeight)
-                .background {
-                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                        .fill(canShowCompleteButton ? AnyShapeStyle(PatchworkTheme.heroGradient) : AnyShapeStyle(PatchworkTheme.surface.opacity(0.9)))
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                        .stroke(canShowCompleteButton ? .clear : PatchworkTheme.strokeStrong, lineWidth: canShowCompleteButton ? 0 : 1)
-                )
-        }
-        .buttonStyle(.plain)
+    private enum ActionStyle {
+        case primary
+        case secondary
+    }
+
+    @ViewBuilder
+    private func actionButton(
+        title: String,
+        identifier: String,
+        style: ActionStyle,
+        action: @escaping () -> Void
+    ) -> some View {
+        let button = Button(title, action: action)
         .accessibilityLabel(title)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityElement(children: .combine)
-        .contentShape(Rectangle())
         .accessibilityIdentifier(identifier)
         .padding(.horizontal, 20)
+
+        switch style {
+        case .primary:
+            button.buttonStyle(PatchworkPrimaryButtonStyle())
+        case .secondary:
+            button.buttonStyle(PatchworkSecondaryButtonStyle())
+        }
     }
 }
 
@@ -1238,15 +1185,7 @@ private struct ProposalFormSheet: View {
                                     .font(.patchworkCaption)
                                     .foregroundStyle(PatchworkTheme.textSecondary)
                                 TextEditor(text: $notes)
-                                    .font(.patchworkBody)
-                                    .foregroundStyle(PatchworkTheme.textPrimary)
-                                    .frame(minHeight: 120)
-                                    .padding(10)
-                                    .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                                    )
+                                    .patchworkTextEditorStyle(minHeight: 120)
                                     .accessibilityLabel("Proposal notes")
                                     .accessibilityIdentifier("ProposalForm.notesField")
                             }
@@ -1331,15 +1270,7 @@ private struct ReviewFormSheet: View {
                             }
 
                             TextEditor(text: $text)
-                                .font(.patchworkBody)
-                                .foregroundStyle(PatchworkTheme.textPrimary)
-                                .frame(minHeight: 140)
-                                .padding(10)
-                                .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                                )
+                                .patchworkTextEditorStyle(minHeight: 140)
                                 .accessibilityLabel("Review details")
                                 .accessibilityIdentifier("ReviewForm.textField")
 

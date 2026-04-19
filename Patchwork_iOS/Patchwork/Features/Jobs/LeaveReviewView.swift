@@ -145,15 +145,7 @@ struct LeaveReviewView: View {
                     .accessibilityAddTraits(.isHeader)
 
                 TextEditor(text: $text)
-                    .font(.patchworkBody)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-                    .frame(minHeight: 140)
-                    .padding(10)
-                    .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
-                    )
+                    .patchworkTextEditorStyle(minHeight: 140)
                     .accessibilityIdentifier("LeaveReview.textField")
                     .accessibilityLabel("Review text")
                     .accessibilityHint("Describe the work, communication, and timeliness")

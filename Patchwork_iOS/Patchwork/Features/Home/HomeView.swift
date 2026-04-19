@@ -5,7 +5,6 @@ struct HomeView: View {
     private enum MainLayout {
         static let horizontalGutter: CGFloat = 20
         static let topRhythm: CGFloat = 16
-        static let categoryMenuMinWidth: CGFloat = 280
     }
 
     private struct TaskerRoute: Hashable, Identifiable {
@@ -156,7 +155,6 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(minWidth: MainLayout.categoryMenuMinWidth)
                 .frame(height: 50)
                 .background(PatchworkTheme.surface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
@@ -418,7 +416,7 @@ struct HomeView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, 12)
                         .padding(.bottom, 4)
                     }
                     .scrollIndicators(.hidden)
@@ -441,7 +439,8 @@ struct HomeView: View {
                     .font(.patchworkBodyStrong)
                     .foregroundStyle(PatchworkTheme.textPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.95)
+                    .minimumScaleFactor(0.82)
+                    .allowsTightening(true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if isSelected {
