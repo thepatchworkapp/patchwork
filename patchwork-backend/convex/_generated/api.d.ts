@@ -18,6 +18,7 @@ import type * as feedback from "../feedback.js";
 import type * as files from "../files.js";
 import type * as geospatial from "../geospatial.js";
 import type * as http from "../http.js";
+import type * as imageAssetHelpers from "../imageAssetHelpers.js";
 import type * as jobRequests from "../jobRequests.js";
 import type * as jobs from "../jobs.js";
 import type * as location from "../location.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   geospatial: typeof geospatial;
   http: typeof http;
+  imageAssetHelpers: typeof imageAssetHelpers;
   jobRequests: typeof jobRequests;
   jobs: typeof jobs;
   location: typeof location;
