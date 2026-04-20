@@ -35,6 +35,8 @@ async function adminFeedbackModules() {
     },
   }));
   vi.doMock("../reviewAccess", () => ({
+    APP_REVIEW_EMAIL: "review@apple.com",
+    APP_REVIEW_SEEKER_EMAIL: "seeker@apple.com",
     getReviewAccessStatus: vi.fn(),
     setReviewAccessEnabled: vi.fn(),
   }));
@@ -223,10 +225,12 @@ describe("feedback", () => {
       const firstReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
       expect(firstReset.deletedImageAssets).toBe(1);
       expect(firstReset.deletedStorageFiles).toBe(4);
+      expect(firstReset.failedStorageFiles).toBe(0);
 
       const secondReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
       expect(secondReset.deletedImageAssets).toBe(0);
       expect(secondReset.deletedStorageFiles).toBe(0);
+      expect(secondReset.failedStorageFiles).toBe(0);
 
       const [legacyUrl, thumbUrl, displayUrl, largeUrl] = await Promise.all([
         t.run(async (ctx) => await ctx.storage.getUrl(legacyPhotoStorageId)),
@@ -270,6 +274,8 @@ describe("feedback", () => {
         },
       }));
       vi.doMock("../reviewAccess", () => ({
+        APP_REVIEW_EMAIL: "review@apple.com",
+        APP_REVIEW_SEEKER_EMAIL: "seeker@apple.com",
         getReviewAccessStatus: vi.fn(),
         setReviewAccessEnabled: vi.fn(),
       }));
@@ -324,6 +330,47 @@ describe("feedback", () => {
       expect(feedbackRows[0]?.message).toBe("This feedback should survive a failed reset.");
     } finally {
       process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
+  });
+
+  test("admin resetDatabaseAndRevenueCat blocks real user reset when RevenueCat secret is missing", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    const previousRevenueCatSecret = process.env.REVENUECAT_SECRET_API_KEY;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+    delete process.env.REVENUECAT_SECRET_API_KEY;
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules());
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reset-revenuecat-preflight",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-user-reset-revenuecat-preflight",
+        email: "feedback-reset-revenuecat-preflight@example.com",
+      });
+
+      const userId = await asUser.mutation(api.users.createProfile, {
+        name: "RevenueCat Preflight User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      await expect(
+        asAdmin.action((api as any).admin.resetDatabaseAndRevenueCat, {})
+      ).rejects.toThrow("Database reset blocked before deleting users");
+
+      const user = await t.run(async (ctx) => await ctx.db.get(userId));
+      expect(user?.email).toBe("feedback-reset-revenuecat-preflight@example.com");
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      if (previousRevenueCatSecret === undefined) {
+        delete process.env.REVENUECAT_SECRET_API_KEY;
+      } else {
+        process.env.REVENUECAT_SECRET_API_KEY = previousRevenueCatSecret;
+      }
       vi.resetModules();
     }
   });

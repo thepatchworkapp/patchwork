@@ -230,6 +230,7 @@ type ResetDatabaseResult = {
   deletedUsers: number;
   deletedImageAssets: number;
   deletedStorageFiles: number;
+  failedStorageFiles?: number;
   preservedAdminEmails: string[];
   revenueCatCleanup?: {
     status: "completed" | "partial" | "skipped";
@@ -239,6 +240,7 @@ type ResetDatabaseResult = {
     failedCustomers: number;
     message: string;
   };
+  reviewAccess?: ReviewAccessStatus;
 };
 
 function AdminMaintenanceCard() {
@@ -263,6 +265,9 @@ function AdminMaintenanceCard() {
     try {
       const result = (await resetDatabase({})) as ResetDatabaseResult;
       let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
+      if (result.failedStorageFiles && result.failedStorageFiles > 0) {
+        nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
+      }
 
       if (result.revenueCatCleanup) {
         nextNotice += ` ${result.revenueCatCleanup.message}`;
@@ -276,19 +281,23 @@ function AdminMaintenanceCard() {
         }
       }
 
-      setIsReseeding(true);
-      try {
-        const reviewResult = (await reseedReviewerAccounts({})) as ReviewAccessStatus;
-        nextNotice += ` Apple reviewer accounts were reseeded at ${formatDate(reviewResult.updatedAt)} and review access is ${reviewResult.enabled ? "enabled" : "disabled"}.`;
-      } catch (reseedError) {
-        nextNotice += " Reviewer accounts were not reseeded automatically.";
-        setError(
-          reseedError instanceof Error
-            ? `Database reset succeeded, but reseeding Apple reviewer accounts failed: ${redactBackendUrls(reseedError.message)}`
-            : "Database reset succeeded, but reseeding Apple reviewer accounts failed."
-        );
-      } finally {
-        setIsReseeding(false);
+      if (result.reviewAccess) {
+        nextNotice += ` Apple reviewer accounts were reseeded at ${formatDate(result.reviewAccess.updatedAt)} and review access is ${result.reviewAccess.enabled ? "enabled" : "disabled"}.`;
+      } else {
+        setIsReseeding(true);
+        try {
+          const reviewResult = (await reseedReviewerAccounts({})) as ReviewAccessStatus;
+          nextNotice += ` Apple reviewer accounts were reseeded at ${formatDate(reviewResult.updatedAt)} and review access is ${reviewResult.enabled ? "enabled" : "disabled"}.`;
+        } catch (reseedError) {
+          nextNotice += " Reviewer accounts were not reseeded automatically.";
+          setError(
+            reseedError instanceof Error
+              ? `Database reset succeeded, but reseeding Apple reviewer accounts failed: ${redactBackendUrls(reseedError.message)}`
+              : "Database reset succeeded, but reseeding Apple reviewer accounts failed."
+          );
+        } finally {
+          setIsReseeding(false);
+        }
       }
 
       setNotice(nextNotice);

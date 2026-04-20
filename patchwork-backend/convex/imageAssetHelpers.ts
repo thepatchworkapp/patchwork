@@ -34,6 +34,7 @@ export type ImageAssetCommittedVariantInput = ImageAssetVariantInput & {
 };
 
 type CtxWithStorageAndDb = Pick<QueryCtx, "db" | "storage"> | Pick<MutationCtx, "db" | "storage">;
+type MutationCtxWithStorageAndDb = Pick<MutationCtx, "db" | "storage">;
 
 export const IMAGE_VARIANT_CONSTRAINTS: Record<
   ImageAssetVariantKind,
@@ -211,6 +212,113 @@ export async function getOwnedImageAssets(
   );
 
   return assets;
+}
+
+export function getImageAssetStorageIds(imageAsset: Doc<"imageAssets">) {
+  return [
+    imageAsset.variants.thumb.storageId,
+    imageAsset.variants.display.storageId,
+    imageAsset.variants.large?.storageId,
+  ].filter((storageId): storageId is Id<"_storage"> => Boolean(storageId));
+}
+
+export async function imageAssetStorageIdIsReferenced(
+  ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
+  storageId: Id<"_storage">
+) {
+  const imageAssets = await ctx.db.query("imageAssets").collect();
+  return imageAssets.some((imageAsset) =>
+    getImageAssetStorageIds(imageAsset).some((imageAssetStorageId) => imageAssetStorageId === storageId)
+  );
+}
+
+export async function deleteImageAssetStorageFiles(
+  ctx: Pick<MutationCtx, "storage">,
+  imageAsset: Doc<"imageAssets">
+) {
+  let deleted = 0;
+  let failed = 0;
+
+  for (const storageId of new Set(getImageAssetStorageIds(imageAsset))) {
+    try {
+      await ctx.storage.delete(storageId);
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn("[ImageAsset] Failed to delete storage file", {
+        imageAssetId: imageAsset._id,
+        storageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { deleted, failed };
+}
+
+export async function markImageAssetDeleted(
+  ctx: MutationCtxWithStorageAndDb,
+  imageAsset: Doc<"imageAssets">
+) {
+  if (imageAsset.status !== "deleted") {
+    await ctx.db.patch(imageAsset._id, {
+      status: "deleted",
+      updatedAt: Date.now(),
+    });
+  }
+
+  return await deleteImageAssetStorageFiles(ctx, imageAsset);
+}
+
+export async function imageAssetHasOwnerReferences(
+  ctx: Pick<MutationCtx, "db">,
+  imageAssetId: Id<"imageAssets">,
+  ownerUserId: Id<"users">
+) {
+  const user = await ctx.db.get(ownerUserId);
+  if (user?.photoAssetId === imageAssetId) {
+    return true;
+  }
+
+  const taskerProfile = await ctx.db
+    .query("taskerProfiles")
+    .withIndex("by_userId", (q) => q.eq("userId", ownerUserId))
+    .unique();
+  if (taskerProfile?.photoAssetId === imageAssetId) {
+    return true;
+  }
+
+  const taskerCategories = await ctx.db
+    .query("taskerCategories")
+    .withIndex("by_userId", (q) => q.eq("userId", ownerUserId))
+    .collect();
+
+  return taskerCategories.some((category) =>
+    category.coverAssetId === imageAssetId ||
+    (category.portfolioAssetIds ?? []).some((assetId) => assetId === imageAssetId)
+  );
+}
+
+export async function deleteImageAssetIfUnreferenced(
+  ctx: MutationCtxWithStorageAndDb,
+  imageAssetId: Id<"imageAssets"> | undefined,
+  ownerUserId: Id<"users">
+) {
+  if (!imageAssetId) {
+    return { deleted: 0, failed: 0, skipped: true };
+  }
+
+  const imageAsset = await ctx.db.get(imageAssetId);
+  if (!imageAsset || imageAsset.ownerUserId !== ownerUserId) {
+    return { deleted: 0, failed: 0, skipped: true };
+  }
+
+  if (await imageAssetHasOwnerReferences(ctx, imageAsset._id, ownerUserId)) {
+    return { deleted: 0, failed: 0, skipped: true };
+  }
+
+  const result = await markImageAssetDeleted(ctx, imageAsset);
+  return { ...result, skipped: false };
 }
 
 function toImageVariantDto(

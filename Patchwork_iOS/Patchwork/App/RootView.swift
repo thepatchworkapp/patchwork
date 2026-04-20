@@ -1,6 +1,7 @@
 import CoreLocation
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -497,8 +498,10 @@ private struct ProfileSetupView: View {
     @State private var city = ""
     @State private var province = ""
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedPhotoData: Data?
+    @State private var selectedPhotoPreviewImage: UIImage?
     @State private var selectedPhotoAsset: RemoteImageAsset?
-    @State private var selectedPhotoAssetId: ConvexID?
+    @State private var isPreparingPhoto = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String?
     @State private var isSaving = false
@@ -526,7 +529,7 @@ private struct ProfileSetupView: View {
             guard let newValue else {
                 return
             }
-            Task { await uploadProfilePhoto(from: newValue) }
+            Task { await prepareSelectedPhoto(from: newValue) }
         }
     }
 
@@ -567,7 +570,11 @@ private struct ProfileSetupView: View {
 
             VStack(spacing: 12) {
                 ZStack {
-                    if let selectedPhotoAsset {
+                    if let selectedPhotoPreviewImage {
+                        Image(uiImage: selectedPhotoPreviewImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else if let selectedPhotoAsset {
                         PatchworkRemoteImage(
                             asset: selectedPhotoAsset,
                             preferredVariant: .display,
@@ -593,24 +600,34 @@ private struct ProfileSetupView: View {
                         matching: .images,
                         photoLibrary: .shared()
                     ) {
-                        Label(selectedPhotoAssetId == nil ? "Add Photo" : "Replace Photo", systemImage: "photo")
+                        Label(hasSelectedPhoto ? "Replace Photo" : "Add Photo", systemImage: "photo")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PatchworkSecondaryButtonStyle())
                     .accessibilityIdentifier("ProfileSetup.photoPicker")
-                    .disabled(isUploadingPhoto || isSaving)
+                    .disabled(isPreparingPhoto || isUploadingPhoto || isSaving)
 
-                    if selectedPhotoAssetId != nil {
+                    if hasSelectedPhoto {
                         Button("Remove") {
                             clearSelectedPhoto()
                         }
                         .buttonStyle(PatchworkSecondaryButtonStyle())
                         .accessibilityIdentifier("ProfileSetup.photoRemoveButton")
-                        .disabled(isUploadingPhoto || isSaving)
+                        .disabled(isPreparingPhoto || isUploadingPhoto || isSaving)
                     }
                 }
 
-                if isUploadingPhoto {
+                if isPreparingPhoto {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(PatchworkTheme.brand)
+                        Text("Preparing photo...")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if isUploadingPhoto {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -689,11 +706,11 @@ private struct ProfileSetupView: View {
     private var stepActionContent: some View {
         switch step {
         case .profile:
-            Button(isSaving ? "Saving..." : (isUploadingPhoto ? "Uploading..." : "Continue")) {
+            Button(isSaving ? "Saving..." : (isPreparingPhoto ? "Preparing..." : (isUploadingPhoto ? "Uploading..." : "Continue"))) {
                 Task { await createProfile() }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
-            .disabled(isSaving || isUploadingPhoto || !isProfileStepValid)
+            .disabled(isSaving || isPreparingPhoto || isUploadingPhoto || !isProfileStepValid)
             .accessibilityIdentifier("ProfileSetup.continueButton")
         case .location:
             Button("Allow location") {
@@ -770,22 +787,32 @@ private struct ProfileSetupView: View {
         }
     }
 
+    private var hasSelectedPhoto: Bool {
+        selectedPhotoData != nil || selectedPhotoPreviewImage != nil || selectedPhotoAsset != nil
+    }
+
     private func createProfile() async {
         isSaving = true
+        photoUploadError = nil
         defer { isSaving = false }
         do {
-            var args: [String: Any] = [
-                "name": name,
-                "city": city,
-                "province": province,
-            ]
-            if let selectedPhotoAssetId {
-                args["photoAssetId"] = selectedPhotoAssetId
+            if createdUserId == nil {
+                let args: [String: Any] = [
+                    "name": name,
+                    "city": city,
+                    "province": province,
+                ]
+                createdUserId = try await sessionStore.client.mutation(
+                    "users:createProfile",
+                    args: args
+                ) as ConvexID
             }
-            createdUserId = try await sessionStore.client.mutation(
-                "users:createProfile",
-                args: args
-            ) as ConvexID
+
+            let didAttachPhoto = await attachSelectedPhotoIfNeeded()
+            guard didAttachPhoto else {
+                return
+            }
+
             step = .location
         } catch {
             appState.lastError = error.localizedDescription
@@ -847,29 +874,77 @@ private struct ProfileSetupView: View {
         }
     }
 
-    private func uploadProfilePhoto(from item: PhotosPickerItem) async {
-        isUploadingPhoto = true
+    private func prepareSelectedPhoto(from item: PhotosPickerItem) async {
+        isPreparingPhoto = true
         photoUploadError = nil
         defer {
-            isUploadingPhoto = false
+            isPreparingPhoto = false
             selectedPhotoItem = nil
         }
 
         do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            let uploadedAsset = try await uploadService.uploadImage(from: item, purpose: "userPhoto")
-            selectedPhotoAsset = uploadedAsset
-            selectedPhotoAssetId = uploadedAsset.id
+            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                throw ImageAssetUploadService.UploadError.invalidPickerData
+            }
+            let previewImage = try ImageAssetUploadService.downsampledImage(from: data, maxPixelSize: 1024)
+            selectedPhotoData = data
+            selectedPhotoPreviewImage = previewImage
+            selectedPhotoAsset = nil
         } catch {
+            selectedPhotoData = nil
+            selectedPhotoPreviewImage = nil
+            selectedPhotoAsset = nil
             photoUploadError = error.localizedDescription
         }
     }
 
+    @discardableResult
+    private func attachSelectedPhotoIfNeeded() async -> Bool {
+        guard let selectedPhotoData else {
+            return true
+        }
+
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
+
+        do {
+            let photoAsset: RemoteImageAsset
+            if let selectedPhotoAsset {
+                photoAsset = selectedPhotoAsset
+            } else {
+                let uploadService = ImageAssetUploadService(client: sessionStore.client)
+                let uploadedAsset = try await uploadService.uploadImage(data: selectedPhotoData, purpose: "userPhoto")
+                selectedPhotoAsset = uploadedAsset
+                photoAsset = uploadedAsset
+            }
+
+            _ = try await sessionStore.client.mutation(
+                "users:updateProfilePhoto",
+                args: ["photoAssetId": photoAsset.id]
+            ) as CurrentUser
+            return true
+        } catch {
+            photoUploadError = "Your profile was created, but we couldn't save this photo. Try Continue again or Remove the photo. \(error.localizedDescription)"
+            return false
+        }
+    }
+
     private func clearSelectedPhoto() {
+        let assetToDelete = selectedPhotoAsset
+        selectedPhotoData = nil
+        selectedPhotoPreviewImage = nil
         selectedPhotoAsset = nil
-        selectedPhotoAssetId = nil
         photoUploadError = nil
         selectedPhotoItem = nil
+
+        if let assetToDelete {
+            Task {
+                let _: RemoteImageAsset? = try? await sessionStore.client.mutation(
+                    "files:deleteImageAsset",
+                    args: ["imageAssetId": assetToDelete.id]
+                )
+            }
+        }
     }
 
     @discardableResult

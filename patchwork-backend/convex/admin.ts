@@ -1,7 +1,12 @@
-import { action, internalMutation, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { authComponent } from "./auth";
-import { getReviewAccessStatus, setReviewAccessEnabled } from "./reviewAccess";
+import {
+  APP_REVIEW_EMAIL,
+  APP_REVIEW_SEEKER_EMAIL,
+  getReviewAccessStatus,
+  setReviewAccessEnabled,
+} from "./reviewAccess";
 import { taskerGeo } from "./geospatial";
 import { internal } from "./_generated/api";
 import { imageAssetValidator } from "../lib/convex/validators";
@@ -27,6 +32,7 @@ function getAdminEmailAllowlist(): Set<string> {
 const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
 const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
+const REVIEW_ACCOUNT_EMAILS = new Set([APP_REVIEW_EMAIL, APP_REVIEW_SEEKER_EMAIL]);
 const reviewAccessStatusValidator = v.object({
   email: v.string(),
   allowedEmails: v.array(v.string()),
@@ -50,15 +56,20 @@ const feedbackSubmissionAdminValidator = v.object({
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
+  let failed = 0;
   for (const storageId of storageIds) {
     try {
       await ctx.storage.delete(storageId);
       deleted += 1;
-    } catch {
-      // Ignore missing blobs so a partially cleaned environment can still reset.
+    } catch (error) {
+      failed += 1;
+      console.warn("[AdminReset] Storage delete failed", {
+        storageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
-  return deleted;
+  return { deleted, failed };
 }
 
 async function deleteTableRows(
@@ -142,7 +153,7 @@ async function resetApplicationData(ctx: any) {
     }
   });
 
-  const deletedStorageFiles = await deleteStorageIds(ctx, storageIds);
+  const storageDeleteResult = await deleteStorageIds(ctx, storageIds);
 
   return {
     deletedMessages,
@@ -160,7 +171,8 @@ async function resetApplicationData(ctx: any) {
     deletedOtps,
     deletedAdminOtps,
     deletedUsers,
-    deletedStorageFiles,
+    deletedStorageFiles: storageDeleteResult.deleted,
+    failedStorageFiles: storageDeleteResult.failed,
     deletedUserAppUserIds,
   };
 }
@@ -183,6 +195,11 @@ type RevenueCatCleanupSummary = {
   missingCustomers: number;
   failedCustomers: number;
   message: string;
+};
+
+type RevenueCatCleanupCandidate = {
+  appUserId: string;
+  email: string;
 };
 
 async function deleteRevenueCatCustomer(appUserId: string, secretApiKey: string) {
@@ -210,7 +227,10 @@ async function deleteRevenueCatCustomer(appUserId: string, secretApiKey: string)
   );
 }
 
-async function clearRevenueCatCustomers(appUserIds: string[]): Promise<RevenueCatCleanupSummary> {
+async function clearRevenueCatCustomers(
+  appUserIds: string[],
+  options: { allowMissingSecretSkip?: boolean } = {}
+): Promise<RevenueCatCleanupSummary> {
   const secretApiKey = process.env.REVENUECAT_SECRET_API_KEY;
   const uniqueAppUserIds = Array.from(new Set(appUserIds.filter(Boolean)));
 
@@ -226,6 +246,17 @@ async function clearRevenueCatCustomers(appUserIds: string[]): Promise<RevenueCa
   }
 
   if (!secretApiKey) {
+    if (options.allowMissingSecretSkip) {
+      return {
+        status: "skipped",
+        attemptedCustomers: uniqueAppUserIds.length,
+        deletedCustomers: 0,
+        missingCustomers: 0,
+        failedCustomers: 0,
+        message: "RevenueCat cleanup skipped because only Apple review accounts were present and REVENUECAT_SECRET_API_KEY is not configured.",
+      };
+    }
+
     return {
       status: "skipped",
       attemptedCustomers: uniqueAppUserIds.length,
@@ -467,6 +498,24 @@ export const reseedReviewerAccounts = mutation({
   },
 });
 
+export const reseedReviewerAccountsInternal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    return await setReviewAccessEnabled(ctx, true);
+  },
+});
+
+export const getRevenueCatCleanupCandidates = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<RevenueCatCleanupCandidate[]> => {
+    const users = await ctx.db.query("users").collect();
+    return users.map((user) => ({
+      appUserId: String(user._id),
+      email: user.email.toLowerCase(),
+    }));
+  },
+});
+
 export const resetDatabaseCore = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -491,12 +540,28 @@ export const resetDatabaseAndRevenueCat = action({
       throw new ConvexError("Unauthorized");
     }
 
-    const { deletedUserAppUserIds, ...result } = await ctx.runMutation(internal.admin.resetDatabaseCore, {});
-    const revenueCatCleanup = await clearRevenueCatCustomers(deletedUserAppUserIds);
+    const revenueCatCandidates = await ctx.runQuery(internal.admin.getRevenueCatCleanupCandidates, {});
+    const hasOnlyReviewAccounts = revenueCatCandidates.every((candidate) =>
+      REVIEW_ACCOUNT_EMAILS.has(candidate.email)
+    );
+    const revenueCatCleanup = await clearRevenueCatCustomers(
+      revenueCatCandidates.map((candidate) => candidate.appUserId),
+      { allowMissingSecretSkip: hasOnlyReviewAccounts }
+    );
+
+    if (revenueCatCleanup.status !== "completed" && !hasOnlyReviewAccounts) {
+      throw new ConvexError(
+        `Database reset blocked before deleting users because RevenueCat cleanup did not complete. ${revenueCatCleanup.message}`
+      );
+    }
+
+    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runMutation(internal.admin.resetDatabaseCore, {});
+    const reviewAccess = await ctx.runMutation(internal.admin.reseedReviewerAccountsInternal, {});
 
     return {
       ...result,
       revenueCatCleanup,
+      reviewAccess,
     };
   },
 });

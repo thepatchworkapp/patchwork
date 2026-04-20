@@ -8,19 +8,18 @@ function deriveSiteUrlFromCloudUrl(cloudUrl: string): string {
 
 export function getConvexCloudUrl(): string {
   return (
-    getEnv("VITE_CONVEX_URL") ||
     getEnv("PUBLIC_CONVEX_URL") ||
+    getEnv("VITE_CONVEX_URL") ||
     ""
   );
 }
 
 export function getConvexSiteUrl(): string {
   const explicit =
-    getEnv("VITE_CONVEX_SITE_URL") ||
-    getEnv("PUBLIC_CONVEX_SITE_URL");
+    getEnv("PUBLIC_CONVEX_SITE_URL") ||
+    getEnv("VITE_CONVEX_SITE_URL");
   if (explicit) return explicit;
 
   const cloud = getConvexCloudUrl();
   return cloud ? deriveSiteUrlFromCloudUrl(cloud) : "";
 }
-

@@ -11,6 +11,9 @@ import {
   assertVariantShape,
   assertVariantStorageMetadataMatches,
   IMAGE_UPLOAD_CONSTRAINTS,
+  imageAssetHasOwnerReferences,
+  imageAssetStorageIdIsReferenced,
+  markImageAssetDeleted,
   toImageAssetDto,
   toVariantRecord,
 } from "./imageAssetHelpers";
@@ -185,6 +188,43 @@ export const commitImageAsset = mutation({
   },
 });
 
+export const deleteUncommittedImageUploads = mutation({
+  args: {
+    variants: v.array(imageAssetCommittedVariantDescriptorValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAppUser(ctx);
+
+    const seenKinds = new Set<string>();
+    for (const variant of args.variants) {
+      if (seenKinds.has(variant.kind)) {
+        throw new ConvexError(`Duplicate variant kind: ${variant.kind}`);
+      }
+      seenKinds.add(variant.kind);
+      assertVariantShape(variant);
+      await assertVariantStorageMetadataMatches(ctx, variant);
+      if (await imageAssetStorageIdIsReferenced(ctx, variant.storageId)) {
+        throw new ConvexError("Storage file is already committed to an image asset");
+      }
+    }
+
+    for (const variant of args.variants) {
+      try {
+        await ctx.storage.delete(variant.storageId);
+      } catch (error) {
+        console.warn("[ImageAsset] Failed to delete uncommitted upload", {
+          storageId: variant.storageId,
+          kind: variant.kind,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return null;
+  },
+});
+
 export const getImageAsset = query({
   args: {
     imageAssetId: v.id("imageAssets"),
@@ -217,12 +257,11 @@ export const deleteImageAsset = mutation({
       return null;
     }
 
-    if (imageAsset.status !== "deleted") {
-      await ctx.db.patch(imageAsset._id, {
-        status: "deleted",
-        updatedAt: Date.now(),
-      });
+    if (await imageAssetHasOwnerReferences(ctx, imageAsset._id, user._id)) {
+      throw new ConvexError("Image asset is still in use");
     }
+
+    await markImageAssetDeleted(ctx, imageAsset);
 
     const updatedImageAsset = await ctx.db.get(imageAsset._id);
     if (!updatedImageAsset) {

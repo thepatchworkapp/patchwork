@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { currentUserValidator } from "../lib/convex/validators";
 import {
+  deleteImageAssetIfUnreferenced,
   getDisplayStorageId,
   getOwnedImageAsset,
   getUserPhotoImageAssetDto,
@@ -138,6 +139,7 @@ export const updateProfilePhoto = mutation({
   returns: currentUserValidator,
   handler: async (ctx, args) => {
     const { user } = await requireAppUser(ctx);
+    const previousPhotoAssetId = user.photoAssetId;
 
     const now = Date.now();
     if (args.photoAssetId === null) {
@@ -157,6 +159,10 @@ export const updateProfilePhoto = mutation({
         photo: getDisplayStorageId(imageAsset),
         updatedAt: now,
       });
+    }
+
+    if (previousPhotoAssetId && previousPhotoAssetId !== args.photoAssetId) {
+      await deleteImageAssetIfUnreferenced(ctx, previousPhotoAssetId, user._id);
     }
 
     const updatedUser = await ctx.db.get(user._id);

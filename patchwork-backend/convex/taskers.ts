@@ -15,6 +15,7 @@ import {
 } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 import {
+  deleteImageAssetIfUnreferenced,
   getOwnedImageAsset,
   getOwnedImageAssets,
   getTaskerCategoryPortfolioImageDtos,
@@ -372,6 +373,7 @@ export const setTaskerPhoto = mutation({
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
     const { user, profile } = await loadOwnedTaskerProfile(ctx);
+    const previousCustomPhotoAssetId = profile.photoSource === "custom" ? profile.photoAssetId : undefined;
 
     if (args.photoSource === "user") {
       const updates = {
@@ -381,6 +383,7 @@ export const setTaskerPhoto = mutation({
       };
 
       await ctx.db.patch(profile._id, updates);
+      await deleteImageAssetIfUnreferenced(ctx, previousCustomPhotoAssetId, user._id);
       return buildTaskerProfileResponse(ctx, {
         ...profile,
         ...updates,
@@ -402,6 +405,9 @@ export const setTaskerPhoto = mutation({
       updatedAt: Date.now(),
     };
     await ctx.db.patch(profile._id, updates);
+    if (previousCustomPhotoAssetId && previousCustomPhotoAssetId !== imageAsset._id) {
+      await deleteImageAssetIfUnreferenced(ctx, previousCustomPhotoAssetId, user._id);
+    }
 
     return buildTaskerProfileResponse(ctx, {
       ...profile,
@@ -437,6 +443,7 @@ export const setCategoryPortfolio = mutation({
       args.portfolioAssetIds,
       args.coverAssetId
     );
+    const previousPortfolioAssetIds = category.portfolioAssetIds ?? [];
 
     await ctx.db.patch(category._id, {
       portfolioAssetIds: portfolio.normalizedPortfolioAssetIds,
@@ -444,6 +451,13 @@ export const setCategoryPortfolio = mutation({
       photos: portfolio.compatibilityPhotos,
       updatedAt: Date.now(),
     });
+
+    const nextPortfolioAssetIds = new Set(portfolio.normalizedPortfolioAssetIds.map(String));
+    await Promise.all(
+      previousPortfolioAssetIds
+        .filter((assetId) => !nextPortfolioAssetIds.has(String(assetId)))
+        .map((assetId) => deleteImageAssetIfUnreferenced(ctx, assetId, user._id))
+    );
 
     return buildTaskerProfileResponse(ctx, profile);
   },
@@ -737,7 +751,7 @@ export const removeTaskerCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { profile } = await loadOwnedTaskerProfile(ctx);
+    const { user, profile } = await loadOwnedTaskerProfile(ctx);
 
     const category = await ctx.db
       .query("taskerCategories")
@@ -750,7 +764,13 @@ export const removeTaskerCategory = mutation({
       throw new ConvexError("Category not found");
     }
 
+    const removedPortfolioAssetIds = category.portfolioAssetIds ?? [];
     await ctx.db.delete(category._id);
+    await Promise.all(
+      removedPortfolioAssetIds.map((assetId) =>
+        deleteImageAssetIfUnreferenced(ctx, assetId, user._id)
+      )
+    );
 
     return null;
   },

@@ -66,6 +66,28 @@ async function createImageAsset(
   });
 }
 
+function storageIdsForAsset(asset: any) {
+  return [
+    asset.variants.thumb.storageId,
+    asset.variants.display.storageId,
+    asset.variants.large?.storageId,
+  ].filter(Boolean);
+}
+
+async function expectStorageIdsDeleted(t: any, storageIds: string[]) {
+  for (const storageId of storageIds) {
+    const url = await t.run(async (ctx: any) => await ctx.storage.getUrl(storageId));
+    expect(url).toBeNull();
+  }
+}
+
+async function expectStorageIdsPresent(t: any, storageIds: string[]) {
+  for (const storageId of storageIds) {
+    const url = await t.run(async (ctx: any) => await ctx.storage.getUrl(storageId));
+    expect(url).not.toBeNull();
+  }
+}
+
 async function seedAndGetCategory(
   t: any,
   slug: string = "plumbing",
@@ -249,6 +271,114 @@ describe("image asset contract", () => {
     ).rejects.toThrow("Image asset not found");
   });
 
+  test("deleteImageAsset marks asset deleted and removes variant storage", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|delete_image_asset",
+      email: "delete_image_asset@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Delete Image Asset",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asset = await createImageAsset(t, asUser, "userPhoto");
+    const storageIds = storageIdsForAsset(asset);
+
+    const deleted = await asUser.mutation(api.files.deleteImageAsset, {
+      imageAssetId: asset._id,
+    });
+
+    expect(deleted?.status).toBe("deleted");
+    const storedAsset = await t.run(async (ctx) => await ctx.db.get(asset._id));
+    expect(storedAsset?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, storageIds);
+  });
+
+  test("deleteUncommittedImageUploads removes validated staged variant storage", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|delete_uncommitted_uploads",
+      email: "delete_uncommitted_uploads@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Delete Uncommitted Uploads",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const thumbStorageId = await storeImage(t, "image/jpeg", 12_000);
+    const displayStorageId = await storeImage(t, "image/jpeg", 54_000);
+
+    await asUser.mutation(api.files.deleteUncommittedImageUploads, {
+      variants: [
+        {
+          kind: "thumb",
+          storageId: thumbStorageId,
+          contentType: "image/jpeg",
+          width: 300,
+          height: 300,
+          byteSize: 12_000,
+        },
+        {
+          kind: "display",
+          storageId: displayStorageId,
+          contentType: "image/jpeg",
+          width: 900,
+          height: 900,
+          byteSize: 54_000,
+        },
+      ],
+    });
+
+    await expectStorageIdsDeleted(t, [thumbStorageId, displayStorageId]);
+  });
+
+  test("deleteUncommittedImageUploads refuses committed image asset storage", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|delete_committed_upload_cleanup",
+      email: "delete_committed_upload_cleanup@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Delete Committed Upload Cleanup",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asset = await createImageAsset(t, asUser, "userPhoto");
+    const storageIds = storageIdsForAsset(asset);
+
+    await expect(
+      asUser.mutation(api.files.deleteUncommittedImageUploads, {
+        variants: [
+          {
+            kind: "thumb",
+            storageId: asset.variants.thumb.storageId,
+            contentType: asset.variants.thumb.contentType,
+            width: asset.variants.thumb.width,
+            height: asset.variants.thumb.height,
+            byteSize: asset.variants.thumb.byteSize,
+          },
+          {
+            kind: "display",
+            storageId: asset.variants.display.storageId,
+            contentType: asset.variants.display.contentType,
+            width: asset.variants.display.width,
+            height: asset.variants.display.height,
+            byteSize: asset.variants.display.byteSize,
+          },
+        ],
+      })
+    ).rejects.toThrow("Storage file is already committed");
+
+    await expectStorageIdsPresent(t, storageIds);
+  });
+
   test("tasker photo can switch between user-linked and custom asset", async () => {
     const t = convexTest(schema, modules);
     const asUser = t.withIdentity({
@@ -266,6 +396,7 @@ describe("image asset contract", () => {
 
     const userPhoto = await createImageAsset(t, asUser, "userPhoto");
     const customTaskerPhoto = await createImageAsset(t, asUser, "taskerPhoto");
+    const customTaskerPhotoStorageIds = storageIdsForAsset(customTaskerPhoto);
 
     await asUser.mutation(api.users.updateProfilePhoto, {
       photoAssetId: userPhoto._id,
@@ -298,6 +429,50 @@ describe("image asset contract", () => {
 
     expect(userLinkedProfile.photoSource).toBe("user");
     expect(userLinkedProfile.photoImage?._id).toBe(userPhoto._id);
+
+    const storedCustomPhoto = await t.run(async (ctx) => await ctx.db.get(customTaskerPhoto._id));
+    expect(storedCustomPhoto?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, customTaskerPhotoStorageIds);
+  });
+
+  test("user profile photo replacement and removal cleanup unreferenced image assets", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|profile_photo_cleanup",
+      email: "profile_photo_cleanup@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Profile Photo Cleanup",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const firstPhoto = await createImageAsset(t, asUser, "userPhoto");
+    const secondPhoto = await createImageAsset(t, asUser, "userPhoto");
+    const firstStorageIds = storageIdsForAsset(firstPhoto);
+    const secondStorageIds = storageIdsForAsset(secondPhoto);
+
+    await asUser.mutation(api.users.updateProfilePhoto, {
+      photoAssetId: firstPhoto._id,
+    });
+    await asUser.mutation(api.users.updateProfilePhoto, {
+      photoAssetId: secondPhoto._id,
+    });
+
+    let storedFirstPhoto = await t.run(async (ctx) => await ctx.db.get(firstPhoto._id));
+    expect(storedFirstPhoto?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, firstStorageIds);
+
+    await asUser.mutation(api.users.updateProfilePhoto, {
+      photoAssetId: null,
+    });
+
+    const currentUser = await asUser.query(api.users.getCurrentUser, {});
+    expect(currentUser?.photoAssetId).toBeUndefined();
+    const storedSecondPhoto = await t.run(async (ctx) => await ctx.db.get(secondPhoto._id));
+    expect(storedSecondPhoto?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, secondStorageIds);
   });
 
   test("setCategoryPortfolio enforces max/unique/cover and updates compatibility order", async () => {
@@ -383,5 +558,67 @@ describe("image asset contract", () => {
       a.variants.display.storageId,
       b.variants.display.storageId,
     ]);
+  });
+
+  test("portfolio updates and category removal cleanup unreferenced image assets", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|portfolio_cleanup",
+      email: "portfolio_cleanup@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Portfolio Cleanup",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const plumbing = await seedAndGetCategory(t, "plumbing");
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Portfolio Cleanup Tasker",
+      categoryId: plumbing._id,
+      categoryBio: "Portfolio cleanup bio",
+      rateType: "hourly",
+      hourlyRate: 6500,
+      serviceRadius: 20,
+    });
+
+    const a = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const b = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const c = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const bStorageIds = storageIdsForAsset(b);
+    const remainingStorageIds = [
+      ...storageIdsForAsset(a),
+      ...storageIdsForAsset(c),
+    ];
+
+    await asUser.mutation(api.taskers.setCategoryPortfolio, {
+      categoryId: plumbing._id,
+      portfolioAssetIds: [a._id, b._id, c._id],
+      coverAssetId: a._id,
+    });
+
+    await asUser.mutation(api.taskers.setCategoryPortfolio, {
+      categoryId: plumbing._id,
+      portfolioAssetIds: [a._id, c._id],
+      coverAssetId: c._id,
+    });
+
+    const storedRemovedAsset = await t.run(async (ctx) => await ctx.db.get(b._id));
+    expect(storedRemovedAsset?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, bStorageIds);
+
+    await asUser.mutation(api.taskers.removeTaskerCategory, {
+      categoryId: plumbing._id,
+    });
+
+    const [storedA, storedC] = await Promise.all([
+      t.run(async (ctx) => await ctx.db.get(a._id)),
+      t.run(async (ctx) => await ctx.db.get(c._id)),
+    ]);
+    expect(storedA?.status).toBe("deleted");
+    expect(storedC?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, remainingStorageIds);
   });
 });

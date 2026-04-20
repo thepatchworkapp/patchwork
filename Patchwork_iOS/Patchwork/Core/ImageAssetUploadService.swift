@@ -130,25 +130,35 @@ struct ImageAssetUploadService {
         )
 
         var committedVariants: [[String: Any]] = []
-        for variant in variants {
-            guard let target = generated.uploadUrls.first(where: { $0.kind == variant.name }) else {
-                throw UploadError.invalidUploadURL
+        do {
+            for variant in variants {
+                guard let target = generated.uploadUrls.first(where: { $0.kind == variant.name }) else {
+                    throw UploadError.invalidUploadURL
+                }
+                let storageId = try await uploadVariantBlob(variant.data, to: target)
+                committedVariants.append(variant.committedPayload(storageId: storageId))
             }
-            let storageId = try await uploadVariantBlob(variant.data, to: target)
-            committedVariants.append(variant.committedPayload(storageId: storageId))
+
+            let commitArgs: [String: Any] = [
+                "purpose": purpose,
+                "sourceContentType": "image/jpeg",
+                "variants": committedVariants,
+            ]
+
+            let committed: RemoteImageAsset = try await client.mutation(
+                "files:commitImageAsset",
+                args: commitArgs
+            )
+            return committed
+        } catch {
+            if !committedVariants.isEmpty {
+                let _: EmptyResponse? = try? await client.mutation(
+                    "files:deleteUncommittedImageUploads",
+                    args: ["variants": committedVariants]
+                )
+            }
+            throw error
         }
-
-        let commitArgs: [String: Any] = [
-            "purpose": purpose,
-            "sourceContentType": "image/jpeg",
-            "variants": committedVariants,
-        ]
-
-        let committed: RemoteImageAsset = try await client.mutation(
-            "files:commitImageAsset",
-            args: commitArgs
-        )
-        return committed
     }
 
     private func buildUploadVariants(from sourceData: Data, includeLargeVariant: Bool = true) throws -> [EncodedUploadVariant] {
