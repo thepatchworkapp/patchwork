@@ -4,6 +4,12 @@ import { authComponent } from "./auth";
 import { getReviewAccessStatus, setReviewAccessEnabled } from "./reviewAccess";
 import { taskerGeo } from "./geospatial";
 import { internal } from "./_generated/api";
+import { imageAssetValidator } from "../lib/convex/validators";
+import {
+  getTaskerCategoryPortfolioImageDtos,
+  getTaskerProfileImageAssetDto,
+  getUserPhotoImageAssetDto,
+} from "./imageAssetHelpers";
 
 function getAdminEmailAllowlist(): Set<string> {
   // Support both ADMIN_EMAILS (comma-separated) and legacy ADMIN_EMAIL (single).
@@ -92,6 +98,15 @@ async function collectStorageIdsForRows(
   }
 }
 
+function getImageAssetStorageIds(imageAsset: any) {
+  const storageIdCandidates = [
+    imageAsset?.variants?.thumb?.storageId,
+    imageAsset?.variants?.display?.storageId,
+    imageAsset?.variants?.large?.storageId,
+  ];
+  return storageIdCandidates.filter((storageId): storageId is NonNullable<typeof storageId> => !!storageId);
+}
+
 async function resetApplicationData(ctx: any) {
   const storageIds = new Set<any>();
   const deletedUserAppUserIds: string[] = [];
@@ -113,6 +128,9 @@ async function resetApplicationData(ctx: any) {
     await taskerGeo.remove(ctx, taskerProfile._id);
   });
   const deletedSeekerProfiles = await deleteTableRows(ctx, "seekerProfiles");
+  const deletedImageAssets = await deleteTableRows(ctx, "imageAssets", async (imageAsset) => {
+    await collectStorageIdsForRows([imageAsset], storageIds, (row) => getImageAssetStorageIds(row));
+  });
   const deletedFeedbackSubmissions = await deleteTableRows(ctx, "feedbackSubmissions");
   const deletedReviewAccess = await deleteTableRows(ctx, "reviewAccess");
   const deletedOtps = await deleteTableRows(ctx, "otps");
@@ -136,6 +154,7 @@ async function resetApplicationData(ctx: any) {
     deletedTaskerCategories,
     deletedTaskerProfiles,
     deletedSeekerProfiles,
+    deletedImageAssets,
     deletedFeedbackSubmissions,
     deletedReviewAccess,
     deletedOtps,
@@ -341,6 +360,8 @@ export const listAllUsers = query({
         email: v.string(),
         name: v.string(),
         photo: v.optional(v.id("_storage")),
+        photoAssetId: v.optional(v.id("imageAssets")),
+        photoImage: v.union(imageAssetValidator, v.null()),
         photoUrl: v.union(v.string(), v.null()),
         location: v.object({
           city: v.string(),
@@ -389,11 +410,14 @@ export const listAllUsers = query({
       users: await Promise.all(
         result.map(async (user) => {
           const photoUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+          const photoImage = await getUserPhotoImageAssetDto(ctx, user, true);
           return {
             _id: user._id,
             email: user.email,
             name: user.name,
             photo: user.photo,
+            photoAssetId: user.photoAssetId,
+            photoImage,
             photoUrl,
             location: user.location,
             roles: user.roles,
@@ -488,6 +512,7 @@ export const getUserDetail = query({
     if (!user) return null;
 
     const userPhotoUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+    const userPhotoImage = await getUserPhotoImageAssetDto(ctx, user, true);
 
     const seekerProfile = await ctx.db
       .query("seekerProfiles")
@@ -501,6 +526,7 @@ export const getUserDetail = query({
 
     let taskerProfileWithCategories = null;
     if (taskerProfile) {
+      const taskerPhotoImage = await getTaskerProfileImageAssetDto(ctx, user, taskerProfile, true);
       const taskerCategories = await ctx.db
         .query("taskerCategories")
         .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", taskerProfile._id))
@@ -509,6 +535,7 @@ export const getUserDetail = query({
       const categoriesWithNames = await Promise.all(
         taskerCategories.map(async (tc) => {
           const category = await ctx.db.get(tc.categoryId);
+          const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, tc, true);
           const photoUrls = await Promise.all(
             // Schema caps this at 10; keep admin UI complete but bounded.
             (tc.photos ?? []).slice(0, 10).map(async (storageId) => (await ctx.storage.getUrl(storageId)) || null)
@@ -518,12 +545,16 @@ export const getUserDetail = query({
             categoryName: category?.name ?? "Unknown",
             categorySlug: category?.slug ?? "unknown",
             photoUrls: photoUrls.filter((u): u is string => !!u),
+            coverAssetId: categoryImages.coverAssetId,
+            coverImage: categoryImages.coverImage,
+            portfolioImages: categoryImages.portfolioImages,
           };
         })
       );
 
       taskerProfileWithCategories = {
         ...taskerProfile,
+        photoImage: taskerPhotoImage,
         categories: categoriesWithNames,
       };
     }
@@ -585,6 +616,7 @@ export const getUserDetail = query({
     return {
       user,
       userPhotoUrl,
+      userPhotoImage,
       seekerProfile: seekerProfile ?? null,
       taskerProfile: taskerProfileWithCategories,
       jobsAsSeeker,

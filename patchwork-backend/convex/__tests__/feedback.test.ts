@@ -130,8 +130,114 @@ describe("feedback", () => {
         userId,
       });
 
+      const users = await asAdmin.query((api as any).admin.listAllUsers, {
+        limit: 10,
+      });
+
+      expect(users.users).toHaveLength(1);
+      const listedUser = users.users.find((row: any) => row._id === userId);
+      expect(listedUser?.photoImage).toBeNull();
+      expect(listedUser?.photoAssetId).toBeUndefined();
+
       expect(detail?.feedbackSubmissions).toHaveLength(1);
       expect(detail?.feedbackSubmissions[0]?.message).toBe("The feedback form should not error after sending.");
+      expect(detail?.userPhotoImage).toBeNull();
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
+  });
+
+  test("admin resetDatabase removes imageAssets variants and remains idempotent", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules());
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reset-assets",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-user-reset-assets",
+        email: "feedback-reset-assets@example.com",
+      });
+
+      const userId = await asUser.mutation(api.users.createProfile, {
+        name: "Feedback Reset Assets User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      const [legacyPhotoStorageId, thumbStorageId, displayStorageId, largeStorageId] = await Promise.all([
+        t.run(async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(1_200)], { type: "image/jpeg" }))),
+        t.run(async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(12_000)], { type: "image/jpeg" }))),
+        t.run(async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(40_000)], { type: "image/jpeg" }))),
+        t.run(async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(80_000)], { type: "image/jpeg" }))),
+      ]);
+
+      const now = Date.now();
+      const imageAssetId = await t.run(async (ctx) =>
+        await ctx.db.insert("imageAssets", {
+          ownerUserId: userId,
+          purpose: "userPhoto",
+          status: "active",
+          sourceContentType: "image/jpeg",
+          variants: {
+            thumb: {
+              storageId: thumbStorageId,
+              contentType: "image/jpeg",
+              width: 256,
+              height: 256,
+              byteSize: 12_000,
+            },
+            display: {
+              storageId: displayStorageId,
+              contentType: "image/jpeg",
+              width: 900,
+              height: 900,
+              byteSize: 40_000,
+            },
+            large: {
+              storageId: largeStorageId,
+              contentType: "image/jpeg",
+              width: 1400,
+              height: 1400,
+              byteSize: 80_000,
+            },
+          },
+          createdAt: now,
+          updatedAt: now,
+        })
+      );
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(userId, {
+          photo: legacyPhotoStorageId,
+          photoAssetId: imageAssetId,
+          updatedAt: Date.now(),
+        });
+      });
+
+      const firstReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
+      expect(firstReset.deletedImageAssets).toBe(1);
+      expect(firstReset.deletedStorageFiles).toBe(4);
+
+      const secondReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
+      expect(secondReset.deletedImageAssets).toBe(0);
+      expect(secondReset.deletedStorageFiles).toBe(0);
+
+      const [legacyUrl, thumbUrl, displayUrl, largeUrl] = await Promise.all([
+        t.run(async (ctx) => await ctx.storage.getUrl(legacyPhotoStorageId)),
+        t.run(async (ctx) => await ctx.storage.getUrl(thumbStorageId)),
+        t.run(async (ctx) => await ctx.storage.getUrl(displayStorageId)),
+        t.run(async (ctx) => await ctx.storage.getUrl(largeStorageId)),
+      ]);
+      expect(legacyUrl).toBeNull();
+      expect(thumbUrl).toBeNull();
+      expect(displayUrl).toBeNull();
+      expect(largeUrl).toBeNull();
     } finally {
       process.env.ADMIN_EMAILS = previousAdminEmails;
       vi.resetModules();
