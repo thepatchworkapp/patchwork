@@ -467,6 +467,8 @@ export const addTaskerCategory = mutation({
   args: {
     categoryId: v.id("categories"),
     categoryBio: v.string(),
+    portfolioAssetIds: v.optional(v.array(v.id("imageAssets"))),
+    coverAssetId: v.optional(v.id("imageAssets")),
     rateType: v.union(v.literal("hourly"), v.literal("fixed")),
     hourlyRate: v.optional(v.number()),
     fixedRate: v.optional(v.number()),
@@ -488,6 +490,12 @@ export const addTaskerCategory = mutation({
     }
 
     validateTaskerCategoryInput(args);
+    const portfolio = await validateAndResolveCategoryPortfolio(
+      ctx,
+      user._id,
+      args.portfolioAssetIds,
+      args.coverAssetId
+    );
 
     const now = Date.now();
 
@@ -496,7 +504,9 @@ export const addTaskerCategory = mutation({
       userId: user._id,
       categoryId: args.categoryId,
       bio: args.categoryBio,
-      photos: [],
+      photos: portfolio.compatibilityPhotos,
+      portfolioAssetIds: portfolio.normalizedPortfolioAssetIds,
+      coverAssetId: portfolio.normalizedCoverAssetId,
       rateType: args.rateType,
       hourlyRate: args.hourlyRate,
       fixedRate: args.fixedRate,
@@ -516,6 +526,8 @@ export const updateTaskerCategory = mutation({
   args: {
     categoryId: v.id("categories"),
     categoryBio: v.string(),
+    portfolioAssetIds: v.optional(v.array(v.id("imageAssets"))),
+    coverAssetId: v.optional(v.id("imageAssets")),
     rateType: v.union(v.literal("hourly"), v.literal("fixed")),
     hourlyRate: v.optional(v.number()),
     fixedRate: v.optional(v.number()),
@@ -523,7 +535,7 @@ export const updateTaskerCategory = mutation({
   },
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
-    const { profile } = await loadOwnedTaskerProfile(ctx);
+    const { user, profile } = await loadOwnedTaskerProfile(ctx);
 
     const category = await ctx.db
       .query("taskerCategories")
@@ -538,7 +550,17 @@ export const updateTaskerCategory = mutation({
 
     validateTaskerCategoryInput(args);
 
-    const updates = {
+    const updates: {
+      bio: string;
+      rateType: "hourly" | "fixed";
+      hourlyRate: number | undefined;
+      fixedRate: number | undefined;
+      serviceRadius: number;
+      portfolioAssetIds?: Id<"imageAssets">[];
+      coverAssetId?: Id<"imageAssets">;
+      photos?: Id<"_storage">[];
+      updatedAt: number;
+    } = {
       bio: args.categoryBio,
       rateType: args.rateType,
       hourlyRate: args.rateType === "hourly" ? args.hourlyRate : undefined,
@@ -546,8 +568,30 @@ export const updateTaskerCategory = mutation({
       serviceRadius: args.serviceRadius,
       updatedAt: Date.now(),
     };
+    const previousPortfolioAssetIds = category.portfolioAssetIds ?? [];
+
+    if (args.portfolioAssetIds !== undefined || args.coverAssetId !== undefined) {
+      const portfolio = await validateAndResolveCategoryPortfolio(
+        ctx,
+        user._id,
+        args.portfolioAssetIds ?? previousPortfolioAssetIds,
+        args.coverAssetId
+      );
+      updates.portfolioAssetIds = portfolio.normalizedPortfolioAssetIds;
+      updates.coverAssetId = portfolio.normalizedCoverAssetId;
+      updates.photos = portfolio.compatibilityPhotos;
+    }
 
     await ctx.db.patch(category._id, updates);
+
+    if (updates.portfolioAssetIds) {
+      const nextPortfolioAssetIds = new Set(updates.portfolioAssetIds.map(String));
+      await Promise.all(
+        previousPortfolioAssetIds
+          .filter((assetId) => !nextPortfolioAssetIds.has(String(assetId)))
+          .map((assetId) => deleteImageAssetIfUnreferenced(ctx, assetId, user._id))
+      );
+    }
 
     return buildTaskerProfileResponse(ctx, profile);
   },

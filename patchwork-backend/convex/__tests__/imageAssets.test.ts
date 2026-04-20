@@ -560,6 +560,128 @@ describe("image asset contract", () => {
     ]);
   });
 
+  test("addTaskerCategory accepts portfolioAssetIds and coverAssetId", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|add_category_portfolio",
+      email: "add_category_portfolio@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Add Category Portfolio",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const electrical = await seedAndGetCategory(t, "electrical");
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Add Category Tasker",
+      categoryId: plumbing._id,
+      categoryBio: "Initial category",
+      rateType: "hourly",
+      hourlyRate: 7000,
+      serviceRadius: 20,
+    });
+
+    const a = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const b = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const c = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+
+    const result = await asUser.mutation(api.taskers.addTaskerCategory, {
+      categoryId: electrical._id,
+      categoryBio: "Electrical category with portfolio",
+      portfolioAssetIds: [a._id, b._id, c._id],
+      coverAssetId: b._id,
+      rateType: "fixed",
+      fixedRate: 20000,
+      serviceRadius: 35,
+    });
+    expect(result).toBeNull();
+
+    const profile = await asUser.query(api.taskers.getTaskerProfile);
+    const category = profile?.categories.find((entry) => entry.categoryId === electrical._id);
+
+    expect(category?.portfolioAssetIds).toEqual([a._id, b._id, c._id]);
+    expect(category?.coverAssetId).toBe(b._id);
+    expect(category?.photos).toEqual([
+      b.variants.display.storageId,
+      a.variants.display.storageId,
+      c.variants.display.storageId,
+    ]);
+  });
+
+  test("updateTaskerCategory updates details and portfolio atomically and cleans removed assets", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|update_category_with_portfolio",
+      email: "update_category_with_portfolio@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Update Category Portfolio",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const plumbing = await seedAndGetCategory(t, "plumbing");
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Update Category Tasker",
+      categoryId: plumbing._id,
+      categoryBio: "Original category bio",
+      rateType: "hourly",
+      hourlyRate: 6500,
+      serviceRadius: 20,
+    });
+
+    const a = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const b = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const c = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const d = await createImageAsset(t, asUser, "taskerCategoryPortfolio");
+    const bStorageIds = storageIdsForAsset(b);
+
+    await asUser.mutation(api.taskers.setCategoryPortfolio, {
+      categoryId: plumbing._id,
+      portfolioAssetIds: [a._id, b._id, c._id],
+      coverAssetId: a._id,
+    });
+
+    const updatedProfile = await asUser.mutation(api.taskers.updateTaskerCategory, {
+      categoryId: plumbing._id,
+      categoryBio: "Updated category bio",
+      portfolioAssetIds: [c._id, a._id, d._id],
+      coverAssetId: d._id,
+      rateType: "fixed",
+      fixedRate: 18000,
+      serviceRadius: 45,
+    });
+
+    const category = updatedProfile.categories.find((entry) => entry.categoryId === plumbing._id);
+    expect(category?.bio).toBe("Updated category bio");
+    expect(category?.rateType).toBe("fixed");
+    expect(category?.hourlyRate).toBeUndefined();
+    expect(category?.fixedRate).toBe(18000);
+    expect(category?.serviceRadius).toBe(45);
+    expect(category?.portfolioAssetIds).toEqual([c._id, a._id, d._id]);
+    expect(category?.coverAssetId).toBe(d._id);
+    expect(category?.photos).toEqual([
+      d.variants.display.storageId,
+      c.variants.display.storageId,
+      a.variants.display.storageId,
+    ]);
+
+    const storedRemovedAsset = await t.run(async (ctx) => await ctx.db.get(b._id));
+    expect(storedRemovedAsset?.status).toBe("deleted");
+    await expectStorageIdsDeleted(t, bStorageIds);
+    await expectStorageIdsPresent(t, [
+      ...storageIdsForAsset(a),
+      ...storageIdsForAsset(c),
+      ...storageIdsForAsset(d),
+    ]);
+  });
+
   test("portfolio updates and category removal cleanup unreferenced image assets", async () => {
     const t = convexTest(schema, modules);
     const asUser = t.withIdentity({
