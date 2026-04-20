@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import PhotosUI
+import SwiftUI
 import UIKit
 
 struct ImageAssetUploadService {

@@ -210,10 +210,13 @@ struct MessagesView: View {
         let timeLabel = conversationTimestampLabel(conversation.lastMessageAt)
         let roleLabel = activeRole == "tasker" ? "Tasker" : "Seeker"
         return HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: URL(string: conversation.participantPhotoUrl ?? "")) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                PatchworkTheme.stroke
+            PatchworkRemoteImage(
+                asset: conversation.participantImage,
+                legacyURL: conversation.participantPhotoUrl,
+                preferredVariant: .thumb,
+                contentMode: .fill
+            ) {
+                conversationAvatarPlaceholder(name: participantName)
             }
             .frame(width: 54, height: 54)
             .clipShape(.rect(cornerRadius: 14))
@@ -275,6 +278,15 @@ struct MessagesView: View {
             "\(roleLabel) conversation",
             conversation.jobId != nil ? "Job linked" : nil,
         ].compactMap { $0 }.joined(separator: ", "))
+    }
+
+    private func conversationAvatarPlaceholder(name: String) -> some View {
+        ZStack {
+            PatchworkTheme.brandSoft
+            Text(String(name.prefix(1)).uppercased())
+                .font(.title3.weight(.bold))
+                .foregroundStyle(PatchworkTheme.brand)
+        }
     }
 
     private func conversationTimestampLabel(_ millis: Int?) -> String {
@@ -455,12 +467,13 @@ struct ChatView: View {
             .accessibilityLabel("Back to messages")
             .accessibilityIdentifier("Chat.backButton")
 
-            AsyncImage(url: URL(string: conversation?.participantPhotoUrl ?? "")) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                PatchworkTheme.stroke
+            PatchworkRemoteImage(
+                asset: conversation?.participantImage,
+                legacyURL: conversation?.participantPhotoUrl,
+                preferredVariant: .thumb,
+                contentMode: .fill
+            ) {
+                chatAvatarPlaceholder
             }
             .frame(width: 44, height: 44)
             .clipShape(.rect(cornerRadius: 14))
@@ -484,6 +497,16 @@ struct ChatView: View {
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
+    }
+
+    private var chatAvatarPlaceholder: some View {
+        let name = conversation?.participantName ?? "Chat"
+        return ZStack {
+            PatchworkTheme.brandSoft
+            Text(String(name.prefix(1)).uppercased())
+                .font(.headline.weight(.bold))
+                .foregroundStyle(PatchworkTheme.brand)
+        }
     }
 
     private var hasAcceptedProposal: Bool {

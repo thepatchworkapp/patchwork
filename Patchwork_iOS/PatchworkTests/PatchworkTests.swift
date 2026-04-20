@@ -721,7 +721,8 @@ final class PatchworkTests: XCTestCase {
                 notificationsEnabled: false,
                 locationEnabled: false
             ),
-            createdAt: nil
+            createdAt: nil,
+            photoImage: nil
         )
 
         TestURLProtocol.requestHandler = { request in

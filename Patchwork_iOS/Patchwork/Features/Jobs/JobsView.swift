@@ -151,7 +151,23 @@ struct JobsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Label(counterpartyLabel(for: job), systemImage: "person.crop.circle.fill")
+                    PatchworkRemoteImage(
+                        asset: job.counterpartyImage,
+                        legacyURL: job.counterpartyPhotoUrl,
+                        preferredVariant: .thumb,
+                        contentMode: .fill
+                    ) {
+                        counterpartyPlaceholder(for: job)
+                    }
+                    .frame(width: 22, height: 22)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                    )
+                    .accessibilityHidden(true)
+
+                    Text(counterpartyLabel(for: job))
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
                     Spacer()
@@ -252,6 +268,16 @@ struct JobsView: View {
         let dollars = Double(rate) / 100
         let base = dollars.formatted(.currency(code: "USD"))
         return job.rateType == "hourly" ? "\(base)/hr" : base
+    }
+
+    private func counterpartyPlaceholder(for job: JobSummary) -> some View {
+        let name = counterpartyLabel(for: job)
+        return ZStack {
+            PatchworkTheme.brandSoft
+            Text(String(name.prefix(1)).uppercased())
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PatchworkTheme.brand)
+        }
     }
 
     private func jobCardAccessibilityLabel(_ job: JobSummary) -> String {

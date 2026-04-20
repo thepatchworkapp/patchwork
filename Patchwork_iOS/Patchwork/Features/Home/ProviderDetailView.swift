@@ -20,6 +20,7 @@ struct ProviderDetailView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         heroSection(tasker)
                         categorySelector(tasker)
+                        portfolioGallerySection
                         aboutSection(tasker)
                         pricingSection(tasker)
                         reviewsSection(tasker)
@@ -71,11 +72,12 @@ struct ProviderDetailView: View {
 
     private func heroSection(_ tasker: TaskerDetail) -> some View {
         ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: heroImageURL(tasker)) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
+            PatchworkRemoteImage(
+                asset: heroImageAsset(tasker),
+                legacyURL: heroImageLegacyURL(tasker),
+                preferredVariant: .large,
+                contentMode: .fill
+            ) {
                 ZStack {
                     PatchworkTheme.brandSoft
                     Image(systemName: "person.crop.square.fill")
@@ -114,9 +116,26 @@ struct ProviderDetailView: View {
                     }
                 }
 
-                Text(tasker.displayName)
-                    .font(.patchworkHeroTitle)
-                    .foregroundStyle(.white)
+                HStack(spacing: 10) {
+                    PatchworkRemoteImage(
+                        asset: tasker.profileImage,
+                        legacyURL: tasker.userPhotoUrl,
+                        preferredVariant: .thumb,
+                        contentMode: .fill
+                    ) {
+                        Circle().fill(.white.opacity(0.22))
+                    }
+                    .frame(width: 42, height: 42)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.9), lineWidth: 1.5)
+                    )
+
+                    Text(tasker.displayName)
+                        .font(.patchworkHeroTitle)
+                        .foregroundStyle(.white)
+                }
 
                 HStack(spacing: 12) {
                     ratingSummary(tasker)
@@ -170,6 +189,40 @@ struct ProviderDetailView: View {
                 .padding(.horizontal, 2)
             }
             .scrollIndicators(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private var portfolioGallerySection: some View {
+        if !selectedPortfolioImages.isEmpty {
+            PatchworkSurfaceCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Portfolio")
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 10) {
+                            ForEach(selectedPortfolioImages, id: \.id) { asset in
+                                PatchworkRemoteImage(
+                                    asset: asset,
+                                    preferredVariant: .display,
+                                    contentMode: .fill
+                                ) {
+                                    PatchworkTheme.brandSoft
+                                }
+                                .frame(width: 136, height: 96)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
         }
     }
 
@@ -335,14 +388,25 @@ struct ProviderDetailView: View {
         }
     }
 
-    private func heroImageURL(_ tasker: TaskerDetail) -> URL? {
-        if let photo = selectedProfile?.firstPhotoUrl, let url = URL(string: photo) {
-            return url
+    private var selectedPortfolioImages: [RemoteImageAsset] {
+        selectedProfile?.portfolioImages ?? []
+    }
+
+    private func heroImageAsset(_ tasker: TaskerDetail) -> RemoteImageAsset? {
+        if let cover = selectedProfile?.coverImage {
+            return cover
         }
-        if let photo = tasker.userPhotoUrl, let url = URL(string: photo) {
-            return url
+        if let firstPortfolio = selectedProfile?.portfolioImages?.first {
+            return firstPortfolio
+        }
+        if selectedProfile?.firstPhotoUrl == nil {
+            return tasker.profileImage
         }
         return nil
+    }
+
+    private func heroImageLegacyURL(_ tasker: TaskerDetail) -> String? {
+        selectedProfile?.firstPhotoUrl ?? tasker.userPhotoUrl
     }
 
     private func heroAccessibilityLabel(_ tasker: TaskerDetail) -> String {
@@ -414,11 +478,12 @@ private struct ProviderReviewRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: avatarURL) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
+            PatchworkRemoteImage(
+                asset: review.reviewerImage,
+                legacyURL: review.reviewerPhotoUrl,
+                preferredVariant: .thumb,
+                contentMode: .fill
+            ) {
                 PatchworkTheme.brandSoft
             }
             .frame(width: 40, height: 40)
@@ -463,11 +528,6 @@ private struct ProviderReviewRow: View {
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(reviewAccessibilityLabel)
-    }
-
-    private var avatarURL: URL? {
-        guard let urlString = review.reviewerPhotoUrl else { return nil }
-        return URL(string: urlString)
     }
 
     private var reviewDate: String {

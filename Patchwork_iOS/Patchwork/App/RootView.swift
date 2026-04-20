@@ -1,4 +1,5 @@
 import CoreLocation
+import PhotosUI
 import SwiftUI
 
 struct RootView: View {
@@ -171,7 +172,8 @@ struct RootView: View {
                 coordinates: Coordinates(lat: 43.4643, lng: -80.5204)
             ),
             settings: UserSettings(notificationsEnabled: true, locationEnabled: true),
-            createdAt: nil
+            createdAt: nil,
+            photoImage: nil
         )
         appState.taskerProfile = TaskerProfileSelf(
             id: "debug-tasker-profile",
@@ -190,6 +192,8 @@ struct RootView: View {
             verified: true,
             responseTime: "Replies within 1 hour",
             createdAt: 1_704_067_200_000,
+            photoSource: "user",
+            photoImage: nil,
             categories: [
                 TaskerManagedCategory(
                     id: "debug-tasker-category-cleaning",
@@ -203,7 +207,10 @@ struct RootView: View {
                     serviceRadius: 25,
                     rating: 4.8,
                     reviewCount: 18,
-                    completedJobs: 24
+                    completedJobs: 24,
+                    coverAssetId: nil,
+                    coverImage: nil,
+                    portfolioImages: nil
                 ),
                 TaskerManagedCategory(
                     id: "debug-tasker-category-plumbing",
@@ -217,7 +224,10 @@ struct RootView: View {
                     serviceRadius: 20,
                     rating: 5.0,
                     reviewCount: 10,
-                    completedJobs: 18
+                    completedJobs: 18,
+                    coverAssetId: nil,
+                    coverImage: nil,
+                    portfolioImages: nil
                 ),
             ]
         )
@@ -235,7 +245,9 @@ struct RootView: View {
                 bio: "Recurring home cleaning and deep resets.",
                 completedJobs: 64,
                 avatarUrl: nil,
-                categoryPhotoUrl: nil
+                categoryPhotoUrl: nil,
+                avatarImage: nil,
+                categoryCoverImage: nil
             ),
             TaskerSummary(
                 id: "debug-favourite-tasker-2",
@@ -250,7 +262,9 @@ struct RootView: View {
                 bio: "Fixture installs, troubleshooting, and panel upgrades.",
                 completedJobs: 39,
                 avatarUrl: nil,
-                categoryPhotoUrl: nil
+                categoryPhotoUrl: nil,
+                avatarImage: nil,
+                categoryCoverImage: nil
             ),
         ]
     }
@@ -427,7 +441,8 @@ struct RootView: View {
                 notificationsEnabled: currentUser.settings?.notificationsEnabled,
                 locationEnabled: true
             ),
-            createdAt: currentUser.createdAt
+            createdAt: currentUser.createdAt,
+            photoImage: currentUser.photoImage
         )
     }
 
@@ -481,6 +496,11 @@ private struct ProfileSetupView: View {
     @State private var name = ""
     @State private var city = ""
     @State private var province = ""
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedPhotoAsset: RemoteImageAsset?
+    @State private var selectedPhotoAssetId: ConvexID?
+    @State private var isUploadingPhoto = false
+    @State private var photoUploadError: String?
     @State private var isSaving = false
     @State private var createdUserId: ConvexID?
     @State private var resolvedCoordinates: Coordinates?
@@ -501,6 +521,12 @@ private struct ProfileSetupView: View {
         }
         .onChange(of: step) { _, newValue in
             focusedField = newValue == .profile ? .name : nil
+        }
+        .onChange(of: selectedPhotoItem) { _, newValue in
+            guard let newValue else {
+                return
+            }
+            Task { await uploadProfilePhoto(from: newValue) }
         }
     }
 
@@ -538,6 +564,67 @@ private struct ProfileSetupView: View {
                 title: "Create your profile",
                 message: "Start with the details seekers and taskers will actually see. You can refine this later."
             )
+
+            VStack(spacing: 12) {
+                ZStack {
+                    if let selectedPhotoAsset {
+                        PatchworkRemoteImage(
+                            asset: selectedPhotoAsset,
+                            preferredVariant: .display,
+                            contentMode: .fill
+                        ) {
+                            avatarPickerPlaceholder
+                        }
+                    } else {
+                        avatarPickerPlaceholder
+                    }
+                }
+                .frame(width: 108, height: 108)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+                .accessibilityIdentifier("ProfileSetup.photoPreview")
+
+                HStack(spacing: 10) {
+                    PhotosPicker(
+                        selection: $selectedPhotoItem,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        Label(selectedPhotoAssetId == nil ? "Add Photo" : "Replace Photo", systemImage: "photo")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PatchworkSecondaryButtonStyle())
+                    .accessibilityIdentifier("ProfileSetup.photoPicker")
+                    .disabled(isUploadingPhoto || isSaving)
+
+                    if selectedPhotoAssetId != nil {
+                        Button("Remove") {
+                            clearSelectedPhoto()
+                        }
+                        .buttonStyle(PatchworkSecondaryButtonStyle())
+                        .accessibilityIdentifier("ProfileSetup.photoRemoveButton")
+                        .disabled(isUploadingPhoto || isSaving)
+                    }
+                }
+
+                if isUploadingPhoto {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(PatchworkTheme.brand)
+                        Text("Uploading photo...")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let photoUploadError {
+                    PatchworkInlineStatusBanner(tone: .error, text: photoUploadError)
+                        .accessibilityIdentifier("ProfileSetup.photoError")
+                }
+            }
 
             TextField("Full name", text: $name)
                 .patchworkInputFieldStyle()
@@ -602,11 +689,11 @@ private struct ProfileSetupView: View {
     private var stepActionContent: some View {
         switch step {
         case .profile:
-            Button(isSaving ? "Saving..." : "Continue") {
+            Button(isSaving ? "Saving..." : (isUploadingPhoto ? "Uploading..." : "Continue")) {
                 Task { await createProfile() }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
-            .disabled(isSaving || !isProfileStepValid)
+            .disabled(isSaving || isUploadingPhoto || !isProfileStepValid)
             .accessibilityIdentifier("ProfileSetup.continueButton")
         case .location:
             Button("Allow location") {
@@ -687,13 +774,17 @@ private struct ProfileSetupView: View {
         isSaving = true
         defer { isSaving = false }
         do {
+            var args: [String: Any] = [
+                "name": name,
+                "city": city,
+                "province": province,
+            ]
+            if let selectedPhotoAssetId {
+                args["photoAssetId"] = selectedPhotoAssetId
+            }
             createdUserId = try await sessionStore.client.mutation(
                 "users:createProfile",
-                args: [
-                    "name": name,
-                    "city": city,
-                    "province": province,
-                ]
+                args: args
             ) as ConvexID
             step = .location
         } catch {
@@ -731,7 +822,8 @@ private struct ProfileSetupView: View {
                 notificationsEnabled: false,
                 locationEnabled: resolvedCoordinates != nil
             ),
-            createdAt: nil
+            createdAt: nil,
+            photoImage: selectedPhotoAsset
         )
 
         Task {
@@ -744,6 +836,40 @@ private struct ProfileSetupView: View {
             return
         }
         UserDefaults.standard.set(true, forKey: "Patchwork.locationPromptCompleted.\(createdUserId)")
+    }
+
+    private var avatarPickerPlaceholder: some View {
+        ZStack {
+            PatchworkTheme.brandSoft
+            Image(systemName: "person.crop.circle.fill.badge.plus")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(PatchworkTheme.brand)
+        }
+    }
+
+    private func uploadProfilePhoto(from item: PhotosPickerItem) async {
+        isUploadingPhoto = true
+        photoUploadError = nil
+        defer {
+            isUploadingPhoto = false
+            selectedPhotoItem = nil
+        }
+
+        do {
+            let uploadService = ImageAssetUploadService(client: sessionStore.client)
+            let uploadedAsset = try await uploadService.uploadImage(from: item, purpose: "userPhoto")
+            selectedPhotoAsset = uploadedAsset
+            selectedPhotoAssetId = uploadedAsset.id
+        } catch {
+            photoUploadError = error.localizedDescription
+        }
+    }
+
+    private func clearSelectedPhoto() {
+        selectedPhotoAsset = nil
+        selectedPhotoAssetId = nil
+        photoUploadError = nil
+        selectedPhotoItem = nil
     }
 
     @discardableResult

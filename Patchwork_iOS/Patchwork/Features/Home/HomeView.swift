@@ -206,13 +206,7 @@ struct HomeView: View {
 
     private func spotlightCard(_ tasker: TaskerSummary) -> some View {
         VStack(spacing: 0) {
-            AsyncImage(url: imageURL(tasker)) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                PatchworkTheme.stroke
-            }
+            heroImage(tasker)
             .frame(height: 270)
             .frame(maxWidth: .infinity)
             .clipped()
@@ -230,6 +224,24 @@ struct HomeView: View {
                         .foregroundStyle(.white)
                         .padding(18)
                 }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                PatchworkRemoteImage(
+                    asset: tasker.avatarImage,
+                    legacyURL: tasker.avatarUrl,
+                    preferredVariant: .thumb,
+                    contentMode: .fill
+                ) {
+                    Circle().fill(PatchworkTheme.brandSoft)
+                }
+                .frame(width: 46, height: 46)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(.white.opacity(0.9), lineWidth: 2)
+                )
+                .padding(14)
+                .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -537,6 +549,43 @@ struct HomeView: View {
         }
     }
 
+    @ViewBuilder
+    private func heroImage(_ tasker: TaskerSummary) -> some View {
+        if let categoryCoverImage = tasker.categoryCoverImage {
+            PatchworkRemoteImage(
+                asset: categoryCoverImage,
+                legacyURL: tasker.categoryPhotoUrl,
+                preferredVariant: .large,
+                contentMode: .fill
+            ) {
+                avatarFallbackHeroImage(tasker)
+            }
+        } else if let categoryPhotoUrl = tasker.categoryPhotoUrl,
+                  !categoryPhotoUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            PatchworkRemoteImage(
+                asset: nil,
+                legacyURL: categoryPhotoUrl,
+                preferredVariant: .large,
+                contentMode: .fill
+            ) {
+                avatarFallbackHeroImage(tasker)
+            }
+        } else {
+            avatarFallbackHeroImage(tasker)
+        }
+    }
+
+    private func avatarFallbackHeroImage(_ tasker: TaskerSummary) -> some View {
+        PatchworkRemoteImage(
+            asset: tasker.avatarImage,
+            legacyURL: tasker.avatarUrl,
+            preferredVariant: .large,
+            contentMode: .fill
+        ) {
+            PatchworkTheme.stroke
+        }
+    }
+
     private func reviewSummaryAccessibilityLabel(averageRating: Double, reviewCount: Int) -> String {
         let rating = averageRating.formatted(.number.precision(.fractionLength(1)))
         return "\(rating) stars from \(reviewCount) review\(reviewCount == 1 ? "" : "s")"
@@ -653,13 +702,4 @@ struct HomeView: View {
         }
     }
 
-    private func imageURL(_ tasker: TaskerSummary) -> URL? {
-        if let avatarUrl = tasker.avatarUrl, let url = URL(string: avatarUrl) {
-            return url
-        }
-        if let categoryPhotoUrl = tasker.categoryPhotoUrl, let url = URL(string: categoryPhotoUrl) {
-            return url
-        }
-        return nil
-    }
 }

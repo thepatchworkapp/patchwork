@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		081259B88E7B10011383049D /* PatchworkImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */; };
 		12D355FBBE67FA10EADF80CC /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8CE0A5718D2AC6132157B5B /* AppConfig.swift */; };
 		14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */; };
 		2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */; };
@@ -17,6 +18,7 @@
 		474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */; };
 		48CD452FB3052C6976D36007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 729E33D4E7B681C1ABDBD69A /* RootView.swift */; };
 		4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDAD88D57BEC8C727115A6F /* MessagesView.swift */; };
+		564B737D2E7437747205E99D /* PatchworkRemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */; };
 		5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09019FECF835A15001917199 /* CategoriesView.swift */; };
 		607AB8F7707AD6EE1662A1CE /* SubscriptionReconciliation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */; };
 		62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B810AFA2F7D8E281A10001B8 /* ProfileView.swift */; };
@@ -32,6 +34,7 @@
 		AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */; };
 		B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */; };
 		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
+		BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */; };
 		BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
@@ -40,6 +43,7 @@
 		D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */; };
 		DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */; };
 		DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */; };
+		EE828ACC0C32E93217216297 /* ImageAssetUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */; };
 		EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */; };
 		F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */; };
 		F713D2AF3260F99F0A8CF19D /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = A2B6386314D137BE552E1DFA /* RevenueCat */; };
@@ -76,6 +80,7 @@
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
+		462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkImageCache.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		68BA4F09EB1C8E4E34CCC252 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -84,11 +89,14 @@
 		729E33D4E7B681C1ABDBD69A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkWordmark.swift; sourceTree = "<group>"; };
 		7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkBackdrop.swift; sourceTree = "<group>"; };
+		8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAssetUploadService.swift; sourceTree = "<group>"; };
+		8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAssetInfrastructureTests.swift; sourceTree = "<group>"; };
 		88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSheetChrome.swift; sourceTree = "<group>"; };
 		8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSectionIntro.swift; sourceTree = "<group>"; };
 		A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDetailView.swift; sourceTree = "<group>"; };
 		B2645A99676B08C632ABA998 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
 		B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkButtonStyles.swift; sourceTree = "<group>"; };
+		B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkRemoteImage.swift; sourceTree = "<group>"; };
 		B810AFA2F7D8E281A10001B8 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliationTests.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -190,6 +198,7 @@
 		9E9DB7AB7650439DF15F9B0B /* PatchworkTests */ = {
 			isa = PBXGroup;
 			children = (
+				8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */,
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
 				B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */,
 			);
@@ -202,11 +211,14 @@
 				E8CE0A5718D2AC6132157B5B /* AppConfig.swift */,
 				68BA4F09EB1C8E4E34CCC252 /* AppState.swift */,
 				424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */,
+				8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */,
 				FA14B5338C5C33F540967A21 /* LocationManager.swift */,
 				CF104625A9E3F2BC20B0518E /* Models.swift */,
 				7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */,
 				B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */,
+				462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */,
 				1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */,
+				B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */,
 				8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */,
 				88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */,
 				E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */,
@@ -401,6 +413,7 @@
 				5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */,
 				AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */,
 				B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */,
+				EE828ACC0C32E93217216297 /* ImageAssetUploadService.swift in Sources */,
 				A087AA9759E50A7CDF5F14C3 /* JobDetailView.swift in Sources */,
 				CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */,
 				451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */,
@@ -410,7 +423,9 @@
 				2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */,
 				EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */,
 				DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */,
+				081259B88E7B10011383049D /* PatchworkImageCache.swift in Sources */,
 				B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */,
+				564B737D2E7437747205E99D /* PatchworkRemoteImage.swift in Sources */,
 				CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */,
 				FAFE4B58A3664CE4D1443EF5 /* PatchworkSheetChrome.swift in Sources */,
 				9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */,
@@ -435,6 +450,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */,
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
 				31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */,
 			);
