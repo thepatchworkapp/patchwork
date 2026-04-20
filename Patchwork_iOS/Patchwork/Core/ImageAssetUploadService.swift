@@ -33,79 +33,45 @@ struct ImageAssetUploadService {
 
         var payload: [String: Any] {
             [
+                "kind": name,
                 "contentType": "image/jpeg",
                 "width": width,
                 "height": height,
                 "byteSize": data.count,
             ]
         }
+
+        func committedPayload(storageId: ConvexID) -> [String: Any] {
+            var result = payload
+            result["storageId"] = storageId
+            return result
+        }
     }
 
     private struct UploadTarget: Decodable {
-        let url: String
-        let method: String?
-        let headers: [String: String]?
+        let kind: String
+        let uploadUrl: String
+        let contentType: String?
+        let width: Int?
+        let height: Int?
+        let byteSize: Int?
 
         enum CodingKeys: String, CodingKey {
-            case url
-            case uploadURL = "uploadUrl"
-            case method
-            case headers
+            case kind
+            case uploadUrl
+            case contentType
+            case width
+            case height
+            case byteSize
         }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.url =
-                try container.decodeIfPresent(String.self, forKey: .url)
-                ?? container.decode(String.self, forKey: .uploadURL)
-            self.method = try container.decodeIfPresent(String.self, forKey: .method)
-            self.headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
-        }
-    }
-
-    private struct UploadTargets: Decodable {
-        let thumb: UploadTarget
-        let display: UploadTarget
-        let large: UploadTarget?
     }
 
     private struct GenerateUploadURLsResponse: Decodable {
-        let assetId: ConvexID
-        let uploadTargets: UploadTargets
+        let uploadUrls: [UploadTarget]
+    }
 
-        enum CodingKeys: String, CodingKey {
-            case assetId
-            case id
-            case legacyId = "_id"
-            case uploadUrls
-            case variants
-            case thumb
-            case display
-            case large
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.assetId =
-                try container.decodeIfPresent(ConvexID.self, forKey: .assetId)
-                ?? container.decodeIfPresent(ConvexID.self, forKey: .id)
-                ?? container.decode(ConvexID.self, forKey: .legacyId)
-
-            if let nested = try container.decodeIfPresent(UploadTargets.self, forKey: .uploadUrls) {
-                self.uploadTargets = nested
-                return
-            }
-            if let nested = try container.decodeIfPresent(UploadTargets.self, forKey: .variants) {
-                self.uploadTargets = nested
-                return
-            }
-
-            self.uploadTargets = UploadTargets(
-                thumb: try container.decode(UploadTarget.self, forKey: .thumb),
-                display: try container.decode(UploadTarget.self, forKey: .display),
-                large: try container.decodeIfPresent(UploadTarget.self, forKey: .large)
-            )
-        }
+    private struct UploadBlobResponse: Decodable {
+        let storageId: ConvexID
     }
 
     let client: ConvexHTTPClient
@@ -140,10 +106,8 @@ struct ImageAssetUploadService {
             throw UploadError.invalidPickerData
         }
 
-        let sourceContentType = pickerItem.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
         return try await uploadImage(
             data: data,
-            sourceContentType: sourceContentType,
             purpose: purpose,
             includeLargeVariant: includeLargeVariant
         )
@@ -151,47 +115,33 @@ struct ImageAssetUploadService {
 
     func uploadImage(
         data: Data,
-        sourceContentType: String = "image/jpeg",
         purpose: String,
         includeLargeVariant: Bool = true
     ) async throws -> RemoteImageAsset {
         let variants = try buildUploadVariants(from: data, includeLargeVariant: includeLargeVariant)
-        let variantPayload = variants.reduce(into: [String: Any]()) { partialResult, variant in
-            partialResult[variant.name] = variant.payload
-        }
+        let variantPayload = variants.map(\.payload)
 
         let generated: GenerateUploadURLsResponse = try await client.mutation(
             "files:generateImageAssetUploadUrls",
             args: [
                 "purpose": purpose,
-                "sourceContentType": sourceContentType,
                 "variants": variantPayload,
             ]
         )
 
+        var committedVariants: [[String: Any]] = []
         for variant in variants {
-            let target: UploadTarget?
-            switch variant.name {
-            case "thumb":
-                target = generated.uploadTargets.thumb
-            case "display":
-                target = generated.uploadTargets.display
-            case "large":
-                target = generated.uploadTargets.large
-            default:
-                target = nil
+            guard let target = generated.uploadUrls.first(where: { $0.kind == variant.name }) else {
+                throw UploadError.invalidUploadURL
             }
-
-            guard let target else {
-                continue
-            }
-            try await uploadVariantBlob(variant.data, to: target)
+            let storageId = try await uploadVariantBlob(variant.data, to: target)
+            committedVariants.append(variant.committedPayload(storageId: storageId))
         }
 
         let commitArgs: [String: Any] = [
-            "assetId": generated.assetId,
-            "sourceContentType": sourceContentType,
-            "variants": variantPayload,
+            "purpose": purpose,
+            "sourceContentType": "image/jpeg",
+            "variants": committedVariants,
         ]
 
         let committed: RemoteImageAsset = try await client.mutation(
@@ -229,26 +179,27 @@ struct ImageAssetUploadService {
         )
     }
 
-    private func uploadVariantBlob(_ data: Data, to target: UploadTarget) async throws {
-        guard let url = URL(string: target.url) else {
+    private func uploadVariantBlob(_ data: Data, to target: UploadTarget) async throws -> ConvexID {
+        guard let url = URL(string: target.uploadUrl) else {
             throw UploadError.invalidUploadURL
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = target.method?.uppercased() ?? "POST"
+        request.httpMethod = "POST"
         request.httpBody = data
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-        if let headers = target.headers {
-            for (key, value) in headers {
-                request.setValue(value, forHTTPHeaderField: key)
-            }
-        }
 
-        let (_, response) = try await urlSession.data(for: request)
+        let (responseData, response) = try await urlSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               200 ..< 300 ~= httpResponse.statusCode else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
             throw UploadError.uploadFailed(statusCode: statusCode)
+        }
+
+        do {
+            return try JSONDecoder().decode(UploadBlobResponse.self, from: responseData).storageId
+        } catch {
+            throw UploadError.invalidImageData
         }
     }
 

@@ -74,6 +74,7 @@ export const imageAssetVariantWithUrlValidator = v.object({
 
 export const imageAssetValidator = v.object({
   _id: v.id("imageAssets"),
+  cacheKey: v.string(),
   ownerUserId: v.id("users"),
   purpose: imageAssetPurposeValidator,
   status: imageAssetStatusValidator,

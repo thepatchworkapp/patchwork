@@ -240,6 +240,7 @@ export async function toImageAssetDto(
 
   return {
     _id: imageAsset._id,
+    cacheKey: `${imageAsset._id}:${imageAsset.updatedAt}`,
     ownerUserId: imageAsset.ownerUserId,
     purpose: imageAsset.purpose,
     status: imageAsset.status,
