@@ -1,5 +1,4 @@
 import CoreLocation
-import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -36,7 +35,7 @@ struct RootView: View {
     private var liveRoot: some View {
         Group {
             if sessionStore.isAuthenticated {
-                if isForegroundRefreshPending {
+                if isForegroundRefreshPending && !preserveOnboardingRouteDuringForegroundRefresh {
                     if appState.currentUser == nil {
                         PatchworkBrandLoadingCard()
                     } else {
@@ -138,6 +137,15 @@ struct RootView: View {
             attemptedLocationRecoveryKey = locationRecoveryKey
             await recoverLocationIfNeeded()
         }
+    }
+
+    private var preserveOnboardingRouteDuringForegroundRefresh: Bool {
+        sessionStore.isAuthenticated
+            && appState.currentUser == nil
+            && appState.isBootstrapped
+            && !sessionStore.isRestoringSession
+            && !sessionStore.needsSessionRestore
+            && !sessionStore.launchedWithPersistedSession
     }
 
 #if DEBUG
@@ -484,6 +492,24 @@ private struct ProfileSetupView: View {
         case notifications
     }
 
+    private struct CameraCaptureRequest: Identifiable {
+        let id = UUID()
+    }
+
+    private enum PhotoSheet: Identifiable {
+        case gallery
+        case crop(PhotoCropInput)
+
+        var id: String {
+            switch self {
+            case .gallery:
+                return "gallery"
+            case .crop(let input):
+                return "crop-\(input.id)"
+            }
+        }
+    }
+
     private enum Field: Hashable {
         case name
         case city
@@ -497,13 +523,14 @@ private struct ProfileSetupView: View {
     @State private var name = ""
     @State private var city = ""
     @State private var province = ""
-    @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedPhotoData: Data?
     @State private var selectedPhotoPreviewImage: UIImage?
     @State private var selectedPhotoAsset: RemoteImageAsset?
-    @State private var isPreparingPhoto = false
     @State private var isUploadingPhoto = false
     @State private var photoUploadError: String?
+    @State private var showsPhotoOptions = false
+    @State private var cameraCaptureRequest: CameraCaptureRequest?
+    @State private var photoSheet: PhotoSheet?
     @State private var isSaving = false
     @State private var createdUserId: ConvexID?
     @State private var resolvedCoordinates: Coordinates?
@@ -525,11 +552,46 @@ private struct ProfileSetupView: View {
         .onChange(of: step) { _, newValue in
             focusedField = newValue == .profile ? .name : nil
         }
-        .onChange(of: selectedPhotoItem) { _, newValue in
-            guard let newValue else {
-                return
+        .confirmationDialog("Profile photo", isPresented: $showsPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    cameraCaptureRequest = CameraCaptureRequest()
+                }
             }
-            Task { await prepareSelectedPhoto(from: newValue) }
+            Button("Choose from Gallery") {
+                photoSheet = .gallery
+            }
+            if hasSelectedPhoto {
+                Button("Remove Photo", role: .destructive) {
+                    clearSelectedPhoto()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .fullScreenCover(item: $cameraCaptureRequest) { _ in
+            CameraCaptureView { image in
+                cameraCaptureRequest = nil
+                presentCropIfNeeded(image)
+            }
+            .ignoresSafeArea()
+        }
+        .sheet(item: $photoSheet) { sheet in
+            switch sheet {
+            case .gallery:
+                GalleryPickerView(selectionLimit: 1) { images in
+                    presentCropIfNeeded(images.first)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    photoSheet = nil
+                } onConfirm: { draft in
+                    selectedPhotoData = draft.data
+                    selectedPhotoPreviewImage = draft.previewImage
+                    selectedPhotoAsset = nil
+                    photoUploadError = nil
+                    photoSheet = nil
+                }
+            }
         }
     }
 
@@ -560,8 +622,6 @@ private struct ProfileSetupView: View {
         VStack(alignment: .leading, spacing: 18) {
             onboardingProgress
 
-            profileStepIcon(systemName: "person.crop.circle.badge.plus", tint: PatchworkTheme.brand)
-
             PatchworkSectionIntro(
                 eyebrow: "Step 1",
                 title: "Create your profile",
@@ -569,65 +629,18 @@ private struct ProfileSetupView: View {
             )
 
             VStack(spacing: 12) {
-                ZStack {
-                    if let selectedPhotoPreviewImage {
-                        Image(uiImage: selectedPhotoPreviewImage)
-                            .resizable()
-                            .scaledToFill()
-                    } else if let selectedPhotoAsset {
-                        PatchworkRemoteImage(
-                            asset: selectedPhotoAsset,
-                            preferredVariant: .display,
-                            contentMode: .fill
-                        ) {
-                            avatarPickerPlaceholder
-                        }
-                    } else {
-                        avatarPickerPlaceholder
-                    }
-                }
-                .frame(width: 108, height: 108)
-                .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
-                )
-                .accessibilityIdentifier("ProfileSetup.photoPreview")
-
-                HStack(spacing: 10) {
-                    PhotosPicker(
-                        selection: $selectedPhotoItem,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        Label(hasSelectedPhoto ? "Replace Photo" : "Add Photo", systemImage: "photo")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                    .accessibilityIdentifier("ProfileSetup.photoPicker")
-                    .disabled(isPreparingPhoto || isUploadingPhoto || isSaving)
-
-                    if hasSelectedPhoto {
-                        Button("Remove") {
-                            clearSelectedPhoto()
-                        }
-                        .buttonStyle(PatchworkSecondaryButtonStyle())
-                        .accessibilityIdentifier("ProfileSetup.photoRemoveButton")
-                        .disabled(isPreparingPhoto || isUploadingPhoto || isSaving)
-                    }
+                AvatarPhotoControl(
+                    localImage: selectedPhotoPreviewImage,
+                    remoteAsset: selectedPhotoAsset,
+                    size: 112,
+                    isBusy: isUploadingPhoto || isSaving,
+                    accessibilityIdentifier: "ProfileSetup.photoPicker",
+                    action: { showsPhotoOptions = true }
+                ) {
+                    avatarPickerPlaceholder
                 }
 
-                if isPreparingPhoto {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(PatchworkTheme.brand)
-                        Text("Preparing photo...")
-                            .font(.patchworkCaption)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else if isUploadingPhoto {
+                if isUploadingPhoto {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -636,12 +649,13 @@ private struct ProfileSetupView: View {
                             .font(.patchworkCaption)
                             .foregroundStyle(PatchworkTheme.textSecondary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 } else if let photoUploadError {
                     PatchworkInlineStatusBanner(tone: .error, text: photoUploadError)
                         .accessibilityIdentifier("ProfileSetup.photoError")
                 }
             }
+            .frame(maxWidth: .infinity)
 
             TextField("Full name", text: $name)
                 .patchworkInputFieldStyle()
@@ -706,11 +720,11 @@ private struct ProfileSetupView: View {
     private var stepActionContent: some View {
         switch step {
         case .profile:
-            Button(isSaving ? "Saving..." : (isPreparingPhoto ? "Preparing..." : (isUploadingPhoto ? "Uploading..." : "Continue"))) {
+            Button(isSaving ? "Saving..." : (isUploadingPhoto ? "Uploading..." : "Continue")) {
                 Task { await createProfile() }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
-            .disabled(isSaving || isPreparingPhoto || isUploadingPhoto || !isProfileStepValid)
+            .disabled(isSaving || isUploadingPhoto || !isProfileStepValid)
             .accessibilityIdentifier("ProfileSetup.continueButton")
         case .location:
             Button("Allow location") {
@@ -868,34 +882,20 @@ private struct ProfileSetupView: View {
     private var avatarPickerPlaceholder: some View {
         ZStack {
             PatchworkTheme.brandSoft
-            Image(systemName: "person.crop.circle.fill.badge.plus")
+            Image(systemName: "person.crop.circle.fill")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(PatchworkTheme.brand)
         }
     }
 
-    private func prepareSelectedPhoto(from item: PhotosPickerItem) async {
-        isPreparingPhoto = true
-        photoUploadError = nil
-        defer {
-            isPreparingPhoto = false
-            selectedPhotoItem = nil
+    private func presentCropIfNeeded(_ image: UIImage?) {
+        cameraCaptureRequest = nil
+        guard let image else {
+            photoSheet = nil
+            return
         }
 
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
-                throw ImageAssetUploadService.UploadError.invalidPickerData
-            }
-            let previewImage = try ImageAssetUploadService.downsampledImage(from: data, maxPixelSize: 1024)
-            selectedPhotoData = data
-            selectedPhotoPreviewImage = previewImage
-            selectedPhotoAsset = nil
-        } catch {
-            selectedPhotoData = nil
-            selectedPhotoPreviewImage = nil
-            selectedPhotoAsset = nil
-            photoUploadError = error.localizedDescription
-        }
+        photoSheet = .crop(PhotoCropInput(image: image, purpose: .userPhoto))
     }
 
     @discardableResult
@@ -935,7 +935,8 @@ private struct ProfileSetupView: View {
         selectedPhotoPreviewImage = nil
         selectedPhotoAsset = nil
         photoUploadError = nil
-        selectedPhotoItem = nil
+        cameraCaptureRequest = nil
+        photoSheet = nil
 
         if let assetToDelete {
             Task {
