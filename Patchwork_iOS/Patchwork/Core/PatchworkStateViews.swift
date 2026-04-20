@@ -104,7 +104,7 @@ struct PatchworkBrandLoadingCard: View {
 
     var body: some View {
         VStack(spacing: title == nil && message == nil ? 0 : 16) {
-            PatchworkIconSpinner(size: 82)
+            PatchworkAnimatedMark(size: 82)
 
             if let title {
                 Text(title)
@@ -154,46 +154,186 @@ struct PatchworkPill: View {
     }
 }
 
-private struct PatchworkIconSpinner: View {
+struct PatchworkAnimatedMark: View {
+    enum ForegroundTreatment {
+        case standard
+        case lightOnDark
+
+        var wordmarkColor: Color {
+            switch self {
+            case .standard:
+                return PatchworkTheme.textPrimary
+            case .lightOnDark:
+                return .white
+            }
+        }
+
+        var wordmarkShadowColor: Color {
+            switch self {
+            case .standard:
+                return PatchworkTheme.brand.opacity(0.14)
+            case .lightOnDark:
+                return .black.opacity(0.16)
+            }
+        }
+
+        var markShadowColor: Color {
+            switch self {
+            case .standard:
+                return PatchworkTheme.brand.opacity(0.14)
+            case .lightOnDark:
+                return .black.opacity(0.16)
+            }
+        }
+
+        var haloColor: Color {
+            switch self {
+            case .standard:
+                return PatchworkTheme.brand.opacity(0.10)
+            case .lightOnDark:
+                return .white.opacity(0.12)
+            }
+        }
+    }
+
     let size: CGFloat
-    let spinDuration: Double
+    var showsWordmark: Bool
+    var foregroundTreatment: ForegroundTreatment
+    let swirlDuration: Double
     let pauseDuration: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reduceMotionOpacity: Double = 0.72
 
-    init(size: CGFloat = 86, spinDuration: Double = 1.0, pauseDuration: Double = 0.45) {
+    init(
+        size: CGFloat = 86,
+        showsWordmark: Bool = false,
+        foregroundTreatment: ForegroundTreatment = .standard,
+        swirlDuration: Double = 1.9,
+        pauseDuration: Double = 0.42
+    ) {
         self.size = size
-        self.spinDuration = spinDuration
+        self.showsWordmark = showsWordmark
+        self.foregroundTreatment = foregroundTreatment
+        self.swirlDuration = swirlDuration
         self.pauseDuration = pauseDuration
     }
 
     var body: some View {
-        Group {
-            if reduceMotion {
-                Image("PatchworkLogo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .overlay(
-                        Circle()
-                            .stroke(PatchworkTheme.brand.opacity(0.12), lineWidth: 1)
-                            .frame(width: size * 0.86, height: size * 0.86)
-                    )
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                    let cycleDuration = spinDuration + pauseDuration
-                    let elapsedInCycle = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration)
-                    let progress = elapsedInCycle / cycleDuration
-                    let spinProgress = min(progress / (spinDuration / cycleDuration), 1)
-                    let rotation = progress < spinDuration / cycleDuration ? spinProgress * 360 : 360
+        VStack(spacing: showsWordmark ? 14 : 0) {
+            ZStack {
+                Circle()
+                    .fill(foregroundTreatment.haloColor)
+                    .frame(width: size * 1.04, height: size * 1.04)
+                    .blur(radius: size * 0.18)
 
-                    Image("PatchworkLogo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .rotationEffect(.degrees(rotation))
+                Group {
+                    if reduceMotion {
+                        PatchworkMarkCircles(size: size, settleProgress: 1)
+                            .opacity(reduceMotionOpacity)
+                    } else {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                            let cycleDuration = swirlDuration + pauseDuration
+                            let elapsedInCycle = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration)
+                            let settleProgress = min(elapsedInCycle / swirlDuration, 1)
+
+                            PatchworkMarkCircles(size: size, settleProgress: settleProgress)
+                        }
+                    }
                 }
+                .frame(width: size, height: size)
+            }
+            .frame(width: size, height: size)
+            .shadow(color: foregroundTreatment.markShadowColor, radius: size * 0.16, y: size * 0.09)
+            .accessibilityHidden(true)
+
+            if showsWordmark {
+                Text("patchwork")
+                    .font(size > 100 ? .patchworkDisplay : .patchworkWordmark)
+                    .tracking(size > 100 ? 0.8 : 0.45)
+                    .foregroundStyle(foregroundTreatment.wordmarkColor)
+                    .shadow(color: foregroundTreatment.wordmarkShadowColor, radius: size * 0.14, y: size * 0.08)
+                    .accessibilityHidden(true)
             }
         }
-        .frame(width: size, height: size)
-        .shadow(color: PatchworkTheme.brand.opacity(0.12), radius: 14, y: 8)
+        .onAppear {
+            guard reduceMotion else {
+                return
+            }
+
+            withAnimation(.easeOut(duration: 0.45)) {
+                reduceMotionOpacity = 1
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Patchwork")
+    }
+}
+
+private struct PatchworkMarkCircles: View {
+    private struct CircleSpec {
+        let color: Color
+        let center: CGPoint
+        let radiusRatio: CGFloat
+        let phase: Double
+        let swirlStrength: CGFloat
+        let zIndex: Double
+    }
+
+    private static let iconYellow = Color(red: 250 / 255, green: 184 / 255, blue: 41 / 255)
+    private static let iconCoral = Color(red: 231 / 255, green: 118 / 255, blue: 98 / 255)
+    private static let iconTeal = Color(red: 117 / 255, green: 187 / 255, blue: 182 / 255)
+
+    private static let circles: [CircleSpec] = [
+        CircleSpec(color: iconCoral, center: CGPoint(x: 0.50, y: 0.77), radiusRatio: 0.19, phase: 0.55, swirlStrength: 1.18, zIndex: 0),
+        CircleSpec(color: iconYellow, center: CGPoint(x: 0.77, y: 0.49), radiusRatio: 0.19, phase: 1.80, swirlStrength: 0.95, zIndex: 1),
+        CircleSpec(color: iconYellow, center: CGPoint(x: 0.29, y: 0.38), radiusRatio: 0.19, phase: 3.35, swirlStrength: 1.05, zIndex: 2),
+        CircleSpec(color: iconCoral, center: CGPoint(x: 0.60, y: 0.25), radiusRatio: 0.19, phase: 4.55, swirlStrength: 1.12, zIndex: 3),
+        CircleSpec(color: iconTeal, center: CGPoint(x: 0.33, y: 0.77), radiusRatio: 0.19, phase: 2.45, swirlStrength: 1.24, zIndex: 4),
+    ]
+
+    let size: CGFloat
+    let settleProgress: Double
+
+    var body: some View {
+        let clampedProgress = min(max(settleProgress, 0), 1)
+        ZStack {
+            ForEach(Array(Self.circles.enumerated()), id: \.offset) { _, circle in
+                Circle()
+                    .fill(circle.color)
+                    .frame(width: size * circle.radiusRatio * 2, height: size * circle.radiusRatio * 2)
+                    .position(position(for: circle, progress: clampedProgress))
+                    .zIndex(circle.zIndex)
+            }
+        }
+    }
+
+    private func position(for circle: CircleSpec, progress: Double) -> CGPoint {
+        let eased = CGFloat(progress * progress * (3 - 2 * progress))
+        let center = CGPoint(x: size * 0.5, y: size * 0.5)
+        let finalCenter = CGPoint(x: size * circle.center.x, y: size * circle.center.y)
+
+        let startRadius = size * 0.30
+        let startCenter = CGPoint(
+            x: center.x + CGFloat(cos(circle.phase)) * startRadius,
+            y: center.y + CGFloat(sin(circle.phase)) * startRadius
+        )
+
+        let settleCenter = CGPoint(
+            x: startCenter.x + (finalCenter.x - startCenter.x) * eased,
+            y: startCenter.y + (finalCenter.y - startCenter.y) * eased
+        )
+
+        let orbitAngle = (progress * .pi * 2 * (1.45 + Double(circle.swirlStrength))) + circle.phase
+        let orbitRadius = size * 0.13 * (1 - eased) * circle.swirlStrength
+        let orbitOffset = CGPoint(
+            x: CGFloat(cos(orbitAngle)) * orbitRadius,
+            y: CGFloat(sin(orbitAngle * 0.9)) * orbitRadius
+        )
+
+        return CGPoint(
+            x: settleCenter.x + orbitOffset.x,
+            y: settleCenter.y + orbitOffset.y
+        )
     }
 }
 

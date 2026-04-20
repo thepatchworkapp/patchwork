@@ -195,29 +195,12 @@ struct AuthFlowView: View {
     }
 
     private var splashWordmark: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(.white.opacity(0.10))
-                    .frame(width: 108, height: 108)
-                    .blur(radius: 20)
-
-                Image("PatchworkMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 104, height: 104)
-            }
-            .frame(width: 140, height: 140)
-            .shadow(color: .black.opacity(0.16), radius: 28, y: 14)
-            .accessibilityHidden(true)
-
-            Text("patchwork")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .tracking(0.8)
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.12), radius: 16, y: 8)
-                .accessibilityHidden(true)
-        }
+        PatchworkAnimatedMark(
+            size: 108,
+            showsWordmark: true,
+            foregroundTreatment: .lightOnDark
+        )
+        .frame(minHeight: 176)
     }
 
     private var onboardingScreen: some View {
