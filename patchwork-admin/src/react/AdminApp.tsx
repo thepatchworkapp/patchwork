@@ -357,6 +357,8 @@ type UserRow = {
   email?: string | null;
   name?: string | null;
   photo?: string | null;
+  photoAssetId?: string | null;
+  photoImage?: any;
   photoUrl?: string | null;
   location?: any;
   roles?: any;
@@ -377,6 +379,7 @@ function formatDate(value: unknown): string {
 type AdminUserDetail = {
   user: any;
   userPhotoUrl?: string | null;
+  userPhotoImage?: any | null;
   seekerProfile: any | null;
   taskerProfile: any | null;
   jobsAsSeeker: any[];
@@ -461,6 +464,54 @@ function avatarInitials(name?: string | null, email?: string | null): string {
     .map((p) => p[0]?.toUpperCase())
     .join("");
   return letters || raw.slice(0, 2).toUpperCase();
+}
+
+function getPrimaryImageUrl(image: any): string | null {
+  const displayUrl = image?.variants?.display?.url;
+  if (typeof displayUrl === "string" && displayUrl) return displayUrl;
+
+  const thumbUrl = image?.variants?.thumb?.url;
+  if (typeof thumbUrl === "string" && thumbUrl) return thumbUrl;
+
+  const largeUrl = image?.variants?.large?.url;
+  if (typeof largeUrl === "string" && largeUrl) return largeUrl;
+
+  return null;
+}
+
+function dedupeUrls(urls: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const url of urls) {
+    if (typeof url !== "string" || !url || seen.has(url)) continue;
+    seen.add(url);
+    deduped.push(url);
+  }
+
+  return deduped;
+}
+
+function getUserRowPhotoUrl(user: UserRow): string | null {
+  if (typeof user.photoUrl === "string" && user.photoUrl) return user.photoUrl;
+  return getPrimaryImageUrl(user.photoImage);
+}
+
+function getUserDetailPhotoUrl(detail: AdminUserDetail): string | null {
+  if (typeof detail.userPhotoUrl === "string" && detail.userPhotoUrl) return detail.userPhotoUrl;
+  return getPrimaryImageUrl(detail.userPhotoImage);
+}
+
+function getCategoryPhotoUrls(category: any): string[] {
+  const legacyUrls = Array.isArray(category?.photoUrls)
+    ? category.photoUrls.filter((url: unknown): url is string => typeof url === "string" && !!url)
+    : [];
+  const portfolioUrls = Array.isArray(category?.portfolioImages)
+    ? category.portfolioImages
+      .map((image: any) => getPrimaryImageUrl(image))
+      .filter((url: string | null): url is string => !!url)
+    : [];
+  return dedupeUrls([...legacyUrls, ...portfolioUrls]);
 }
 
 function UserAvatar({
@@ -763,7 +814,7 @@ function DashboardShell({ email }: { email: string }) {
                         <Table.Cell className="pw-td">
                           <div className="flex items-center gap-3">
                             <UserAvatar
-                              url={u.photoUrl}
+                              url={getUserRowPhotoUrl(u)}
                               name={u.name}
                               email={u.email}
                               sizeClassName="size-8"
@@ -854,7 +905,7 @@ function UserDetailView({
 }) {
   const user = detail.user ?? {};
   const userId = (user._id as string | undefined) ?? fallbackUserId;
-  const userPhotoUrl = detail.userPhotoUrl ?? null;
+  const userPhotoUrl = getUserDetailPhotoUrl(detail);
 
   const roles = (user.roles ?? {}) as { isSeeker?: boolean; isTasker?: boolean };
   const location = (user.location ?? {}) as { city?: string; province?: string };
@@ -872,13 +923,12 @@ function UserDetailView({
 
   const taskerCategoryCount = taskerCategories.length;
   const taskerPhotoCount = taskerCategories.reduce((acc, c) => {
-    const urls = Array.isArray(c?.photoUrls) ? c.photoUrls : [];
-    return acc + urls.length;
+    return acc + getCategoryPhotoUrls(c).length;
   }, 0);
 
   const totalPhotoCount = (userPhotoUrl ? 1 : 0) + taskerPhotoCount;
   const taskerCategoriesWithPhotos = taskerCategories.filter(
-    (c) => Array.isArray(c?.photoUrls) && c.photoUrls.length > 0
+    (c) => getCategoryPhotoUrls(c).length > 0
   );
   const feedbackSubmissions = Array.isArray(detail.feedbackSubmissions) ? detail.feedbackSubmissions : [];
 
@@ -1299,7 +1349,7 @@ function UserDetailView({
                       </Table.Header>
                       <Table.Body className="divide-y divide-kumo-fill/80">
                         {detail.taskerProfile.categories.map((c: any, idx: number) => {
-                          const photoUrls = Array.isArray(c?.photoUrls) ? c.photoUrls : [];
+                          const photoUrls = getCategoryPhotoUrls(c);
                           const preview = photoUrls.slice(0, 4);
                           const extra = Math.max(0, photoUrls.length - preview.length);
 
@@ -1528,12 +1578,12 @@ function UserDetailView({
                         </div>
                       </div>
                       <Badge variant="outline" className="pw-badge-tight">
-                        {(c?.photoUrls?.length ?? 0).toString()}
+                        {getCategoryPhotoUrls(c).length.toString()}
                       </Badge>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                      {c.photoUrls.map((url: string, photoIdx: number) => (
+                      {getCategoryPhotoUrls(c).map((url: string, photoIdx: number) => (
                         <button
                           key={`${url}-${photoIdx}`}
                           type="button"
