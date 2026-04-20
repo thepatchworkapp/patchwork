@@ -222,12 +222,12 @@ describe("feedback", () => {
         });
       });
 
-      const firstReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
+      const firstReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(firstReset.deletedImageAssets).toBe(1);
       expect(firstReset.deletedStorageFiles).toBe(4);
       expect(firstReset.failedStorageFiles).toBe(0);
 
-      const secondReset = await asAdmin.mutation((api as any).admin.resetDatabase, {});
+      const secondReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(secondReset.deletedImageAssets).toBe(0);
       expect(secondReset.deletedStorageFiles).toBe(0);
       expect(secondReset.failedStorageFiles).toBe(0);
@@ -312,7 +312,7 @@ describe("feedback", () => {
       });
 
       await expect(
-        asAdmin.mutation((api as any).admin.resetDatabase, {})
+        asAdmin.action((api as any).admin.resetDatabase, {})
       ).rejects.toThrow("session cleanup failed");
 
       const user = await t.run(async (ctx) => await ctx.db.get(userId));

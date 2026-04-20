@@ -1,4 +1,4 @@
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { authComponent } from "./auth";
 import {
@@ -33,6 +33,66 @@ const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
 const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
 const REVIEW_ACCOUNT_EMAILS = new Set([APP_REVIEW_EMAIL, APP_REVIEW_SEEKER_EMAIL]);
+const resetTableNameValidator = v.union(
+  v.literal("messages"),
+  v.literal("reviews"),
+  v.literal("jobs"),
+  v.literal("proposals"),
+  v.literal("conversations"),
+  v.literal("jobRequests"),
+  v.literal("taskerCategories"),
+  v.literal("taskerProfiles"),
+  v.literal("seekerProfiles"),
+  v.literal("imageAssets"),
+  v.literal("feedbackSubmissions"),
+  v.literal("reviewAccess"),
+  v.literal("otps"),
+  v.literal("adminOtps"),
+  v.literal("users"),
+);
+const RESET_TABLES = [
+  "messages",
+  "reviews",
+  "jobs",
+  "proposals",
+  "conversations",
+  "jobRequests",
+  "taskerCategories",
+  "taskerProfiles",
+  "seekerProfiles",
+  "imageAssets",
+  "feedbackSubmissions",
+  "reviewAccess",
+  "otps",
+  "adminOtps",
+  "users",
+] as const;
+const resetChunkResultValidator = v.object({
+  deletedRows: v.number(),
+  storageIds: v.array(v.string()),
+  deletedUserAppUserIds: v.array(v.string()),
+});
+type ResetTableName = (typeof RESET_TABLES)[number];
+type ResetCounts = {
+  deletedMessages: number;
+  deletedReviews: number;
+  deletedJobs: number;
+  deletedProposals: number;
+  deletedConversations: number;
+  deletedJobRequests: number;
+  deletedTaskerCategories: number;
+  deletedTaskerProfiles: number;
+  deletedSeekerProfiles: number;
+  deletedImageAssets: number;
+  deletedFeedbackSubmissions: number;
+  deletedReviewAccess: number;
+  deletedOtps: number;
+  deletedAdminOtps: number;
+  deletedUsers: number;
+  deletedStorageFiles: number;
+  failedStorageFiles: number;
+  deletedUserAppUserIds: string[];
+};
 const reviewAccessStatusValidator = v.object({
   email: v.string(),
   allowedEmails: v.array(v.string()),
@@ -72,31 +132,6 @@ async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   return { deleted, failed };
 }
 
-async function deleteTableRows(
-  ctx: any,
-  tableName: string,
-  onRow?: (row: any) => Promise<void> | void
-) {
-  let deleted = 0;
-
-  while (true) {
-    const rows = await (ctx.db as any).query(tableName).take(RESET_BATCH_SIZE);
-    if (!rows.length) {
-      break;
-    }
-
-    for (const row of rows) {
-      if (onRow) {
-        await onRow(row);
-      }
-      await ctx.db.delete(row._id);
-      deleted += 1;
-    }
-  }
-
-  return deleted;
-}
-
 async function collectStorageIdsForRows(
   rows: Array<any>,
   storageIds: Set<any>,
@@ -118,68 +153,111 @@ function getImageAssetStorageIds(imageAsset: any) {
   return storageIdCandidates.filter((storageId): storageId is NonNullable<typeof storageId> => !!storageId);
 }
 
-async function resetApplicationData(ctx: any) {
-  const storageIds = new Set<any>();
-  const deletedUserAppUserIds: string[] = [];
-
-  const deletedMessages = await deleteTableRows(ctx, "messages", async (message) => {
-    await collectStorageIdsForRows([message], storageIds, (row) => row.attachments ?? []);
-  });
-  const deletedReviews = await deleteTableRows(ctx, "reviews");
-  const deletedJobs = await deleteTableRows(ctx, "jobs");
-  const deletedProposals = await deleteTableRows(ctx, "proposals");
-  const deletedConversations = await deleteTableRows(ctx, "conversations");
-  const deletedJobRequests = await deleteTableRows(ctx, "jobRequests", async (jobRequest) => {
-    await collectStorageIdsForRows([jobRequest], storageIds, (row) => row.photos ?? []);
-  });
-  const deletedTaskerCategories = await deleteTableRows(ctx, "taskerCategories", async (taskerCategory) => {
-    await collectStorageIdsForRows([taskerCategory], storageIds, (row) => row.photos ?? []);
-  });
-  const deletedTaskerProfiles = await deleteTableRows(ctx, "taskerProfiles", async (taskerProfile) => {
-    await taskerGeo.remove(ctx, taskerProfile._id);
-  });
-  const deletedSeekerProfiles = await deleteTableRows(ctx, "seekerProfiles");
-  const deletedImageAssets = await deleteTableRows(ctx, "imageAssets", async (imageAsset) => {
-    await collectStorageIdsForRows([imageAsset], storageIds, (row) => getImageAssetStorageIds(row));
-  });
-  const deletedFeedbackSubmissions = await deleteTableRows(ctx, "feedbackSubmissions");
-  const deletedReviewAccess = await deleteTableRows(ctx, "reviewAccess");
-  const deletedOtps = await deleteTableRows(ctx, "otps");
-  const deletedAdminOtps = await deleteTableRows(ctx, "adminOtps");
-  const deletedUsers = await deleteTableRows(ctx, "users", async (user) => {
-    deletedUserAppUserIds.push(String(user._id));
-    if (user.photo) {
-      storageIds.add(user.photo);
-    }
-  });
-
-  const storageDeleteResult = await deleteStorageIds(ctx, storageIds);
-
+function createEmptyResetCounts(): ResetCounts {
   return {
-    deletedMessages,
-    deletedReviews,
-    deletedJobs,
-    deletedProposals,
-    deletedConversations,
-    deletedJobRequests,
-    deletedTaskerCategories,
-    deletedTaskerProfiles,
-    deletedSeekerProfiles,
-    deletedImageAssets,
-    deletedFeedbackSubmissions,
-    deletedReviewAccess,
-    deletedOtps,
-    deletedAdminOtps,
-    deletedUsers,
-    deletedStorageFiles: storageDeleteResult.deleted,
-    failedStorageFiles: storageDeleteResult.failed,
-    deletedUserAppUserIds,
+    deletedMessages: 0,
+    deletedReviews: 0,
+    deletedJobs: 0,
+    deletedProposals: 0,
+    deletedConversations: 0,
+    deletedJobRequests: 0,
+    deletedTaskerCategories: 0,
+    deletedTaskerProfiles: 0,
+    deletedSeekerProfiles: 0,
+    deletedImageAssets: 0,
+    deletedFeedbackSubmissions: 0,
+    deletedReviewAccess: 0,
+    deletedOtps: 0,
+    deletedAdminOtps: 0,
+    deletedUsers: 0,
+    deletedStorageFiles: 0,
+    failedStorageFiles: 0,
+    deletedUserAppUserIds: [],
   };
 }
 
-async function performDatabaseReset(ctx: any) {
-  await resetBetterAuthNonAdmin(ctx);
-  const resetCounts = await resetApplicationData(ctx);
+function incrementResetCount(resetCounts: ResetCounts, tableName: ResetTableName, count: number) {
+  switch (tableName) {
+    case "messages":
+      resetCounts.deletedMessages += count;
+      return;
+    case "reviews":
+      resetCounts.deletedReviews += count;
+      return;
+    case "jobs":
+      resetCounts.deletedJobs += count;
+      return;
+    case "proposals":
+      resetCounts.deletedProposals += count;
+      return;
+    case "conversations":
+      resetCounts.deletedConversations += count;
+      return;
+    case "jobRequests":
+      resetCounts.deletedJobRequests += count;
+      return;
+    case "taskerCategories":
+      resetCounts.deletedTaskerCategories += count;
+      return;
+    case "taskerProfiles":
+      resetCounts.deletedTaskerProfiles += count;
+      return;
+    case "seekerProfiles":
+      resetCounts.deletedSeekerProfiles += count;
+      return;
+    case "imageAssets":
+      resetCounts.deletedImageAssets += count;
+      return;
+    case "feedbackSubmissions":
+      resetCounts.deletedFeedbackSubmissions += count;
+      return;
+    case "reviewAccess":
+      resetCounts.deletedReviewAccess += count;
+      return;
+    case "otps":
+      resetCounts.deletedOtps += count;
+      return;
+    case "adminOtps":
+      resetCounts.deletedAdminOtps += count;
+      return;
+    case "users":
+      resetCounts.deletedUsers += count;
+      return;
+  }
+}
+
+async function performDatabaseResetInChunks(ctx: any) {
+  await ctx.runMutation(internal.admin.resetBetterAuthNonAdminCore, {});
+
+  const resetCounts = createEmptyResetCounts();
+  const storageIds = new Set<string>();
+
+  for (const tableName of RESET_TABLES) {
+    while (true) {
+      const chunkResult = await ctx.runMutation(internal.admin.resetApplicationDataChunkCore, { tableName });
+      if (!chunkResult.deletedRows) {
+        break;
+      }
+
+      incrementResetCount(resetCounts, tableName, chunkResult.deletedRows);
+
+      for (const storageId of chunkResult.storageIds) {
+        storageIds.add(storageId);
+      }
+      if (chunkResult.deletedUserAppUserIds.length) {
+        resetCounts.deletedUserAppUserIds.push(...chunkResult.deletedUserAppUserIds);
+      }
+    }
+  }
+
+  const storageIdList = Array.from(storageIds);
+  for (let i = 0; i < storageIdList.length; i += RESET_BATCH_SIZE) {
+    const storageDeleteResult = await ctx.runMutation(internal.admin.deleteStorageIdsChunkCore, {
+      storageIds: storageIdList.slice(i, i + RESET_BATCH_SIZE),
+    });
+    resetCounts.deletedStorageFiles += storageDeleteResult.deleted;
+    resetCounts.failedStorageFiles += storageDeleteResult.failed;
+  }
 
   return {
     resetAt: Date.now(),
@@ -516,18 +594,94 @@ export const getRevenueCatCleanupCandidates = internalQuery({
   },
 });
 
-export const resetDatabaseCore = internalMutation({
+export const resetBetterAuthNonAdminCore = internalMutation({
   args: {},
+  returns: v.null(),
   handler: async (ctx) => {
-    return await performDatabaseReset(ctx);
+    await resetBetterAuthNonAdmin(ctx);
+    return null;
   },
 });
 
-export const resetDatabase = mutation({
+export const resetApplicationDataChunkCore = internalMutation({
+  args: {
+    tableName: resetTableNameValidator,
+  },
+  returns: resetChunkResultValidator,
+  handler: async (ctx, args) => {
+    const rows = await (ctx.db as any).query(args.tableName).take(RESET_BATCH_SIZE);
+    if (!rows.length) {
+      return {
+        deletedRows: 0,
+        storageIds: [],
+        deletedUserAppUserIds: [],
+      };
+    }
+
+    const storageIds = new Set<string>();
+    const deletedUserAppUserIds: string[] = [];
+    let deletedRows = 0;
+
+    for (const row of rows) {
+      switch (args.tableName) {
+        case "messages":
+          await collectStorageIdsForRows([row], storageIds, (message) => message.attachments ?? []);
+          break;
+        case "jobRequests":
+        case "taskerCategories":
+          await collectStorageIdsForRows([row], storageIds, (item) => item.photos ?? []);
+          break;
+        case "taskerProfiles":
+          await taskerGeo.remove(ctx, row._id);
+          break;
+        case "imageAssets":
+          await collectStorageIdsForRows([row], storageIds, (imageAsset) => getImageAssetStorageIds(imageAsset));
+          break;
+        case "users":
+          deletedUserAppUserIds.push(String(row._id));
+          if (row.photo) {
+            storageIds.add(String(row.photo));
+          }
+          break;
+      }
+
+      await ctx.db.delete(row._id);
+      deletedRows += 1;
+    }
+
+    return {
+      deletedRows,
+      storageIds: Array.from(storageIds),
+      deletedUserAppUserIds,
+    };
+  },
+});
+
+export const deleteStorageIdsChunkCore = internalMutation({
+  args: {
+    storageIds: v.array(v.string()),
+  },
+  returns: v.object({
+    deleted: v.number(),
+    failed: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    return await deleteStorageIds(ctx, new Set(args.storageIds));
+  },
+});
+
+export const resetDatabaseCore = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    return await performDatabaseResetInChunks(ctx);
+  },
+});
+
+export const resetDatabase = action({
   args: {},
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
-    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await performDatabaseReset(ctx);
+    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runAction(internal.admin.resetDatabaseCore, {});
     return result;
   },
 });
@@ -555,7 +709,7 @@ export const resetDatabaseAndRevenueCat = action({
       );
     }
 
-    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runMutation(internal.admin.resetDatabaseCore, {});
+    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runAction(internal.admin.resetDatabaseCore, {});
     const reviewAccess = await ctx.runMutation(internal.admin.reseedReviewerAccountsInternal, {});
 
     return {
