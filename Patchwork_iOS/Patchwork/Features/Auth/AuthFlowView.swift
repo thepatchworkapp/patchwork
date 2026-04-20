@@ -159,23 +159,26 @@ struct AuthFlowView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            Button("Get Started") {
-                step = .onboarding
+            VStack(spacing: 0) {
+                Button("Get Started") {
+                    step = .onboarding
+                }
+                .font(.patchworkButton)
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(maxWidth: .infinity, minHeight: PatchworkMetrics.buttonHeight)
+                .contentShape(Rectangle())
+                .background(.white, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                        .stroke(.white.opacity(0.3), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.16), radius: 22, y: 12)
+                .accessibilityLabel("Get Started")
+                .accessibilityIdentifier("Auth.getStartedButton")
             }
-            .font(.patchworkButton)
-            .foregroundStyle(PatchworkTheme.brand)
-            .frame(maxWidth: .infinity, minHeight: PatchworkMetrics.buttonHeight)
-            .background(.white, in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
-                    .stroke(.white.opacity(0.3), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.16), radius: 22, y: 12)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
             .padding(.top, 14)
-            .accessibilityLabel("Get Started")
-            .accessibilityIdentifier("Auth.getStartedButton")
             .background(
                 LinearGradient(
                     colors: [
