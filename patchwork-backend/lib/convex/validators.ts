@@ -38,6 +38,55 @@ export const userSettingsValidator = v.object({
   locationEnabled: v.boolean(),
 });
 
+export const imageAssetPurposeValidator = v.union(
+  v.literal("userPhoto"),
+  v.literal("taskerPhoto"),
+  v.literal("taskerCategoryPortfolio")
+);
+
+export const imageAssetStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("deleted")
+);
+
+export const imageAssetContentTypeValidator = v.union(
+  v.literal("image/jpeg"),
+  v.literal("image/heic"),
+  v.literal("image/heif")
+);
+
+export const imageAssetVariantValidator = v.object({
+  storageId: v.id("_storage"),
+  contentType: imageAssetContentTypeValidator,
+  width: v.number(),
+  height: v.number(),
+  byteSize: v.number(),
+});
+
+export const imageAssetVariantWithUrlValidator = v.object({
+  storageId: v.id("_storage"),
+  contentType: imageAssetContentTypeValidator,
+  width: v.number(),
+  height: v.number(),
+  byteSize: v.number(),
+  url: v.union(v.string(), v.null()),
+});
+
+export const imageAssetValidator = v.object({
+  _id: v.id("imageAssets"),
+  ownerUserId: v.id("users"),
+  purpose: imageAssetPurposeValidator,
+  status: imageAssetStatusValidator,
+  sourceContentType: imageAssetContentTypeValidator,
+  variants: v.object({
+    thumb: imageAssetVariantWithUrlValidator,
+    display: imageAssetVariantWithUrlValidator,
+    large: v.optional(imageAssetVariantWithUrlValidator),
+  }),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+
 export const currentUserValidator = v.object({
   _id: v.id("users"),
   authId: v.string(),
@@ -45,6 +94,8 @@ export const currentUserValidator = v.object({
   emailVerified: v.boolean(),
   name: v.string(),
   photo: v.optional(v.id("_storage")),
+  photoAssetId: v.optional(v.id("imageAssets")),
+  photoImage: v.union(imageAssetValidator, v.null()),
   location: userLocationValidator,
   roles: userRolesValidator,
   settings: userSettingsValidator,
@@ -84,6 +135,10 @@ export const taskerCategorySummaryValidator = v.object({
   categoryId: v.id("categories"),
   bio: v.string(),
   photos: v.array(v.id("_storage")),
+  portfolioAssetIds: v.optional(v.array(v.id("imageAssets"))),
+  coverAssetId: v.optional(v.id("imageAssets")),
+  coverImage: v.union(imageAssetValidator, v.null()),
+  portfolioImages: v.array(imageAssetValidator),
   rateType: taskerCategoryRateTypeValidator,
   hourlyRate: v.optional(v.number()),
   fixedRate: v.optional(v.number()),
@@ -108,6 +163,9 @@ export const taskerProfileResponseValidator = v.object({
   completedJobs: v.number(),
   responseTime: v.optional(v.string()),
   verified: v.boolean(),
+  photoSource: v.union(v.literal("user"), v.literal("custom")),
+  photoAssetId: v.optional(v.id("imageAssets")),
+  photoImage: v.union(imageAssetValidator, v.null()),
   subscriptionPlan: subscriptionPlanValidator,
   subscriptionAccessType: v.optional(subscriptionAccessTypeValidator),
   subscriptionActiveAccessTypes: v.optional(v.array(subscriptionAccessTypeValidator)),
@@ -136,6 +194,9 @@ export const taskerPublicCategoryValidator = v.object({
   bio: v.string(),
   photos: v.array(v.id("_storage")),
   firstPhotoUrl: v.union(v.string(), v.null()),
+  coverAssetId: v.optional(v.id("imageAssets")),
+  coverImage: v.union(imageAssetValidator, v.null()),
+  portfolioImages: v.array(imageAssetValidator),
   rateType: taskerCategoryRateTypeValidator,
   hourlyRate: v.optional(v.number()),
   fixedRate: v.optional(v.number()),
@@ -149,6 +210,7 @@ export const taskerReviewValidator = v.object({
   text: v.string(),
   reviewerName: v.string(),
   reviewerPhotoUrl: v.union(v.string(), v.null()),
+  reviewerImage: v.union(imageAssetValidator, v.null()),
   createdAt: v.number(),
 });
 
@@ -164,6 +226,7 @@ export const taskerDetailValidator = v.object({
   userName: v.string(),
   userPhoto: v.optional(v.id("_storage")),
   userPhotoUrl: v.union(v.string(), v.null()),
+  profileImage: v.union(imageAssetValidator, v.null()),
   categories: v.array(taskerPublicCategoryValidator),
   reviews: v.array(taskerReviewValidator),
 });
@@ -182,6 +245,8 @@ export const searchTaskerResultValidator = v.object({
   completedJobs: v.number(),
   avatarUrl: v.union(v.string(), v.null()),
   categoryPhotoUrl: v.union(v.string(), v.null()),
+  avatarImage: v.union(imageAssetValidator, v.null()),
+  categoryCoverImage: v.union(imageAssetValidator, v.null()),
 });
 
 export const proposalPayloadValidator = v.object({
@@ -259,8 +324,11 @@ export const conversationValidator = v.object({
   taskerName: v.string(),
   seekerPhotoUrl: v.union(v.string(), v.null()),
   taskerPhotoUrl: v.union(v.string(), v.null()),
+  seekerImage: v.union(imageAssetValidator, v.null()),
+  taskerImage: v.union(imageAssetValidator, v.null()),
   participantName: v.union(v.string(), v.null()),
   participantPhotoUrl: v.union(v.string(), v.null()),
+  participantImage: v.union(imageAssetValidator, v.null()),
 });
 
 export const locationUpdateResultValidator = v.object({
@@ -325,6 +393,7 @@ export const listedJobValidator = v.object({
   updatedAt: v.number(),
   counterpartyName: v.string(),
   counterpartyPhotoUrl: v.union(v.string(), v.null()),
+  counterpartyImage: v.union(imageAssetValidator, v.null()),
 });
 
 export const jobRequestValidator = v.object({

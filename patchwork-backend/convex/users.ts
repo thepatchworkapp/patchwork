@@ -2,12 +2,19 @@ import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { currentUserValidator } from "../lib/convex/validators";
+import {
+  getDisplayStorageId,
+  getOwnedImageAsset,
+  getUserPhotoImageAssetDto,
+} from "./imageAssetHelpers";
+import { requireAppUser } from "./authHelpers";
 
 export const createProfile = mutation({
   args: {
     name: v.string(),
     city: v.string(),
     province: v.string(),
+    photoAssetId: v.optional(v.id("imageAssets")),
     photo: v.optional(v.id("_storage")),
   },
   returns: v.id("users"),
@@ -22,8 +29,25 @@ export const createProfile = mutation({
       .unique();
 
     if (existing) {
+      if (args.photoAssetId) {
+        const imageAsset = await getOwnedImageAsset(ctx, args.photoAssetId, existing._id, {
+          purpose: "userPhoto",
+          requireActive: true,
+        });
+
+        await ctx.db.patch(existing._id, {
+          photoAssetId: imageAsset._id,
+          photo: getDisplayStorageId(imageAsset),
+          updatedAt: Date.now(),
+        });
+      }
+
       // Return existing user ID (idempotent) instead of throwing
       return existing._id;
+    }
+
+    if (args.photoAssetId) {
+      throw new ConvexError("photoAssetId can only be set on an existing profile");
     }
 
     // Input validation
@@ -38,6 +62,7 @@ export const createProfile = mutation({
       email: identity.email!,
       emailVerified: identity.emailVerified ?? false,
       name: args.name,
+      photoAssetId: undefined,
       photo: args.photo,
       location: {
         city: args.city,
@@ -86,6 +111,8 @@ export const getCurrentUser = query({
       return null;
     }
 
+    const photoImage = await getUserPhotoImageAssetDto(ctx, user, true);
+
     return {
       _id: user._id,
       authId: user.authId,
@@ -93,11 +120,66 @@ export const getCurrentUser = query({
       emailVerified: user.emailVerified,
       name: user.name,
       photo: user.photo,
+      photoAssetId: user.photoAssetId,
+      photoImage,
       location: user.location,
       roles: user.roles,
       settings: user.settings,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  },
+});
+
+export const updateProfilePhoto = mutation({
+  args: {
+    photoAssetId: v.union(v.id("imageAssets"), v.null()),
+  },
+  returns: currentUserValidator,
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+
+    const now = Date.now();
+    if (args.photoAssetId === null) {
+      await ctx.db.patch(user._id, {
+        photoAssetId: undefined,
+        photo: undefined,
+        updatedAt: now,
+      });
+    } else {
+      const imageAsset = await getOwnedImageAsset(ctx, args.photoAssetId, user._id, {
+        purpose: "userPhoto",
+        requireActive: true,
+      });
+
+      await ctx.db.patch(user._id, {
+        photoAssetId: imageAsset._id,
+        photo: getDisplayStorageId(imageAsset),
+        updatedAt: now,
+      });
+    }
+
+    const updatedUser = await ctx.db.get(user._id);
+    if (!updatedUser) {
+      throw new ConvexError("User not found");
+    }
+
+    const photoImage = await getUserPhotoImageAssetDto(ctx, updatedUser, true);
+
+    return {
+      _id: updatedUser._id,
+      authId: updatedUser.authId,
+      email: updatedUser.email,
+      emailVerified: updatedUser.emailVerified,
+      name: updatedUser.name,
+      photo: updatedUser.photo,
+      photoAssetId: updatedUser.photoAssetId,
+      photoImage,
+      location: updatedUser.location,
+      roles: updatedUser.roles,
+      settings: updatedUser.settings,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
     };
   },
 });

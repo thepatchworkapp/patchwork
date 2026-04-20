@@ -4,6 +4,11 @@ import { Doc } from "./_generated/dataModel";
 import { taskerGeo } from "./geospatial";
 import { getEffectiveGhostMode, hasActiveSubscription } from "../lib/convex/subscriptionState";
 import { searchTaskerResultValidator } from "../lib/convex/validators";
+import { getAppUserOrNull } from "./authHelpers";
+import {
+  getTaskerCategoryPortfolioImageDtos,
+  getTaskerProfileImageAssetDto,
+} from "./imageAssetHelpers";
 
 const MAX_SERVICE_RADIUS_KM = 250;
 const MAX_GEO_RESULTS = 100;
@@ -20,6 +25,8 @@ export const searchTaskers = query({
   },
   returns: v.array(searchTaskerResultValidator),
   handler: async (ctx, args) => {
+    const session = await getAppUserOrNull(ctx);
+    const includeUrls = !!session;
     const limit = Math.max(1, Math.min(args.limit ?? DEFAULT_GEO_RESULTS, MAX_GEO_RESULTS));
 
     // Coordinate validation
@@ -107,11 +114,14 @@ export const searchTaskers = query({
         categoryData.fixedRate
       );
 
-      const avatarUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+      const avatarUrl = includeUrls && user.photo ? await ctx.storage.getUrl(user.photo) : null;
+      const avatarImage = await getTaskerProfileImageAssetDto(ctx, user, profile, includeUrls);
+      const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, categoryData, includeUrls);
       const categoryPhotoStorageId = categoryData.photos?.[0];
-      const categoryPhotoUrl = categoryPhotoStorageId
-        ? await ctx.storage.getUrl(categoryPhotoStorageId)
-        : null;
+      const categoryPhotoUrl = categoryImages.coverImage?.variants.display.url
+        ?? (includeUrls && categoryPhotoStorageId
+          ? await ctx.storage.getUrl(categoryPhotoStorageId)
+          : null);
 
       const distanceKm = geoResult.distance / 1000;
       const maxOverlapDistance = args.radiusKm + categoryData.serviceRadius;
@@ -133,6 +143,8 @@ export const searchTaskers = query({
         completedJobs: categoryData.completedJobs,
         avatarUrl,
         categoryPhotoUrl,
+        avatarImage,
+        categoryCoverImage: categoryImages.coverImage,
       });
     }
 

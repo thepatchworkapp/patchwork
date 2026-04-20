@@ -1,6 +1,7 @@
 import { action, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 import {
   getEffectiveGhostMode,
   getEffectiveSubscriptionPlan,
@@ -13,8 +14,17 @@ import {
   taskerProfileResponseValidator,
 } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
+import {
+  getOwnedImageAsset,
+  getOwnedImageAssets,
+  getTaskerCategoryPortfolioImageDtos,
+  getTaskerProfileImageAssetDto,
+  getUserPhotoImageAssetDto,
+  toCompatibilityPhotos,
+} from "./imageAssetHelpers";
 
 const MAX_CATEGORY_BIO_LENGTH = 500;
+const MAX_CATEGORY_PORTFOLIO_ASSETS = 10;
 
 function buildSubscriptionView(profile: {
   subscriptionPlan: "none" | "tasker";
@@ -46,6 +56,57 @@ function validateTaskerCategoryInput(args: {
   if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new ConvexError("Fixed rate must be between 1 and 1,000,000 (in cents)");
 }
 
+type TaskerPhotoSource = "user" | "custom";
+
+function normalizeTaskerPhotoSource(photoSource?: TaskerPhotoSource, photoAssetId?: Id<"imageAssets">): TaskerPhotoSource {
+  if (photoSource) {
+    return photoSource;
+  }
+  return photoAssetId ? "custom" : "user";
+}
+
+function validatePortfolioAssetIds(portfolioAssetIds?: Id<"imageAssets">[]) {
+  const normalizedIds = portfolioAssetIds ?? [];
+  if (normalizedIds.length > MAX_CATEGORY_PORTFOLIO_ASSETS) {
+    throw new ConvexError(`Maximum ${MAX_CATEGORY_PORTFOLIO_ASSETS} portfolio images allowed`);
+  }
+
+  const uniqueAssetIds = new Set(normalizedIds.map((assetId) => String(assetId)));
+  if (uniqueAssetIds.size !== normalizedIds.length) {
+    throw new ConvexError("Portfolio image assets must be unique");
+  }
+}
+
+async function validateAndResolveCategoryPortfolio(
+  ctx: any,
+  userId: Id<"users">,
+  portfolioAssetIds?: Id<"imageAssets">[],
+  coverAssetId?: Id<"imageAssets">
+) {
+  const normalizedPortfolioAssetIds = portfolioAssetIds ?? [];
+  validatePortfolioAssetIds(normalizedPortfolioAssetIds);
+
+  if (coverAssetId && !normalizedPortfolioAssetIds.some((assetId) => assetId === coverAssetId)) {
+    throw new ConvexError("coverAssetId must exist in portfolioAssetIds");
+  }
+
+  const portfolioAssets = await getOwnedImageAssets(
+    ctx,
+    normalizedPortfolioAssetIds,
+    userId,
+    "taskerCategoryPortfolio"
+  );
+
+  const normalizedCoverAssetId = coverAssetId ?? portfolioAssets[0]?._id;
+  const compatibilityPhotos = toCompatibilityPhotos(portfolioAssets, normalizedCoverAssetId);
+
+  return {
+    normalizedPortfolioAssetIds,
+    normalizedCoverAssetId,
+    compatibilityPhotos,
+  };
+}
+
 async function loadOwnedTaskerProfile(ctx: any) {
   const { user } = await requireAppUser(ctx);
   const profile = await ctx.db
@@ -62,36 +123,16 @@ async function loadOwnedTaskerProfile(ctx: any) {
 
 async function buildTaskerProfileResponse(
   ctx: any,
-  profile: {
-    _id: any;
-    userId: any;
-    displayName: string;
-    bio?: string;
-    isOnboarded: boolean;
-    rating: number;
-    reviewCount: number;
-    completedJobs: number;
-    responseTime?: string;
-    verified: boolean;
-    subscriptionPlan: "none" | "tasker";
-    subscriptionAccessType?: "subscription" | "lifetime";
-    subscriptionActiveAccessTypes?: Array<"subscription" | "lifetime">;
-    subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
-    subscriptionEndsAt?: number;
-    ghostMode: boolean;
-    foundersBadge?: {
-      categoryId: any;
-      awardedAt: number;
-    };
-    location?: {
-      lat: number;
-      lng: number;
-    };
-    geoPoint?: string;
-    createdAt: number;
-    updatedAt: number;
-  },
-  ) {
+  profile: any,
+) {
+  const user = await ctx.db.get(profile.userId);
+  if (!user) {
+    throw new ConvexError("User not found");
+  }
+
+  const photoSource: TaskerPhotoSource = profile.photoSource ?? "user";
+  const photoImage = await getTaskerProfileImageAssetDto(ctx, user, profile, true);
+
   const taskerCategories = await ctx.db
     .query("taskerCategories")
     .withIndex("by_taskerProfile_category", (q: any) => q.eq("taskerProfileId", profile._id))
@@ -100,6 +141,7 @@ async function buildTaskerProfileResponse(
   const categoriesWithNames = await Promise.all(
     taskerCategories.map(async (tc: any) => {
       const category = await ctx.db.get(tc.categoryId);
+      const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, tc, true);
       return {
         _id: tc._id,
         taskerProfileId: tc.taskerProfileId,
@@ -107,6 +149,10 @@ async function buildTaskerProfileResponse(
         categoryId: tc.categoryId,
         bio: tc.bio,
         photos: tc.photos,
+        portfolioAssetIds: tc.portfolioAssetIds,
+        coverAssetId: categoryImages.coverAssetId,
+        coverImage: categoryImages.coverImage,
+        portfolioImages: categoryImages.portfolioImages,
         rateType: tc.rateType,
         hourlyRate: tc.hourlyRate,
         fixedRate: tc.fixedRate,
@@ -133,6 +179,9 @@ async function buildTaskerProfileResponse(
     completedJobs: profile.completedJobs,
     responseTime: profile.responseTime,
     verified: profile.verified,
+    photoSource,
+    photoAssetId: photoSource === "custom" ? profile.photoAssetId : undefined,
+    photoImage,
     subscriptionPlan: profile.subscriptionPlan,
     subscriptionAccessType: profile.subscriptionAccessType,
     subscriptionActiveAccessTypes: profile.subscriptionActiveAccessTypes,
@@ -153,9 +202,13 @@ export const createTaskerProfile = mutation({
   args: {
     displayName: v.string(),
     bio: v.optional(v.string()),
+    photoSource: v.optional(v.union(v.literal("user"), v.literal("custom"))),
+    photoAssetId: v.optional(v.id("imageAssets")),
     categoryId: v.id("categories"),
     categoryBio: v.string(),
     photos: v.optional(v.array(v.id("_storage"))),
+    portfolioAssetIds: v.optional(v.array(v.id("imageAssets"))),
+    coverAssetId: v.optional(v.id("imageAssets")),
     rateType: v.union(v.literal("hourly"), v.literal("fixed")),
     hourlyRate: v.optional(v.number()),
     fixedRate: v.optional(v.number()),
@@ -182,12 +235,38 @@ export const createTaskerProfile = mutation({
     if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new ConvexError("Hourly rate must be between 1 and 1,000,000 (in cents)");
     if (args.fixedRate !== undefined && (args.fixedRate < 1 || args.fixedRate > 100000000)) throw new ConvexError("Fixed rate must be between 1 and 1,000,000 (in cents)");
 
+    const photoSource = normalizeTaskerPhotoSource(args.photoSource, args.photoAssetId);
+    if (photoSource === "user" && args.photoAssetId) {
+      throw new ConvexError("photoAssetId requires photoSource=custom");
+    }
+
+    let customPhotoAssetId: Id<"imageAssets"> | undefined;
+    if (photoSource === "custom") {
+      if (!args.photoAssetId) {
+        throw new ConvexError("photoAssetId is required when photoSource=custom");
+      }
+      const customPhotoAsset = await getOwnedImageAsset(ctx, args.photoAssetId, user._id, {
+        purpose: "taskerPhoto",
+        requireActive: true,
+      });
+      customPhotoAssetId = customPhotoAsset._id;
+    }
+
+    const portfolio = await validateAndResolveCategoryPortfolio(
+      ctx,
+      user._id,
+      args.portfolioAssetIds,
+      args.coverAssetId
+    );
+
     const now = Date.now();
 
     const profileId = await ctx.db.insert("taskerProfiles", {
       userId: user._id,
       displayName: args.displayName,
       bio: args.bio,
+      photoSource,
+      photoAssetId: customPhotoAssetId,
       isOnboarded: true,
       rating: 0,
       reviewCount: 0,
@@ -206,7 +285,9 @@ export const createTaskerProfile = mutation({
       userId: user._id,
       categoryId: args.categoryId,
       bio: args.categoryBio,
-      photos: args.photos ?? [],
+      photos: portfolio.compatibilityPhotos.length > 0 ? portfolio.compatibilityPhotos : (args.photos ?? []),
+      portfolioAssetIds: portfolio.normalizedPortfolioAssetIds,
+      coverAssetId: portfolio.normalizedCoverAssetId,
       rateType: args.rateType,
       hourlyRate: args.hourlyRate,
       fixedRate: args.fixedRate,
@@ -280,6 +361,91 @@ export const updateTaskerProfile = mutation({
       ...profile,
       ...updates,
     });
+  },
+});
+
+export const setTaskerPhoto = mutation({
+  args: {
+    photoSource: v.union(v.literal("user"), v.literal("custom")),
+    photoAssetId: v.optional(v.id("imageAssets")),
+  },
+  returns: taskerProfileResponseValidator,
+  handler: async (ctx, args) => {
+    const { user, profile } = await loadOwnedTaskerProfile(ctx);
+
+    if (args.photoSource === "user") {
+      const updates = {
+        photoSource: "user" as const,
+        photoAssetId: undefined,
+        updatedAt: Date.now(),
+      };
+
+      await ctx.db.patch(profile._id, updates);
+      return buildTaskerProfileResponse(ctx, {
+        ...profile,
+        ...updates,
+      });
+    }
+
+    if (!args.photoAssetId) {
+      throw new ConvexError("photoAssetId is required when photoSource=custom");
+    }
+
+    const imageAsset = await getOwnedImageAsset(ctx, args.photoAssetId, user._id, {
+      purpose: "taskerPhoto",
+      requireActive: true,
+    });
+
+    const updates = {
+      photoSource: "custom" as const,
+      photoAssetId: imageAsset._id,
+      updatedAt: Date.now(),
+    };
+    await ctx.db.patch(profile._id, updates);
+
+    return buildTaskerProfileResponse(ctx, {
+      ...profile,
+      ...updates,
+    });
+  },
+});
+
+export const setCategoryPortfolio = mutation({
+  args: {
+    categoryId: v.id("categories"),
+    portfolioAssetIds: v.array(v.id("imageAssets")),
+    coverAssetId: v.optional(v.id("imageAssets")),
+  },
+  returns: taskerProfileResponseValidator,
+  handler: async (ctx, args) => {
+    const { user, profile } = await loadOwnedTaskerProfile(ctx);
+
+    const category = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile_category", (q) =>
+        q.eq("taskerProfileId", profile._id).eq("categoryId", args.categoryId)
+      )
+      .unique();
+
+    if (!category) {
+      throw new ConvexError("Category not found");
+    }
+
+    const portfolio = await validateAndResolveCategoryPortfolio(
+      ctx,
+      user._id,
+      args.portfolioAssetIds,
+      args.coverAssetId
+    );
+
+    await ctx.db.patch(category._id, {
+      portfolioAssetIds: portfolio.normalizedPortfolioAssetIds,
+      coverAssetId: portfolio.normalizedCoverAssetId,
+      photos: portfolio.compatibilityPhotos,
+      updatedAt: Date.now(),
+    });
+
+    return buildTaskerProfileResponse(ctx, profile);
   },
 });
 
@@ -377,13 +543,17 @@ export const getTaskerById = query({
   args: { taskerId: v.id("taskerProfiles") },
   returns: v.union(taskerDetailValidator, v.null()),
   handler: async (ctx, args) => {
+    const session = await getAppUserOrNull(ctx);
+    const includeUrls = !!session;
+
     const profile = await ctx.db.get(args.taskerId);
     if (!profile) return null;
 
     const user = await ctx.db.get(profile.userId);
     if (!user) return null;
 
-    const userPhotoUrl = user.photo ? await ctx.storage.getUrl(user.photo) : null;
+    const userPhotoUrl = includeUrls && user.photo ? await ctx.storage.getUrl(user.photo) : null;
+    const profileImage = await getTaskerProfileImageAssetDto(ctx, user, profile, includeUrls);
 
     const taskerCategories = await ctx.db
       .query("taskerCategories")
@@ -393,8 +563,9 @@ export const getTaskerById = query({
     const categoriesWithNames = await Promise.all(
       taskerCategories.map(async (tc) => {
         const category = await ctx.db.get(tc.categoryId);
+        const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, tc, includeUrls);
         const firstPhotoStorageId = tc.photos?.[0];
-        const firstPhotoUrl = firstPhotoStorageId
+        const firstPhotoUrl = includeUrls && firstPhotoStorageId
           ? await ctx.storage.getUrl(firstPhotoStorageId)
           : null;
         return {
@@ -405,6 +576,9 @@ export const getTaskerById = query({
           bio: tc.bio,
           photos: tc.photos,
           firstPhotoUrl,
+          coverAssetId: categoryImages.coverAssetId,
+          coverImage: categoryImages.coverImage,
+          portfolioImages: categoryImages.portfolioImages,
           rateType: tc.rateType,
           hourlyRate: tc.hourlyRate,
           fixedRate: tc.fixedRate,
@@ -423,8 +597,11 @@ export const getTaskerById = query({
     const reviewsWithReviewers = await Promise.all(
       reviews.map(async (r) => {
         const reviewer = await ctx.db.get(r.reviewerId);
-        const reviewerPhotoUrl = reviewer?.photo
+        const reviewerPhotoUrl = includeUrls && reviewer?.photo
           ? await ctx.storage.getUrl(reviewer.photo)
+          : null;
+        const reviewerImage = reviewer
+          ? await getUserPhotoImageAssetDto(ctx, reviewer, includeUrls)
           : null;
         return {
           id: r._id,
@@ -432,6 +609,7 @@ export const getTaskerById = query({
           text: r.text,
           reviewerName: reviewer?.name ?? "Anonymous",
           reviewerPhotoUrl,
+          reviewerImage,
           createdAt: r.createdAt,
         };
       })
@@ -449,6 +627,7 @@ export const getTaskerById = query({
       userName: user.name,
       userPhoto: user.photo,
       userPhotoUrl,
+      profileImage,
       categories: categoriesWithNames,
       reviews: reviewsWithReviewers,
     };
@@ -506,10 +685,11 @@ export const listFavouriteTaskers = query({
         }
 
         const avatarUrl = taskerUser.photo ? await ctx.storage.getUrl(taskerUser.photo) : null;
+        const avatarImage = await getTaskerProfileImageAssetDto(ctx, taskerUser, profile, true);
+        const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, categoryData, true);
         const categoryPhotoStorageId = categoryData.photos?.[0];
-        const categoryPhotoUrl = categoryPhotoStorageId
-          ? await ctx.storage.getUrl(categoryPhotoStorageId)
-          : null;
+        const categoryPhotoUrl = categoryImages.coverImage?.variants.display.url
+          ?? (categoryPhotoStorageId ? await ctx.storage.getUrl(categoryPhotoStorageId) : null);
 
         return {
           id: profile._id,
@@ -525,6 +705,8 @@ export const listFavouriteTaskers = query({
           completedJobs: profile.completedJobs,
           avatarUrl,
           categoryPhotoUrl,
+          avatarImage,
+          categoryCoverImage: categoryImages.coverImage,
         };
       })
     );

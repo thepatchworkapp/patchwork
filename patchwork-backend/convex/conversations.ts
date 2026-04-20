@@ -2,6 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { conversationValidator } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
+import {
+  getTaskerProfileImageAssetDto,
+  getUserPhotoImageAssetDto,
+} from "./imageAssetHelpers";
 
 export const startConversation = mutation({
   args: {
@@ -103,9 +107,21 @@ export const listConversations = query({
         ctx.db.get(conversation.seekerId),
         ctx.db.get(conversation.taskerId),
       ]);
+      const taskerProfile = tasker
+        ? await ctx.db
+          .query("taskerProfiles")
+          .withIndex("by_userId", (q: any) => q.eq("userId", tasker._id))
+          .unique()
+        : null;
 
       const seekerPhotoUrl = seeker?.photo ? await ctx.storage.getUrl(seeker.photo) : null;
       const taskerPhotoUrl = tasker?.photo ? await ctx.storage.getUrl(tasker.photo) : null;
+      const seekerImage = seeker ? await getUserPhotoImageAssetDto(ctx, seeker, true) : null;
+      const taskerImage = tasker
+        ? taskerProfile
+          ? await getTaskerProfileImageAssetDto(ctx, tasker, taskerProfile, true)
+          : await getUserPhotoImageAssetDto(ctx, tasker, true)
+        : null;
 
       const participantName = roleHint === "seeker"
         ? tasker?.name ?? "Tasker"
@@ -118,6 +134,11 @@ export const listConversations = query({
         : roleHint === "tasker"
           ? seekerPhotoUrl
           : null;
+      const participantImage = roleHint === "seeker"
+        ? taskerImage
+        : roleHint === "tasker"
+          ? seekerImage
+          : null;
 
       return {
         ...conversation,
@@ -125,8 +146,11 @@ export const listConversations = query({
         taskerName: tasker?.name ?? "Tasker",
         seekerPhotoUrl,
         taskerPhotoUrl,
+        seekerImage,
+        taskerImage,
         participantName,
         participantPhotoUrl,
+        participantImage,
       };
     };
 
@@ -196,15 +220,30 @@ export const getConversation = query({
       ctx.db.get(conversation.seekerId),
       ctx.db.get(conversation.taskerId),
     ]);
+    const taskerProfile = tasker
+      ? await ctx.db
+        .query("taskerProfiles")
+        .withIndex("by_userId", (q: any) => q.eq("userId", tasker._id))
+        .unique()
+      : null;
 
     const seekerPhotoUrl = seeker?.photo ? await ctx.storage.getUrl(seeker.photo) : null;
     const taskerPhotoUrl = tasker?.photo ? await ctx.storage.getUrl(tasker.photo) : null;
+    const seekerImage = seeker ? await getUserPhotoImageAssetDto(ctx, seeker, true) : null;
+    const taskerImage = tasker
+      ? taskerProfile
+        ? await getTaskerProfileImageAssetDto(ctx, tasker, taskerProfile, true)
+        : await getUserPhotoImageAssetDto(ctx, tasker, true)
+      : null;
     const participantName = conversation.seekerId === user._id
       ? tasker?.name ?? "Tasker"
       : seeker?.name ?? "Seeker";
     const participantPhotoUrl = conversation.seekerId === user._id
       ? taskerPhotoUrl
       : seekerPhotoUrl;
+    const participantImage = conversation.seekerId === user._id
+      ? taskerImage
+      : seekerImage;
 
     return {
       ...conversation,
@@ -212,8 +251,11 @@ export const getConversation = query({
       taskerName: tasker?.name ?? "Tasker",
       seekerPhotoUrl,
       taskerPhotoUrl,
+      seekerImage,
+      taskerImage,
       participantName,
       participantPhotoUrl,
+      participantImage,
     };
   },
 });

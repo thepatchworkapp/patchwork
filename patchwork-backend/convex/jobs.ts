@@ -2,6 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { jobValidator, listedJobValidator } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
+import {
+  getTaskerProfileImageAssetDto,
+  getUserPhotoImageAssetDto,
+} from "./imageAssetHelpers";
 
 type JobStatus = "pending" | "in_progress" | "completed" | "cancelled" | "disputed";
 
@@ -176,11 +180,29 @@ export const listJobs = query({
         const counterpartyPhotoUrl = counterparty?.photo
           ? await ctx.storage.getUrl(counterparty.photo)
           : null;
+        let counterpartyImage = counterparty
+          ? await getUserPhotoImageAssetDto(ctx, counterparty, true)
+          : null;
+        if (counterparty && counterpartyId === job.taskerId) {
+          const taskerProfile = await ctx.db
+            .query("taskerProfiles")
+            .withIndex("by_userId", (q) => q.eq("userId", counterpartyId))
+            .unique();
+          if (taskerProfile) {
+            counterpartyImage = await getTaskerProfileImageAssetDto(
+              ctx,
+              counterparty,
+              taskerProfile,
+              true
+            );
+          }
+        }
 
         return {
           ...job,
           counterpartyName: counterparty?.name ?? "Tasker",
           counterpartyPhotoUrl,
+          counterpartyImage,
         };
       })
     );

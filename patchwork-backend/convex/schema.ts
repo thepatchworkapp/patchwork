@@ -9,6 +9,7 @@ export default defineSchema({
     emailVerified: v.boolean(),
     name: v.string(),
     photo: v.optional(v.id("_storage")),
+    photoAssetId: v.optional(v.id("imageAssets")),
     location: v.object({
       city: v.string(),
       province: v.string(),
@@ -30,6 +31,62 @@ export default defineSchema({
   })
     .index("by_authId", ["authId"])
     .index("by_email", ["email"]),
+
+  imageAssets: defineTable({
+    ownerUserId: v.id("users"),
+    purpose: v.union(
+      v.literal("userPhoto"),
+      v.literal("taskerPhoto"),
+      v.literal("taskerCategoryPortfolio")
+    ),
+    status: v.union(v.literal("active"), v.literal("deleted")),
+    sourceContentType: v.union(
+      v.literal("image/jpeg"),
+      v.literal("image/heic"),
+      v.literal("image/heif")
+    ),
+    variants: v.object({
+      thumb: v.object({
+        storageId: v.id("_storage"),
+        contentType: v.union(
+          v.literal("image/jpeg"),
+          v.literal("image/heic"),
+          v.literal("image/heif")
+        ),
+        width: v.number(),
+        height: v.number(),
+        byteSize: v.number(),
+      }),
+      display: v.object({
+        storageId: v.id("_storage"),
+        contentType: v.union(
+          v.literal("image/jpeg"),
+          v.literal("image/heic"),
+          v.literal("image/heif")
+        ),
+        width: v.number(),
+        height: v.number(),
+        byteSize: v.number(),
+      }),
+      large: v.optional(
+        v.object({
+          storageId: v.id("_storage"),
+          contentType: v.union(
+            v.literal("image/jpeg"),
+            v.literal("image/heic"),
+            v.literal("image/heif")
+          ),
+          width: v.number(),
+          height: v.number(),
+          byteSize: v.number(),
+        })
+      ),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerUserId"])
+    .index("by_owner_purpose", ["ownerUserId", "purpose"]),
 
   seekerProfiles: defineTable({
     userId: v.id("users"),
@@ -60,6 +117,10 @@ export default defineSchema({
 
     // Verification
     verified: v.boolean(),
+
+    // Profile photo source
+    photoSource: v.optional(v.union(v.literal("user"), v.literal("custom"))),
+    photoAssetId: v.optional(v.id("imageAssets")),
 
     // Subscription state
     subscriptionPlan: v.union(
@@ -130,6 +191,8 @@ export default defineSchema({
     // Category-specific profile
     bio: v.string(),
     photos: v.array(v.id("_storage")), // Up to 10
+    portfolioAssetIds: v.optional(v.array(v.id("imageAssets"))),
+    coverAssetId: v.optional(v.id("imageAssets")),
 
     // Pricing
     rateType: v.union(v.literal("hourly"), v.literal("fixed")),
