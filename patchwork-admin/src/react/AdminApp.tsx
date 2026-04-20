@@ -228,6 +228,7 @@ type ResetDatabaseResult = {
   deletedOtps: number;
   deletedAdminOtps: number;
   deletedUsers: number;
+  deletedImageAssets: number;
   deletedStorageFiles: number;
   preservedAdminEmails: string[];
   revenueCatCleanup?: {
@@ -261,7 +262,7 @@ function AdminMaintenanceCard() {
     setNotice(null);
     try {
       const result = (await resetDatabase({})) as ResetDatabaseResult;
-      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, and ${result.deletedStorageFiles} files.`;
+      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
 
       if (result.revenueCatCleanup) {
         nextNotice += ` ${result.revenueCatCleanup.message}`;
