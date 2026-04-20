@@ -566,14 +566,7 @@ struct PhotoCropEditor: View {
                     PatchworkInlineStatusBanner(tone: .error, text: errorMessage)
                 }
 
-                Button("Reset") {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
-                        scale = 1
-                        lastScale = 1
-                        offset = .zero
-                        lastOffset = .zero
-                    }
-                }
+                Button("Reset", action: resetCrop)
                 .buttonStyle(PatchworkSecondaryButtonStyle())
                 .accessibilityIdentifier("PhotoCrop.resetButton")
             }
@@ -697,6 +690,13 @@ struct PhotoCropEditor: View {
             width: min(max(proposed.width, -maxX), maxX),
             height: min(max(proposed.height, -maxY), maxY)
         )
+    }
+
+    private func resetCrop() {
+        scale = 1
+        lastScale = 1
+        offset = .zero
+        lastOffset = .zero
     }
 
 }

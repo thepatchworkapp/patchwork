@@ -46,12 +46,53 @@ final class ImageAssetInfrastructureTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(pixelSize.width, pixelSize.height), 320)
     }
 
+    func testAvatarCropRendererProducesSquareJPEG() throws {
+        let source = try makeImage(width: 1600, height: 900)
+
+        let cropped = try PatchworkPhotoCropRenderer.renderCrop(
+            image: source,
+            purpose: .userPhoto,
+            scale: 1,
+            offset: .zero
+        )
+        let encoded = try XCTUnwrap(cropped.jpegData(compressionQuality: 0.86))
+        let pixelSize = try XCTUnwrap(ImageAssetUploadService.pixelSize(from: encoded))
+
+        XCTAssertEqual(pixelSize.width, 1024)
+        XCTAssertEqual(pixelSize.height, 1024)
+    }
+
+    func testPortfolioCropRendererProducesFourByThreeJPEG() throws {
+        let source = try makeImage(width: 900, height: 1600)
+
+        let cropped = try PatchworkPhotoCropRenderer.renderCrop(
+            image: source,
+            purpose: .taskerCategoryPortfolio,
+            scale: 1.25,
+            offset: CGSize(width: 14, height: -20)
+        )
+        let encoded = try XCTUnwrap(cropped.jpegData(compressionQuality: 0.86))
+        let pixelSize = try XCTUnwrap(ImageAssetUploadService.pixelSize(from: encoded))
+
+        XCTAssertEqual(pixelSize.width, 1600)
+        XCTAssertEqual(pixelSize.height, 1200)
+    }
+
+    func testCameraAvailabilityCanBeCheckedWithoutPrompting() {
+        _ = CameraCaptureView.isCameraAvailable
+    }
+
     private func makeImageData(width: CGFloat, height: CGFloat) throws -> Data {
+        try XCTUnwrap(makeImage(width: width, height: height).pngData())
+    }
+
+    private func makeImage(width: CGFloat, height: CGFloat) throws -> UIImage {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
-        let image = renderer.image { context in
+        return renderer.image { context in
             UIColor.systemBlue.setFill()
             context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            UIColor.systemYellow.setFill()
+            context.fill(CGRect(x: width * 0.25, y: height * 0.25, width: width * 0.5, height: height * 0.5))
         }
-        return try XCTUnwrap(image.pngData())
     }
 }

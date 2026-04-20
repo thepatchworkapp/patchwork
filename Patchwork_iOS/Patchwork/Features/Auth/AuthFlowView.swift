@@ -82,6 +82,7 @@ struct AuthFlowView: View {
     }
 
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var step: Step = .splash
     @State private var authIntent: AuthIntent = .signIn
@@ -96,6 +97,10 @@ struct AuthFlowView: View {
 
     private var isOTPComplete: Bool {
         otpDigits.allSatisfy { $0.count == 1 }
+    }
+
+    private var disablesAnimatedTransitions: Bool {
+        reduceMotion || ProcessInfo.processInfo.arguments.contains("--uitesting")
     }
 
     private let onboardingSlides: [OnboardingSlide] = [
@@ -135,7 +140,7 @@ struct AuthFlowView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.2), value: step)
+        .animation(disablesAnimatedTransitions ? nil : .easeInOut(duration: 0.2), value: step)
     }
 
     private var splashScreen: some View {

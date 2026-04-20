@@ -113,8 +113,34 @@ export const getTaskerProfileByEmail = internalQuery({
       return null;
     }
 
+    const taskerCategories = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", taskerProfile._id))
+      .take(20);
+
     return {
+      _id: taskerProfile._id,
       taskerProfileId: taskerProfile._id,
+      displayName: taskerProfile.displayName,
+      categories: taskerCategories.map((category) => ({
+        _id: category._id,
+        taskerProfileId: category.taskerProfileId,
+        userId: category.userId,
+        categoryId: category.categoryId,
+        bio: category.bio,
+        photos: category.photos,
+        portfolioAssetIds: category.portfolioAssetIds,
+        coverAssetId: category.coverAssetId,
+        rateType: category.rateType,
+        hourlyRate: category.hourlyRate,
+        fixedRate: category.fixedRate,
+        serviceRadius: category.serviceRadius,
+        rating: category.rating,
+        reviewCount: category.reviewCount,
+        completedJobs: category.completedJobs,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+      })),
       subscriptionPlan: taskerProfile.subscriptionPlan,
       subscriptionStatus: taskerProfile.subscriptionStatus,
       subscriptionEndsAt: taskerProfile.subscriptionEndsAt,

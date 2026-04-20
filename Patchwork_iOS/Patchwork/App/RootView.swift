@@ -41,7 +41,7 @@ struct RootView: View {
                     } else {
                         MainTabView()
                     }
-                } else if sessionStore.isRestoringSession || sessionStore.needsSessionRestore {
+                } else if (sessionStore.isRestoringSession || sessionStore.needsSessionRestore) && !(isForegroundRefreshPending && preserveOnboardingRouteDuringForegroundRefresh) {
                     PatchworkBrandLoadingCard()
                 } else if !appState.isBootstrapped {
                     PatchworkBrandLoadingCard()
@@ -143,8 +143,6 @@ struct RootView: View {
         sessionStore.isAuthenticated
             && appState.currentUser == nil
             && appState.isBootstrapped
-            && !sessionStore.isRestoringSession
-            && !sessionStore.needsSessionRestore
             && !sessionStore.launchedWithPersistedSession
     }
 
@@ -530,6 +528,7 @@ private struct ProfileSetupView: View {
     @State private var photoUploadError: String?
     @State private var showsPhotoOptions = false
     @State private var cameraCaptureRequest: CameraCaptureRequest?
+    @State private var pendingCameraImage: UIImage?
     @State private var photoSheet: PhotoSheet?
     @State private var isSaving = false
     @State private var createdUserId: ConvexID?
@@ -568,10 +567,10 @@ private struct ProfileSetupView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .fullScreenCover(item: $cameraCaptureRequest) { _ in
+        .fullScreenCover(item: $cameraCaptureRequest, onDismiss: presentPendingCameraCrop) { _ in
             CameraCaptureView { image in
+                pendingCameraImage = image
                 cameraCaptureRequest = nil
-                presentCropIfNeeded(image)
             }
             .ignoresSafeArea()
         }
@@ -889,13 +888,21 @@ private struct ProfileSetupView: View {
     }
 
     private func presentCropIfNeeded(_ image: UIImage?) {
-        cameraCaptureRequest = nil
         guard let image else {
             photoSheet = nil
             return
         }
 
         photoSheet = .crop(PhotoCropInput(image: image, purpose: .userPhoto))
+    }
+
+    private func presentPendingCameraCrop() {
+        guard let pendingCameraImage else {
+            return
+        }
+
+        self.pendingCameraImage = nil
+        presentCropIfNeeded(pendingCameraImage)
     }
 
     @discardableResult

@@ -1,6 +1,6 @@
 import SafariServices
-import PhotosUI
 import SwiftUI
+import UIKit
 
 private enum ProfileSidebarDestination: String, Identifiable {
     case favourites
@@ -139,6 +139,23 @@ struct ProfileView: View {
 }
 
 private struct ProfileAccountSection: View {
+    private enum PhotoSheet: Identifiable {
+        case camera
+        case gallery
+        case crop(PhotoCropInput)
+
+        var id: String {
+            switch self {
+            case .camera:
+                return "camera"
+            case .gallery:
+                return "gallery"
+            case .crop(let input):
+                return "crop-\(input.id)"
+            }
+        }
+    }
+
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
 
@@ -146,7 +163,9 @@ private struct ProfileAccountSection: View {
     let taskerProfile: TaskerProfileSelf?
     let onOpenMenu: () -> Void
 
-    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var showsPhotoOptions = false
+    @State private var photoSheet: PhotoSheet?
+    @State private var pendingPreviewImage: UIImage?
     @State private var pendingPhotoAsset: RemoteImageAsset?
     @State private var isUploadingPhoto = false
     @State private var photoStatusMessage: SubscriptionFeedbackMessage?
@@ -192,33 +211,58 @@ private struct ProfileAccountSection: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .onChange(of: selectedPhotoItem) { _, newValue in
-            guard let newValue else {
-                return
+        .confirmationDialog("Profile photo", isPresented: $showsPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    photoSheet = .camera
+                }
             }
-            Task { await uploadProfilePhoto(from: newValue) }
+            Button("Choose from Gallery") {
+                photoSheet = .gallery
+            }
+            if hasProfilePhoto {
+                Button("Remove Photo", role: .destructive) {
+                    Task { await removeProfilePhoto() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $photoSheet) { sheet in
+            switch sheet {
+            case .camera:
+                CameraCaptureView { image in
+                    presentCropIfNeeded(image)
+                }
+            case .gallery:
+                GalleryPickerView(selectionLimit: 1) { images in
+                    presentCropIfNeeded(images.first)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    photoSheet = nil
+                } onConfirm: { draft in
+                    Task { await uploadProfilePhoto(draft) }
+                }
+            }
         }
     }
 
     private var avatar: some View {
         ZStack(alignment: .bottomTrailing) {
-            PatchworkRemoteImage(
-                asset: displayedPhotoAsset,
-                preferredVariant: .display,
-                contentMode: .fill
+            AvatarPhotoControl(
+                localImage: pendingPreviewImage,
+                remoteAsset: displayedPhotoAsset,
+                size: 108,
+                isBusy: isUploadingPhoto,
+                accessibilityIdentifier: "Profile.photoPicker",
+                action: { showsPhotoOptions = true }
             ) {
                 avatarFallback
             }
-            .frame(width: 108, height: 108)
-            .clipShape(Circle())
             .overlay(
                 Circle()
                     .stroke(PatchworkTheme.brand.opacity(0.85), lineWidth: 5)
                     .padding(4)
-            )
-            .overlay(
-                Circle()
-                    .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
             )
 
             if taskerProfile?.verified == true {
@@ -233,7 +277,6 @@ private struct ProfileAccountSection: View {
                 .offset(x: 4, y: 4)
             }
         }
-        .accessibilityHidden(true)
     }
 
     private var avatarFallback: some View {
@@ -257,31 +300,12 @@ private struct ProfileAccountSection: View {
         pendingPhotoAsset ?? user?.photoImage
     }
 
+    private var hasProfilePhoto: Bool {
+        user?.photoImage != nil || pendingPhotoAsset != nil
+    }
+
     private var profilePhotoControls: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                PhotosPicker(
-                    selection: $selectedPhotoItem,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
-                    Label((user?.photoImage == nil && pendingPhotoAsset == nil) ? "Add Photo" : "Replace Photo", systemImage: "photo")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .disabled(isUploadingPhoto)
-                .accessibilityIdentifier("Profile.photoPicker")
-
-                if user?.photoImage != nil || pendingPhotoAsset != nil {
-                    Button("Remove") {
-                        Task { await removeProfilePhoto() }
-                    }
-                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                    .disabled(isUploadingPhoto)
-                    .accessibilityIdentifier("Profile.photoRemoveButton")
-                }
-            }
-
             if isUploadingPhoto {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -299,23 +323,24 @@ private struct ProfileAccountSection: View {
         }
     }
 
-    private func uploadProfilePhoto(from item: PhotosPickerItem) async {
+    private func uploadProfilePhoto(_ draft: PhotoDraft) async {
         isUploadingPhoto = true
         photoStatusMessage = nil
+        pendingPreviewImage = draft.previewImage
+        photoSheet = nil
         defer {
             isUploadingPhoto = false
-            selectedPhotoItem = nil
         }
 
         do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            let uploadedAsset = try await uploadService.uploadImage(from: item, purpose: "userPhoto")
+            let uploadedAsset = try await uploadPhotoDraft(draft, purpose: .userPhoto)
             pendingPhotoAsset = uploadedAsset
             let updatedUser = try await sessionStore.client.mutation(
                 "users:updateProfilePhoto",
                 args: ["photoAssetId": uploadedAsset.id]
             ) as CurrentUser
             appState.currentUser = updatedUser
+            pendingPreviewImage = nil
             pendingPhotoAsset = nil
             photoStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Profile photo updated.")
         } catch {
@@ -334,11 +359,25 @@ private struct ProfileAccountSection: View {
                 args: ["photoAssetId": NSNull()]
             ) as CurrentUser
             appState.currentUser = updatedUser
+            pendingPreviewImage = nil
             pendingPhotoAsset = nil
             photoStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Profile photo removed.")
         } catch {
             photoStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
+    }
+
+    private func uploadPhotoDraft(_ draft: PhotoDraft, purpose: PhotoPurpose) async throws -> RemoteImageAsset {
+        let uploadService = ImageAssetUploadService(client: sessionStore.client)
+        return try await uploadService.uploadImage(data: draft.data, purpose: purpose.convexPurpose)
+    }
+
+    private func presentCropIfNeeded(_ image: UIImage?) {
+        guard let image else {
+            photoSheet = nil
+            return
+        }
+        photoSheet = .crop(PhotoCropInput(image: image, purpose: .userPhoto))
     }
 
     private func roleBadge(
@@ -1297,6 +1336,8 @@ struct TaskerOnboardingView: View {
     @State private var serviceRadius = 25
     @State private var taskerPhotoSource = "user"
     @State private var taskerCustomPhotoAssetId: ConvexID?
+    @State private var onboardingPortfolioPhotos: [TaskerPortfolioPhoto] = []
+    @State private var onboardingCoverPhotoId: String?
     @State private var isShowingSubscriptions = false
 
     @State private var profileDisplayName = ""
@@ -1304,7 +1345,7 @@ struct TaskerOnboardingView: View {
 
     var body: some View {
         Group {
-            if let profile = appState.taskerProfile, step < 4 {
+            if let profile = appState.taskerProfile, step < 5 {
                 TaskerProfileManageView(
                     profileDisplayName: $profileDisplayName,
                     addCategorySheet: $addCategorySheet,
@@ -1332,6 +1373,8 @@ struct TaskerOnboardingView: View {
                     hourlyRate: $hourlyRate,
                     fixedRate: $fixedRate,
                     serviceRadius: $serviceRadius,
+                    portfolioPhotos: $onboardingPortfolioPhotos,
+                    coverPhotoId: $onboardingCoverPhotoId,
                     onSubmit: { Task { await createProfile() } },
                     onSubscribe: { isShowingSubscriptions = true },
                     onDone: { dismiss() }
@@ -1351,12 +1394,19 @@ struct TaskerOnboardingView: View {
     private func createProfile() async {
         guard let selectedCategoryId else { return }
 
+        let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCategoryBio = categoryBio.trimmingCharacters(in: .whitespacesAndNewlines)
         let hourlyCents = Int((Double(hourlyRate) ?? 0) * 100)
         let fixedCents = Int((Double(fixedRate) ?? 0) * 100)
+        let submittedRateCents = rateType == "hourly" ? hourlyCents : fixedCents
+        guard submittedRateCents > 0 else {
+            appState.lastError = "Enter a valid positive rate before creating your tasker profile."
+            return
+        }
         var args: [String: Any] = [
-            "displayName": displayName,
+            "displayName": trimmedDisplayName,
             "categoryId": selectedCategoryId,
-            "categoryBio": categoryBio,
+            "categoryBio": trimmedCategoryBio,
             "rateType": rateType,
             "serviceRadius": serviceRadius,
             "photoSource": taskerPhotoSource,
@@ -1365,15 +1415,36 @@ struct TaskerOnboardingView: View {
             args["photoAssetId"] = taskerCustomPhotoAssetId
         }
         if rateType == "hourly" {
-            args["hourlyRate"] = max(hourlyCents, 1)
+            args["hourlyRate"] = hourlyCents
         } else {
-            args["fixedRate"] = max(fixedCents, 1)
+            args["fixedRate"] = fixedCents
         }
 
         do {
-            _ = try await sessionStore.client.mutation("taskers:createTaskerProfile", args: args) as ConvexID
-            step = 4
-            isShowingSubscriptions = true
+            let resolvedPortfolio = try await resolvePortfolioPhotos(
+                onboardingPortfolioPhotos,
+                coverPhotoId: onboardingCoverPhotoId
+            )
+            if resolvedPortfolio.shouldPersist {
+                args["portfolioAssetIds"] = resolvedPortfolio.assetIds
+                if let coverAssetId = resolvedPortfolio.coverAssetId {
+                    args["coverAssetId"] = coverAssetId
+                }
+            }
+
+            do {
+                _ = try await sessionStore.client.mutation("taskers:createTaskerProfile", args: args) as ConvexID
+            } catch {
+                await cleanupUploadedPortfolioAssets(resolvedPortfolio.uploadedAssetIds)
+                throw error
+            }
+
+            step = 5
+            Task { @MainActor in
+                await Task.yield()
+                guard step == 5 else { return }
+                isShowingSubscriptions = true
+            }
             Task {
                 await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
             }
@@ -1402,44 +1473,11 @@ struct TaskerOnboardingView: View {
 
     private func addCategory(draft: TaskerCategoryDraft) async {
         do {
-            _ = try await sessionStore.client.mutation(
-                "taskers:addTaskerCategory",
-                args: [
-                    "categoryId": draft.categoryId,
-                    "categoryBio": draft.categoryBio,
-                    "rateType": draft.rateType,
-                    "hourlyRate": draft.rateType == "hourly" ? max(Int((Double(draft.hourlyRate) ?? 0) * 100), 1) : nil,
-                    "fixedRate": draft.rateType == "fixed" ? max(Int((Double(draft.fixedRate) ?? 0) * 100), 1) : nil,
-                    "serviceRadius": draft.serviceRadius,
-                ].compactMapValues { $0 }
-            ) as EmptyResponse
-
-            if draft.shouldPersistPortfolio {
-                var portfolioArgs: [String: Any] = [
-                    "categoryId": draft.categoryId,
-                    "portfolioAssetIds": draft.portfolioAssetIds,
-                ]
-                if let coverAssetId = draft.coverAssetId {
-                    portfolioArgs["coverAssetId"] = coverAssetId
-                }
-                let updatedProfile = try await sessionStore.client.mutation(
-                    "taskers:setCategoryPortfolio",
-                    args: portfolioArgs
-                ) as TaskerProfileSelf
-                appState.taskerProfile = updatedProfile
-            } else {
-                await appState.refreshAuthedData(client: sessionStore.client)
-            }
-            addCategorySheet = false
-        } catch {
-            appState.lastError = error.localizedDescription
-        }
-    }
-
-    private func updateTaskerCategory(draft: TaskerCategoryDraft) async throws {
-        _ = try await sessionStore.client.mutation(
-            "taskers:updateTaskerCategory",
-            args: [
+            let resolvedPortfolio = try await resolvePortfolioPhotos(
+                draft.portfolioPhotos,
+                coverPhotoId: draft.coverPhotoId
+            )
+            var args: [String: Any] = [
                 "categoryId": draft.categoryId,
                 "categoryBio": draft.categoryBio,
                 "rateType": draft.rateType,
@@ -1447,20 +1485,146 @@ struct TaskerOnboardingView: View {
                 "fixedRate": draft.rateType == "fixed" ? max(Int((Double(draft.fixedRate) ?? 0) * 100), 1) : nil,
                 "serviceRadius": draft.serviceRadius,
             ].compactMapValues { $0 }
-        ) as TaskerProfileSelf
+            if resolvedPortfolio.shouldPersist {
+                args["portfolioAssetIds"] = resolvedPortfolio.assetIds
+                if let coverAssetId = resolvedPortfolio.coverAssetId {
+                    args["coverAssetId"] = coverAssetId
+                }
+            }
 
-        var portfolioArgs: [String: Any] = [
-            "categoryId": draft.categoryId,
-            "portfolioAssetIds": draft.portfolioAssetIds,
-        ]
-        if let coverAssetId = draft.coverAssetId {
-            portfolioArgs["coverAssetId"] = coverAssetId
+            do {
+                _ = try await sessionStore.client.mutation(
+                    "taskers:addTaskerCategory",
+                    args: args
+                ) as EmptyResponse
+            } catch {
+                await cleanupUploadedPortfolioAssets(resolvedPortfolio.uploadedAssetIds)
+                throw error
+            }
+
+            await appState.refreshAuthedData(client: sessionStore.client)
+            addCategorySheet = false
+        } catch {
+            appState.lastError = error.localizedDescription
         }
-        let updatedProfile = try await sessionStore.client.mutation(
-            "taskers:setCategoryPortfolio",
-            args: portfolioArgs
-        ) as TaskerProfileSelf
+    }
+
+    private func updateTaskerCategory(draft: TaskerCategoryDraft) async throws {
+        let resolvedPortfolio = try await resolvePortfolioPhotos(
+            draft.portfolioPhotos,
+            coverPhotoId: draft.coverPhotoId
+        )
+        var args: [String: Any] = [
+            "categoryId": draft.categoryId,
+            "categoryBio": draft.categoryBio,
+            "rateType": draft.rateType,
+            "hourlyRate": draft.rateType == "hourly" ? max(Int((Double(draft.hourlyRate) ?? 0) * 100), 1) : nil,
+            "fixedRate": draft.rateType == "fixed" ? max(Int((Double(draft.fixedRate) ?? 0) * 100), 1) : nil,
+            "serviceRadius": draft.serviceRadius,
+        ].compactMapValues { $0 }
+        args["portfolioAssetIds"] = resolvedPortfolio.assetIds
+        if let coverAssetId = resolvedPortfolio.coverAssetId {
+            args["coverAssetId"] = coverAssetId
+        }
+
+        let updatedProfile: TaskerProfileSelf
+        do {
+            updatedProfile = try await sessionStore.client.mutation(
+                "taskers:updateTaskerCategory",
+                args: args
+            ) as TaskerProfileSelf
+        } catch {
+            await cleanupUploadedPortfolioAssets(resolvedPortfolio.uploadedAssetIds)
+            throw error
+        }
         appState.taskerProfile = updatedProfile
+    }
+
+    private func resolvePortfolioPhotos(
+        _ photos: [TaskerPortfolioPhoto],
+        coverPhotoId: String?
+    ) async throws -> ResolvedTaskerPortfolio {
+        let uploadService = ImageAssetUploadService(client: sessionStore.client)
+        var assetIds: [ConvexID] = []
+        var uploadedAssetIds: [ConvexID] = []
+        var selectedCoverAssetId: ConvexID?
+
+        do {
+            for photo in photos.prefix(10) {
+                let asset: RemoteImageAsset
+                if let remoteAsset = photo.remoteAsset {
+                    asset = remoteAsset
+                } else if let draft = photo.localDraft {
+                    asset = try await uploadService.uploadImage(
+                        data: draft.data,
+                        purpose: PhotoPurpose.taskerCategoryPortfolio.convexPurpose
+                    )
+                    uploadedAssetIds.append(asset.id)
+                } else {
+                    continue
+                }
+
+                assetIds.append(asset.id)
+                if photo.id == coverPhotoId {
+                    selectedCoverAssetId = asset.id
+                }
+            }
+        } catch {
+            await cleanupUploadedPortfolioAssets(uploadedAssetIds)
+            throw error
+        }
+
+        return ResolvedTaskerPortfolio(
+            assetIds: assetIds,
+            coverAssetId: selectedCoverAssetId ?? assetIds.first,
+            uploadedAssetIds: uploadedAssetIds
+        )
+    }
+
+    private func cleanupUploadedPortfolioAssets(_ assetIds: [ConvexID]) async {
+        guard !assetIds.isEmpty else { return }
+        for assetId in assetIds {
+            let _: RemoteImageAsset? = try? await sessionStore.client.mutation(
+                "files:deleteImageAsset",
+                args: ["imageAssetId": assetId]
+            )
+        }
+    }
+}
+
+private struct ResolvedTaskerPortfolio {
+    let assetIds: [ConvexID]
+    let coverAssetId: ConvexID?
+    let uploadedAssetIds: [ConvexID]
+
+    var shouldPersist: Bool {
+        !assetIds.isEmpty || coverAssetId != nil
+    }
+}
+
+private struct TaskerPortfolioPhoto: Identifiable {
+    let id: String
+    let remoteAsset: RemoteImageAsset?
+    let localDraft: PhotoDraft?
+
+    static func remote(_ asset: RemoteImageAsset) -> TaskerPortfolioPhoto {
+        TaskerPortfolioPhoto(
+            id: remoteId(for: asset.id),
+            remoteAsset: asset,
+            localDraft: nil
+        )
+    }
+
+    static func draft(_ draft: PhotoDraft) -> TaskerPortfolioPhoto {
+        TaskerPortfolioPhoto(
+            id: "draft:\(draft.id.uuidString)",
+            remoteAsset: nil,
+            localDraft: draft
+        )
+    }
+
+    static func remoteId(for assetId: ConvexID) -> String {
+        "remote:\(assetId)"
     }
 }
 
@@ -1471,11 +1635,11 @@ private struct TaskerCategoryDraft {
     let hourlyRate: String
     let fixedRate: String
     let serviceRadius: Int
-    let portfolioAssetIds: [ConvexID]
-    let coverAssetId: ConvexID?
+    let portfolioPhotos: [TaskerPortfolioPhoto]
+    let coverPhotoId: String?
 
     var shouldPersistPortfolio: Bool {
-        !portfolioAssetIds.isEmpty || coverAssetId != nil
+        !portfolioPhotos.isEmpty || coverPhotoId != nil
     }
 
     init(
@@ -1485,8 +1649,8 @@ private struct TaskerCategoryDraft {
         hourlyRate: String,
         fixedRate: String,
         serviceRadius: Int,
-        portfolioAssetIds: [ConvexID] = [],
-        coverAssetId: ConvexID? = nil
+        portfolioPhotos: [TaskerPortfolioPhoto] = [],
+        coverPhotoId: String? = nil
     ) {
         self.categoryId = categoryId
         self.categoryBio = categoryBio
@@ -1494,19 +1658,22 @@ private struct TaskerCategoryDraft {
         self.hourlyRate = hourlyRate
         self.fixedRate = fixedRate
         self.serviceRadius = serviceRadius
-        self.portfolioAssetIds = portfolioAssetIds
-        self.coverAssetId = coverAssetId
+        self.portfolioPhotos = portfolioPhotos
+        self.coverPhotoId = coverPhotoId
     }
 
     init(category: TaskerManagedCategory) {
+        let remotePhotos = (category.portfolioImages ?? []).map(TaskerPortfolioPhoto.remote)
+        let selectedCoverPhotoId = (category.coverAssetId ?? category.portfolioImages?.first?.id)
+            .map(TaskerPortfolioPhoto.remoteId(for:))
         self.categoryId = category.categoryId
         self.categoryBio = category.bio
         self.rateType = category.rateType
         self.hourlyRate = Self.priceFieldText(from: category.hourlyRate)
         self.fixedRate = Self.priceFieldText(from: category.fixedRate)
         self.serviceRadius = category.serviceRadius
-        self.portfolioAssetIds = category.portfolioImages?.map(\.id) ?? []
-        self.coverAssetId = category.coverAssetId ?? category.portfolioImages?.first?.id
+        self.portfolioPhotos = remotePhotos
+        self.coverPhotoId = selectedCoverPhotoId
     }
 
     private static func priceFieldText(from cents: Int?) -> String {
@@ -1522,7 +1689,50 @@ private enum TaskerCreateFocusField: Hashable {
     case fixedRate
 }
 
+private enum PortfolioPhotoSheet: Identifiable {
+    case camera
+    case gallery
+    case crop(PhotoCropInput)
+
+    var id: String {
+        switch self {
+        case .camera:
+            return "camera"
+        case .gallery:
+            return "gallery"
+        case .crop(let input):
+            return "crop-\(input.id)"
+        }
+    }
+}
+
 private struct TaskerCreateFlowView: View {
+    private enum PhotoSheet: Identifiable {
+        case taskerCamera
+        case taskerGallery
+        case taskerCrop(PhotoCropInput)
+        case portfolioCamera
+        case portfolioGallery
+        case portfolioCrop(PhotoCropInput)
+
+        var id: String {
+            switch self {
+            case .taskerCamera:
+                return "taskerCamera"
+            case .taskerGallery:
+                return "taskerGallery"
+            case .taskerCrop(let input):
+                return "taskerCrop-\(input.id)"
+            case .portfolioCamera:
+                return "portfolioCamera"
+            case .portfolioGallery:
+                return "portfolioGallery"
+            case .portfolioCrop(let input):
+                return "portfolioCrop-\(input.id)"
+            }
+        }
+    }
+
     @Environment(SessionStore.self) private var sessionStore
 
     @Binding var step: Int
@@ -1537,74 +1747,40 @@ private struct TaskerCreateFlowView: View {
     @Binding var hourlyRate: String
     @Binding var fixedRate: String
     @Binding var serviceRadius: Int
+    @Binding var portfolioPhotos: [TaskerPortfolioPhoto]
+    @Binding var coverPhotoId: String?
     let onSubmit: () -> Void
     let onSubscribe: () -> Void
     let onDone: () -> Void
 
     @State private var acceptedTerms = false
     @State private var customPhotoAsset: RemoteImageAsset?
-    @State private var selectedTaskerPhotoItem: PhotosPickerItem?
+    @State private var showsTaskerPhotoOptions = false
+    @State private var showsPortfolioPhotoOptions = false
+    @State private var photoSheet: PhotoSheet?
+    @State private var portfolioCropQueue: [UIImage] = []
     @State private var isUploadingTaskerPhoto = false
+    @State private var isUploadingPortfolio = false
     @State private var photoStatusMessage: SubscriptionFeedbackMessage?
+    @State private var portfolioStatusMessage: SubscriptionFeedbackMessage?
     @FocusState private var focusedField: TaskerCreateFocusField?
 
     private var canCompleteSetup: Bool {
-        acceptedTerms
+        acceptedTerms && hasValidRate && !isUploadingTaskerPhoto && !isUploadingPortfolio
+    }
+
+    private var hasValidRate: Bool {
+        if rateType == "hourly" {
+            return (Double(hourlyRate) ?? 0) > 0
+        }
+        return (Double(fixedRate) ?? 0) > 0
     }
 
     var body: some View {
         ZStack {
-            Color.clear
-                .contentShape(Rectangle())
-                .ignoresSafeArea()
-                .onTapGesture {
-                    PatchworkKeyboard.dismiss()
-                }
-
+            keyboardDismissLayer
             PatchworkBackdrop(tint: PatchworkTheme.brand)
-
-            ScrollView {
-                VStack(spacing: 18) {
-                    StepHeader(currentStep: min(step, 3))
-                        .padding(.top, 12)
-
-                    if step >= 4 {
-                        PatchworkSurfaceCard {
-                            VStack(spacing: 18) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 56))
-                                    .foregroundStyle(PatchworkTheme.success)
-
-                                Text("Tasker profile created")
-                                    .font(.patchworkSectionTitle)
-                                    .foregroundStyle(PatchworkTheme.textPrimary)
-
-                                Text("To become discoverable to Seekers in your area, unlock tasker mode.")
-                                    .font(.patchworkBody)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundStyle(PatchworkTheme.textSecondary)
-
-                                Button("Unlock tasker mode") {
-                                    onSubscribe()
-                                }
-                                .buttonStyle(PatchworkPrimaryButtonStyle())
-                                .accessibilityIdentifier("TaskerOnboarding4.subscribeButton")
-
-                                Button("Done", action: onDone)
-                                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .accessibilityIdentifier("TaskerOnboarding4.doneButton")
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    } else {
-                        onboardingStepContent
-                    }
-                }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-            .scrollIndicators(.hidden)
+            createFlowScroll
         }
         .patchworkKeyboardDismissToolbar()
         .onAppear {
@@ -1612,11 +1788,134 @@ private struct TaskerCreateFlowView: View {
                 taskerPhotoSource = "user"
             }
         }
-        .onChange(of: selectedTaskerPhotoItem) { _, newValue in
-            guard let newValue else {
+        .onChange(of: portfolioPhotos.map(\.id)) { _, _ in
+            guard let coverPhotoId else {
                 return
             }
-            Task { await uploadTaskerPhoto(from: newValue) }
+            if !portfolioPhotos.contains(where: { $0.id == coverPhotoId }) {
+                self.coverPhotoId = portfolioPhotos.first?.id
+            }
+        }
+        .confirmationDialog("Tasker photo", isPresented: $showsTaskerPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    photoSheet = .taskerCamera
+                }
+            }
+            Button("Choose from Gallery") {
+                photoSheet = .taskerGallery
+            }
+            if taskerPhotoSource == "custom", taskerCustomPhotoAssetId != nil {
+                Button("Use Account Photo", role: .destructive) {
+                    switchTaskerPhotoToAccount()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Portfolio photos", isPresented: $showsPortfolioPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    photoSheet = .portfolioCamera
+                }
+            }
+            Button("Choose from Gallery") {
+                photoSheet = .portfolioGallery
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $photoSheet) { sheet in
+            switch sheet {
+            case .taskerCamera:
+                CameraCaptureView { image in
+                    presentTaskerCropIfNeeded(image)
+                }
+            case .taskerGallery:
+                GalleryPickerView(selectionLimit: 1) { images in
+                    presentTaskerCropIfNeeded(images.first)
+                }
+            case .taskerCrop(let input):
+                PhotoCropEditor(input: input) {
+                    photoSheet = nil
+                } onConfirm: { draft in
+                    Task { await uploadTaskerPhoto(draft) }
+                }
+            case .portfolioCamera:
+                CameraCaptureView { image in
+                    startPortfolioCropQueue(image.map { [$0] } ?? [])
+                }
+            case .portfolioGallery:
+                GalleryPickerView(selectionLimit: max(1, 10 - portfolioPhotos.count)) { images in
+                    startPortfolioCropQueue(images)
+                }
+            case .portfolioCrop(let input):
+                PhotoCropEditor(input: input) {
+                    portfolioCropQueue.removeAll()
+                    photoSheet = nil
+                } onConfirm: { draft in
+                    addPortfolioDraft(draft)
+                }
+            }
+        }
+    }
+
+    private var keyboardDismissLayer: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .ignoresSafeArea()
+            .onTapGesture {
+                PatchworkKeyboard.dismiss()
+            }
+    }
+
+    private var createFlowScroll: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                StepHeader(currentStep: min(step, 4), totalSteps: 4)
+                    .padding(.top, 12)
+                createFlowContent
+            }
+        }
+        .id("tasker-onboarding-step-\(step)")
+        .scrollDismissesKeyboard(.interactively)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+        .scrollIndicators(.hidden)
+    }
+
+    @ViewBuilder
+    private var createFlowContent: some View {
+        if step >= 5 {
+            taskerCreatedCard
+        } else {
+            onboardingStepContent
+        }
+    }
+
+    private var taskerCreatedCard: some View {
+        PatchworkSurfaceCard {
+            VStack(spacing: 18) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(PatchworkTheme.success)
+
+                Text("Tasker profile created")
+                    .font(.patchworkSectionTitle)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                Text("To become discoverable to Seekers in your area, unlock tasker mode.")
+                    .font(.patchworkBody)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+
+                Button("Unlock tasker mode", action: onSubscribe)
+                    .buttonStyle(PatchworkPrimaryButtonStyle())
+                    .accessibilityIdentifier("TaskerOnboarding5.subscribeButton")
+
+                Button("Done", action: onDone)
+                    .buttonStyle(PatchworkSecondaryButtonStyle())
+                    .accessibilityIdentifier("TaskerOnboarding5.doneButton")
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -1628,8 +1927,8 @@ private struct TaskerCreateFlowView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
                         eyebrow: "Tasker setup",
-                        title: "Build your public identity",
-                        message: "Choose the name and primary category seekers will see first."
+                        title: "Identity",
+                        message: "Set the name, category, and avatar seekers see first."
                     )
 
                     TextField("Display name", text: $displayName)
@@ -1692,7 +1991,7 @@ private struct TaskerCreateFlowView: View {
         case 2:
             VStack(spacing: 18) {
                 CategoryServiceDetailsSection(
-                    title: "Service details",
+                    title: "Details",
                     eyebrow: "Tasker setup",
                     message: "Set your pricing and service range with clean, explicit terms.",
                     bio: $categoryBio,
@@ -1711,8 +2010,38 @@ private struct TaskerCreateFlowView: View {
 
                     Button("Continue") { step = 3 }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
-                        .disabled(categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !hasValidRate)
                         .accessibilityIdentifier("TaskerOnboarding2.continueButton")
+                }
+            }
+        case 3:
+            VStack(spacing: 18) {
+                PatchworkSurfaceCard {
+                    PatchworkSectionIntro(
+                        eyebrow: "Tasker setup",
+                        title: "Portfolio",
+                        message: "Add up to 10 photos. Pick one 4:3 cover image for your Profile Card."
+                    )
+                }
+
+                TaskerCategoryPortfolioEditor(
+                    portfolioPhotos: $portfolioPhotos,
+                    coverPhotoId: $coverPhotoId,
+                    isUploading: isUploadingPortfolio,
+                    statusMessage: portfolioStatusMessage,
+                    accessibilityPrefix: "TaskerOnboarding3.portfolio",
+                    onAddPhotos: { showsPortfolioPhotoOptions = true }
+                )
+
+                HStack(spacing: 12) {
+                    Button("Back") { step = 2 }
+                        .buttonStyle(PatchworkSecondaryButtonStyle())
+                        .accessibilityIdentifier("TaskerOnboarding3.backButton")
+
+                    Button("Continue") { step = 4 }
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
+                        .disabled(isUploadingPortfolio)
+                        .accessibilityIdentifier("TaskerOnboarding3.continueButton")
                 }
             }
         default:
@@ -1720,13 +2049,15 @@ private struct TaskerCreateFlowView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
                         eyebrow: "Tasker setup",
-                        title: "Review & Accept",
-                        message: "Confirm the essentials, then finish creating your tasker profile."
+                        title: "Profile Card review",
+                        message: "Preview how your card appears in Discover, then create your profile."
                     )
 
+                    discoverCardPreview
                     onboardingSummaryRow("Display name", value: displayName)
                     onboardingSummaryRow("Rate", value: reviewRateSummary)
                     onboardingSummaryRow("Radius", value: "\(serviceRadius) km")
+                    onboardingSummaryRow("Portfolio", value: "\(portfolioPhotos.count)/10")
 
                     Button {
                         acceptedTerms.toggle()
@@ -1757,7 +2088,7 @@ private struct TaskerCreateFlowView: View {
                     .accessibilityIdentifier("TaskerOnboarding4.acceptTermsToggle")
 
                     HStack(spacing: 12) {
-                        Button("Back") { step = 2 }
+                        Button("Back") { step = 3 }
                             .buttonStyle(PatchworkSecondaryButtonStyle())
                             .accessibilityIdentifier("TaskerOnboarding4.backButton")
 
@@ -1793,28 +2124,9 @@ private struct TaskerCreateFlowView: View {
 
     private var taskerPhotoSourceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Public profile photo")
+            Text("Public avatar")
                 .font(.patchworkBodyStrong)
                 .foregroundStyle(PatchworkTheme.textPrimary)
-
-            HStack(spacing: 8) {
-                photoSourceChip(
-                    title: "Use account photo",
-                    isSelected: taskerPhotoSource == "user"
-                ) {
-                    taskerPhotoSource = "user"
-                    taskerCustomPhotoAssetId = nil
-                    customPhotoAsset = nil
-                    photoStatusMessage = nil
-                }
-
-                photoSourceChip(
-                    title: "Upload tasker photo",
-                    isSelected: taskerPhotoSource == "custom"
-                ) {
-                    taskerPhotoSource = "custom"
-                }
-            }
 
             HStack(spacing: 12) {
                 PatchworkRemoteImage(
@@ -1831,34 +2143,60 @@ private struct TaskerCreateFlowView: View {
                         .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
                 )
 
-                VStack(alignment: .leading, spacing: 8) {
-                    if taskerPhotoSource == "custom" {
-                        PhotosPicker(
-                            selection: $selectedTaskerPhotoItem,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            Text(taskerCustomPhotoAssetId == nil ? "Upload tasker photo" : "Replace tasker photo")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(PatchworkSecondaryButtonStyle())
-                        .disabled(isUploadingTaskerPhoto)
-                        .accessibilityIdentifier("TaskerOnboarding1.taskerPhotoPicker")
-
-                        if taskerCustomPhotoAssetId != nil {
-                            Button("Remove custom photo") {
-                                taskerPhotoSource = "user"
-                                taskerCustomPhotoAssetId = nil
-                                customPhotoAsset = nil
-                            }
-                            .buttonStyle(PatchworkSecondaryButtonStyle())
-                            .disabled(isUploadingTaskerPhoto)
-                            .accessibilityIdentifier("TaskerOnboarding1.taskerPhotoRemoveButton")
-                        }
-                    } else {
-                        Text(accountPhotoImage == nil ? "No account photo set yet." : "Using your account profile photo.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(taskerPhotoSource == "custom" ? "Using custom tasker photo." : "Using account profile photo.")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                    if taskerPhotoSource == "user", accountPhotoImage == nil {
+                        Text("No account avatar set yet.")
                             .font(.patchworkCaption)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
+                            .foregroundStyle(PatchworkTheme.warning)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    if taskerPhotoSource == "custom" {
+                        Button {
+                            switchTaskerPhotoToAccount()
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward.circle")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.brand)
+                                .frame(width: 34, height: 34)
+                                .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isUploadingTaskerPhoto)
+                        .accessibilityIdentifier("TaskerOnboarding1.taskerPhotoUseAccountButton")
+                        .accessibilityLabel("Use account photo")
+                    }
+
+                    taskerPhotoEditButton
+
+                    if taskerPhotoSource == "custom", taskerCustomPhotoAssetId != nil {
+                        Button {
+                            switchTaskerPhotoToAccount()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.warning)
+                                .frame(width: 32, height: 32)
+                                .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isUploadingTaskerPhoto)
+                        .accessibilityIdentifier("TaskerOnboarding1.taskerPhotoRemoveButton")
+                        .accessibilityLabel("Remove custom tasker photo")
                     }
                 }
             }
@@ -1876,32 +2214,12 @@ private struct TaskerCreateFlowView: View {
                 PatchworkInlineStatusBanner(tone: photoStatusMessage.tone, text: photoStatusMessage.text)
             }
         }
-        .padding(14)
+        .padding(16)
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
-    }
-
-    private func photoSourceChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.patchworkCaption)
-                .foregroundStyle(isSelected ? PatchworkTheme.surface : PatchworkTheme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(
-                    isSelected ? PatchworkTheme.heroGradient : LinearGradient(colors: [PatchworkTheme.surface, PatchworkTheme.surface], startPoint: .top, endPoint: .bottom),
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(PatchworkTheme.stroke, lineWidth: isSelected ? 0 : 1)
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     private var taskerPhotoPlaceholder: some View {
@@ -1913,17 +2231,134 @@ private struct TaskerCreateFlowView: View {
         }
     }
 
-    private func uploadTaskerPhoto(from item: PhotosPickerItem) async {
+    private var taskerPhotoEditButton: some View {
+        Button {
+            showsTaskerPhotoOptions = true
+        } label: {
+            Image(systemName: taskerCustomPhotoAssetId == nil ? "plus" : "pencil")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 34, height: 34)
+                .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                .overlay(
+                    Circle()
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isUploadingTaskerPhoto)
+        .accessibilityIdentifier("TaskerOnboarding1.taskerPhotoPicker")
+        .accessibilityLabel(taskerCustomPhotoAssetId == nil ? "Upload custom tasker photo" : "Replace tasker photo")
+    }
+
+    private var activeCoverPhoto: TaskerPortfolioPhoto? {
+        if let coverPhotoId,
+           let selectedCover = portfolioPhotos.first(where: { $0.id == coverPhotoId }) {
+            return selectedCover
+        }
+        return portfolioPhotos.first
+    }
+
+    private var discoverCardPreview: some View {
+        VStack(spacing: 0) {
+            TaskerPortfolioPhotoImage(photo: activeCoverPhoto, preferredVariant: .display) {
+                ZStack {
+                    PatchworkTheme.brandSoft
+                    Image(systemName: "photo")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(PatchworkTheme.brand)
+                }
+            }
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .overlay(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.24)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 120)
+                .overlay(alignment: .bottomLeading) {
+                    Text(displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Your name" : displayName)
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(.white)
+                        .padding(18)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                PatchworkRemoteImage(
+                    asset: displayedTaskerPhotoAsset,
+                    preferredVariant: .thumb,
+                    contentMode: .fill
+                ) {
+                    Circle().fill(PatchworkTheme.brandSoft)
+                }
+                .frame(width: 46, height: 46)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(.white.opacity(0.9), lineWidth: 2)
+                )
+                .padding(14)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selectedCategoryName)
+                            .font(.patchworkBody)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text(reviewRateSummary)
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.brand)
+                }
+
+                Label("\(serviceRadius) km radius", systemImage: "mappin")
+                    .font(.footnote)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+
+                if !categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(categoryBio)
+                        .font(.patchworkBody)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(18)
+        }
+        .background(PatchworkTheme.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
+        .shadow(color: PatchworkTheme.brand.opacity(0.1), radius: 24, y: 14)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Profile card preview")
+        .accessibilityIdentifier("TaskerOnboarding4.discoverCardPreview")
+    }
+
+    private func switchTaskerPhotoToAccount() {
+        taskerPhotoSource = "user"
+        taskerCustomPhotoAssetId = nil
+        customPhotoAsset = nil
+        photoStatusMessage = nil
+    }
+
+    private func uploadTaskerPhoto(_ draft: PhotoDraft) async {
         isUploadingTaskerPhoto = true
         photoStatusMessage = nil
+        photoSheet = nil
         defer {
             isUploadingTaskerPhoto = false
-            selectedTaskerPhotoItem = nil
         }
 
         do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            let uploadedAsset = try await uploadService.uploadImage(from: item, purpose: "taskerPhoto")
+            let uploadedAsset = try await uploadPhotoDraft(draft, purpose: .taskerPhoto)
             customPhotoAsset = uploadedAsset
             taskerCustomPhotoAssetId = uploadedAsset.id
             taskerPhotoSource = "custom"
@@ -1931,6 +2366,50 @@ private struct TaskerCreateFlowView: View {
         } catch {
             photoStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
+    }
+
+    private func addPortfolioDraft(_ draft: PhotoDraft) {
+        isUploadingPortfolio = true
+        portfolioStatusMessage = nil
+        defer { isUploadingPortfolio = false }
+
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        if remainingSlots > 0 {
+            portfolioPhotos.append(.draft(draft))
+        }
+        if coverPhotoId == nil {
+            coverPhotoId = portfolioPhotos.first?.id
+        }
+        portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Portfolio updated.")
+        presentNextPortfolioCrop()
+    }
+
+    private func uploadPhotoDraft(_ draft: PhotoDraft, purpose: PhotoPurpose) async throws -> RemoteImageAsset {
+        let uploadService = ImageAssetUploadService(client: sessionStore.client)
+        return try await uploadService.uploadImage(data: draft.data, purpose: purpose.convexPurpose)
+    }
+
+    private func presentTaskerCropIfNeeded(_ image: UIImage?) {
+        guard let image else {
+            photoSheet = nil
+            return
+        }
+        photoSheet = .taskerCrop(PhotoCropInput(image: image, purpose: .taskerPhoto))
+    }
+
+    private func startPortfolioCropQueue(_ images: [UIImage]) {
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        portfolioCropQueue = Array(images.prefix(remainingSlots))
+        presentNextPortfolioCrop()
+    }
+
+    private func presentNextPortfolioCrop() {
+        guard !portfolioCropQueue.isEmpty else {
+            photoSheet = nil
+            return
+        }
+        let image = portfolioCropQueue.removeFirst()
+        photoSheet = .portfolioCrop(PhotoCropInput(image: image, purpose: .taskerCategoryPortfolio))
     }
 
     private var selectedCategoryName: String {
@@ -1957,6 +2436,23 @@ private struct TaskerCreateFlowView: View {
 }
 
 private struct TaskerProfileManageView: View {
+    private enum PhotoSheet: Identifiable {
+        case camera
+        case gallery
+        case crop(PhotoCropInput)
+
+        var id: String {
+            switch self {
+            case .camera:
+                return "camera"
+            case .gallery:
+                return "gallery"
+            case .crop(let input):
+                return "crop-\(input.id)"
+            }
+        }
+    }
+
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
 
@@ -1972,7 +2468,8 @@ private struct TaskerProfileManageView: View {
     @State private var selectedCategoryID: ConvexID?
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var isSavingProfile = false
-    @State private var selectedTaskerPhotoItem: PhotosPickerItem?
+    @State private var showsTaskerPhotoOptions = false
+    @State private var photoSheet: PhotoSheet?
     @State private var pendingTaskerPhotoAsset: RemoteImageAsset?
     @State private var taskerPhotoStatusMessage: SubscriptionFeedbackMessage?
     @State private var isUpdatingTaskerPhoto = false
@@ -2106,11 +2603,39 @@ private struct TaskerProfileManageView: View {
                 feedbackMessage = nil
             }
         }
-        .onChange(of: selectedTaskerPhotoItem) { _, newValue in
-            guard let newValue else {
-                return
+        .confirmationDialog("Tasker photo", isPresented: $showsTaskerPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    photoSheet = .camera
+                }
             }
-            Task { await uploadTaskerPhoto(from: newValue) }
+            Button("Choose from Gallery") {
+                photoSheet = .gallery
+            }
+            if effectiveTaskerPhotoSource == "custom" {
+                Button("Use Account Photo", role: .destructive) {
+                    Task { await setTaskerPhotoToUserSource() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $photoSheet) { sheet in
+            switch sheet {
+            case .camera:
+                CameraCaptureView { image in
+                    presentTaskerCropIfNeeded(image)
+                }
+            case .gallery:
+                GalleryPickerView(selectionLimit: 1) { images in
+                    presentTaskerCropIfNeeded(images.first)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    photoSheet = nil
+                } onConfirm: { draft in
+                    Task { await uploadTaskerPhoto(draft) }
+                }
+            }
         }
     }
 
@@ -2147,7 +2672,7 @@ private struct TaskerProfileManageView: View {
                 Text("Public profile preview")
                     .font(.patchworkBodyStrong)
                     .foregroundStyle(PatchworkTheme.textPrimary)
-                Text("This is the avatar seekers see on your tasker listing.")
+                Text("This avatar appears on your Discover card.")
                     .font(.patchworkCaption)
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2162,52 +2687,56 @@ private struct TaskerProfileManageView: View {
     }
 
     private var taskerPhotoSourceControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Tasker photo source")
-                .font(.patchworkBodyStrong)
-                .foregroundStyle(PatchworkTheme.textPrimary)
-
-            HStack(spacing: 8) {
-                sourceChip(title: "Use account photo", selected: effectiveTaskerPhotoSource == "user") {
-                    Task { await setTaskerPhotoToUserSource() }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tasker avatar controls")
+                        .font(.patchworkBodyStrong)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                    Text(effectiveTaskerPhotoSource == "custom" ? "Using custom photo." : "Using account photo.")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
                 }
+                Spacer()
+                HStack(spacing: 8) {
+                    if effectiveTaskerPhotoSource == "custom" {
+                        Button {
+                            Task { await setTaskerPhotoToUserSource() }
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward.circle")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.brand)
+                                .frame(width: 34, height: 34)
+                                .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isUpdatingTaskerPhoto)
+                        .accessibilityIdentifier("TaskerProfile.taskerPhotoUseAccountButton")
+                        .accessibilityLabel("Use account photo")
+                    }
 
-                sourceChip(title: "Upload custom", selected: effectiveTaskerPhotoSource == "custom") {}
-            }
-
-            if effectiveTaskerPhotoSource == "custom" {
-                PhotosPicker(
-                    selection: $selectedTaskerPhotoItem,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
-                    Text("Replace custom photo")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        showsTaskerPhotoOptions = true
+                    } label: {
+                        Image(systemName: effectiveTaskerPhotoSource == "custom" ? "pencil" : "plus")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(PatchworkTheme.brand)
+                            .frame(width: 34, height: 34)
+                            .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUpdatingTaskerPhoto)
+                    .accessibilityIdentifier("TaskerProfile.taskerPhotoPicker")
+                    .accessibilityLabel(effectiveTaskerPhotoSource == "custom" ? "Replace custom tasker photo" : "Upload custom tasker photo")
                 }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .disabled(isUpdatingTaskerPhoto)
-                .accessibilityIdentifier("TaskerProfile.taskerPhotoPicker")
-            } else {
-                PhotosPicker(
-                    selection: $selectedTaskerPhotoItem,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
-                    Text("Upload custom photo")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .disabled(isUpdatingTaskerPhoto)
-                .accessibilityIdentifier("TaskerProfile.taskerPhotoPicker")
-            }
-
-            if effectiveTaskerPhotoSource == "custom" {
-                Button("Use account photo instead") {
-                    Task { await setTaskerPhotoToUserSource() }
-                }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .disabled(isUpdatingTaskerPhoto)
-                .accessibilityIdentifier("TaskerProfile.taskerPhotoUseAccountButton")
             }
 
             if isUpdatingTaskerPhoto {
@@ -2231,27 +2760,6 @@ private struct TaskerProfileManageView: View {
         )
     }
 
-    private func sourceChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.patchworkCaption)
-                .foregroundStyle(selected ? PatchworkTheme.surface : PatchworkTheme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(
-                    selected ? PatchworkTheme.heroGradient : LinearGradient(colors: [PatchworkTheme.surface, PatchworkTheme.surface], startPoint: .top, endPoint: .bottom),
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(PatchworkTheme.stroke, lineWidth: selected ? 0 : 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isUpdatingTaskerPhoto)
-    }
-
     private func setTaskerPhotoToUserSource() async {
         isUpdatingTaskerPhoto = true
         taskerPhotoStatusMessage = nil
@@ -2270,17 +2778,14 @@ private struct TaskerProfileManageView: View {
         }
     }
 
-    private func uploadTaskerPhoto(from item: PhotosPickerItem) async {
+    private func uploadTaskerPhoto(_ draft: PhotoDraft) async {
         isUpdatingTaskerPhoto = true
         taskerPhotoStatusMessage = nil
-        defer {
-            isUpdatingTaskerPhoto = false
-            selectedTaskerPhotoItem = nil
-        }
+        photoSheet = nil
+        defer { isUpdatingTaskerPhoto = false }
 
         do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            let uploadedAsset = try await uploadService.uploadImage(from: item, purpose: "taskerPhoto")
+            let uploadedAsset = try await uploadPhotoDraft(draft, purpose: .taskerPhoto)
             pendingTaskerPhotoAsset = uploadedAsset
             let updatedProfile = try await sessionStore.client.mutation(
                 "taskers:setTaskerPhoto",
@@ -2295,6 +2800,19 @@ private struct TaskerProfileManageView: View {
         } catch {
             taskerPhotoStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
+    }
+
+    private func uploadPhotoDraft(_ draft: PhotoDraft, purpose: PhotoPurpose) async throws -> RemoteImageAsset {
+        let uploadService = ImageAssetUploadService(client: sessionStore.client)
+        return try await uploadService.uploadImage(data: draft.data, purpose: purpose.convexPurpose)
+    }
+
+    private func presentTaskerCropIfNeeded(_ image: UIImage?) {
+        guard let image else {
+            photoSheet = nil
+            return
+        }
+        photoSheet = .crop(PhotoCropInput(image: image, purpose: .taskerPhoto))
     }
 
     private func categoryCoverThumbnail(for category: TaskerManagedCategory) -> some View {
@@ -2594,13 +3112,47 @@ private struct CategoryServiceDetailsSection: View {
     }
 }
 
+private struct TaskerPortfolioPhotoImage<Placeholder: View>: View {
+    let photo: TaskerPortfolioPhoto?
+    let preferredVariant: PatchworkImageCache.VariantPreference
+    let placeholder: () -> Placeholder
+
+    init(
+        photo: TaskerPortfolioPhoto?,
+        preferredVariant: PatchworkImageCache.VariantPreference = .display,
+        @ViewBuilder placeholder: @escaping () -> Placeholder
+    ) {
+        self.photo = photo
+        self.preferredVariant = preferredVariant
+        self.placeholder = placeholder
+    }
+
+    var body: some View {
+        if let draft = photo?.localDraft {
+            Image(uiImage: draft.previewImage)
+                .resizable()
+                .scaledToFill()
+        } else if let asset = photo?.remoteAsset {
+            PatchworkRemoteImage(
+                asset: asset,
+                preferredVariant: preferredVariant,
+                contentMode: .fill
+            ) {
+                placeholder()
+            }
+        } else {
+            placeholder()
+        }
+    }
+}
+
 private struct TaskerCategoryPortfolioEditor: View {
-    @Binding var portfolioAssets: [RemoteImageAsset]
-    @Binding var coverAssetId: ConvexID?
-    @Binding var selectedItems: [PhotosPickerItem]
+    @Binding var portfolioPhotos: [TaskerPortfolioPhoto]
+    @Binding var coverPhotoId: String?
     let isUploading: Bool
     let statusMessage: SubscriptionFeedbackMessage?
     let accessibilityPrefix: String
+    let onAddPhotos: () -> Void
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
     private let maxAssets = 10
@@ -2613,78 +3165,69 @@ private struct TaskerCategoryPortfolioEditor: View {
                         .font(.patchworkCardTitle)
                         .foregroundStyle(PatchworkTheme.textPrimary)
                     Spacer()
-                    Text("\(portfolioAssets.count)/\(maxAssets)")
+                    Text("\(portfolioPhotos.count)/\(maxAssets)")
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 }
 
-                PhotosPicker(
-                    selection: $selectedItems,
-                    maxSelectionCount: max(0, maxAssets - portfolioAssets.count),
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
+                Button(action: onAddPhotos) {
                     Label(
-                        portfolioAssets.isEmpty ? "Add portfolio photos" : "Add more photos",
+                        portfolioPhotos.isEmpty ? "Add portfolio photos" : "Add more photos",
                         systemImage: "photo.on.rectangle"
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(PatchworkSecondaryButtonStyle())
-                .disabled(isUploading || portfolioAssets.count >= maxAssets)
+                .disabled(isUploading || portfolioPhotos.count >= maxAssets)
                 .accessibilityIdentifier("\(accessibilityPrefix).picker")
 
-                if portfolioAssets.isEmpty {
-                    Text("Add up to 10 photos. Choose one as the cover image.")
+                if portfolioPhotos.isEmpty {
+                    Text("Add up to 10 photos. Choose one 4:3 image as the cover.")
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 } else {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(portfolioAssets, id: \.id) { asset in
+                        ForEach(portfolioPhotos) { photo in
                             VStack(alignment: .leading, spacing: 8) {
-                                PatchworkRemoteImage(
-                                    asset: asset,
-                                    preferredVariant: .display,
-                                    contentMode: .fill
-                                ) {
+                                TaskerPortfolioPhotoImage(photo: photo, preferredVariant: .display) {
                                     PatchworkTheme.brandSoft
                                 }
-                                .frame(height: 106)
+                                .aspectRatio(4.0 / 3.0, contentMode: .fill)
                                 .frame(maxWidth: .infinity)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(asset.id == activeCoverAssetId ? PatchworkTheme.brand : PatchworkTheme.stroke, lineWidth: asset.id == activeCoverAssetId ? 2 : 1)
+                                        .stroke(photo.id == activeCoverPhotoId ? PatchworkTheme.brand : PatchworkTheme.stroke, lineWidth: photo.id == activeCoverPhotoId ? 2 : 1)
                                 )
 
                                 HStack(spacing: 6) {
                                     Button("Up") {
-                                        moveAsset(asset, direction: -1)
+                                        movePhoto(photo, direction: -1)
                                     }
                                     .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .disabled(indexForAsset(asset) == 0)
-                                    .accessibilityIdentifier("\(accessibilityPrefix).moveUp.\(asset.id)")
+                                    .disabled(indexForPhoto(photo) == 0)
+                                    .accessibilityIdentifier("\(accessibilityPrefix).moveUp.\(photo.id)")
 
                                     Button("Down") {
-                                        moveAsset(asset, direction: 1)
+                                        movePhoto(photo, direction: 1)
                                     }
                                     .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .disabled(indexForAsset(asset) == portfolioAssets.count - 1)
-                                    .accessibilityIdentifier("\(accessibilityPrefix).moveDown.\(asset.id)")
+                                    .disabled(indexForPhoto(photo) == portfolioPhotos.count - 1)
+                                    .accessibilityIdentifier("\(accessibilityPrefix).moveDown.\(photo.id)")
                                 }
 
                                 HStack(spacing: 6) {
-                                    Button(asset.id == activeCoverAssetId ? "Cover" : "Set Cover") {
-                                        coverAssetId = asset.id
+                                    Button(photo.id == activeCoverPhotoId ? "Cover 4:3" : "Set 4:3 Cover") {
+                                        coverPhotoId = photo.id
                                     }
                                     .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .accessibilityIdentifier("\(accessibilityPrefix).setCover.\(asset.id)")
+                                    .accessibilityIdentifier("\(accessibilityPrefix).setCover.\(photo.id)")
 
                                     Button("Remove", role: .destructive) {
-                                        removeAsset(asset)
+                                        removePhoto(photo)
                                     }
                                     .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .accessibilityIdentifier("\(accessibilityPrefix).remove.\(asset.id)")
+                                    .accessibilityIdentifier("\(accessibilityPrefix).remove.\(photo.id)")
                                 }
                             }
                         }
@@ -2707,38 +3250,37 @@ private struct TaskerCategoryPortfolioEditor: View {
         }
     }
 
-    private var activeCoverAssetId: ConvexID? {
-        coverAssetId ?? portfolioAssets.first?.id
+    private var activeCoverPhotoId: String? {
+        coverPhotoId ?? portfolioPhotos.first?.id
     }
 
-    private func indexForAsset(_ asset: RemoteImageAsset) -> Int {
-        portfolioAssets.firstIndex(where: { $0.id == asset.id }) ?? 0
+    private func indexForPhoto(_ photo: TaskerPortfolioPhoto) -> Int {
+        portfolioPhotos.firstIndex(where: { $0.id == photo.id }) ?? 0
     }
 
-    private func moveAsset(_ asset: RemoteImageAsset, direction: Int) {
-        guard let index = portfolioAssets.firstIndex(where: { $0.id == asset.id }) else {
+    private func movePhoto(_ photo: TaskerPortfolioPhoto, direction: Int) {
+        guard let index = portfolioPhotos.firstIndex(where: { $0.id == photo.id }) else {
             return
         }
         let newIndex = index + direction
-        guard portfolioAssets.indices.contains(newIndex) else {
+        guard portfolioPhotos.indices.contains(newIndex) else {
             return
         }
-        portfolioAssets.swapAt(index, newIndex)
-        if coverAssetId == nil {
-            coverAssetId = portfolioAssets.first?.id
+        portfolioPhotos.swapAt(index, newIndex)
+        if coverPhotoId == nil {
+            coverPhotoId = portfolioPhotos.first?.id
         }
     }
 
-    private func removeAsset(_ asset: RemoteImageAsset) {
-        portfolioAssets.removeAll { $0.id == asset.id }
-        if coverAssetId == asset.id {
-            coverAssetId = portfolioAssets.first?.id
+    private func removePhoto(_ photo: TaskerPortfolioPhoto) {
+        portfolioPhotos.removeAll { $0.id == photo.id }
+        if coverPhotoId == photo.id {
+            coverPhotoId = portfolioPhotos.first?.id
         }
     }
 }
 
 private struct AddCategorySheet: View {
-    @Environment(SessionStore.self) private var sessionStore
     @Environment(\.dismiss) private var dismiss
 
     let categories: [Category]
@@ -2751,9 +3293,11 @@ private struct AddCategorySheet: View {
     @State private var hourlyRate = ""
     @State private var fixedRate = ""
     @State private var serviceRadius = 25
-    @State private var selectedPortfolioItems: [PhotosPickerItem] = []
-    @State private var portfolioAssets: [RemoteImageAsset] = []
-    @State private var coverAssetId: ConvexID?
+    @State private var portfolioPhotos: [TaskerPortfolioPhoto] = []
+    @State private var coverPhotoId: String?
+    @State private var showsPortfolioPhotoOptions = false
+    @State private var portfolioPhotoSheet: PortfolioPhotoSheet?
+    @State private var portfolioCropQueue: [UIImage] = []
     @State private var isUploadingPortfolio = false
     @State private var portfolioStatusMessage: SubscriptionFeedbackMessage?
 
@@ -2824,12 +3368,12 @@ private struct AddCategorySheet: View {
                     )
 
                     TaskerCategoryPortfolioEditor(
-                        portfolioAssets: $portfolioAssets,
-                        coverAssetId: $coverAssetId,
-                        selectedItems: $selectedPortfolioItems,
+                        portfolioPhotos: $portfolioPhotos,
+                        coverPhotoId: $coverPhotoId,
                         isUploading: isUploadingPortfolio,
                         statusMessage: portfolioStatusMessage,
-                        accessibilityPrefix: "AddCategorySheet.portfolio"
+                        accessibilityPrefix: "AddCategorySheet.portfolio",
+                        onAddPhotos: { showsPortfolioPhotoOptions = true }
                     )
 
                     Button("Add") {
@@ -2842,8 +3386,8 @@ private struct AddCategorySheet: View {
                                 hourlyRate: hourlyRate,
                                 fixedRate: fixedRate,
                                 serviceRadius: serviceRadius,
-                                portfolioAssetIds: portfolioAssets.map(\.id),
-                                coverAssetId: coverAssetId ?? portfolioAssets.first?.id
+                                portfolioPhotos: portfolioPhotos,
+                                coverPhotoId: coverPhotoId ?? portfolioPhotos.first?.id
                             )
                         )
                     }
@@ -2864,11 +3408,35 @@ private struct AddCategorySheet: View {
         .onChange(of: existingCategoryIDs) { _, _ in
             resetSelectionIfNeeded()
         }
-        .onChange(of: selectedPortfolioItems) { _, newItems in
-            guard !newItems.isEmpty else {
-                return
+        .confirmationDialog("Portfolio photos", isPresented: $showsPortfolioPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    portfolioPhotoSheet = .camera
+                }
             }
-            Task { await uploadPortfolioItems(newItems) }
+            Button("Choose from Gallery") {
+                portfolioPhotoSheet = .gallery
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $portfolioPhotoSheet) { sheet in
+            switch sheet {
+            case .camera:
+                CameraCaptureView { image in
+                    startPortfolioCropQueue(image.map { [$0] } ?? [])
+                }
+            case .gallery:
+                GalleryPickerView(selectionLimit: max(1, 10 - portfolioPhotos.count)) { images in
+                    startPortfolioCropQueue(images)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    portfolioCropQueue.removeAll()
+                    portfolioPhotoSheet = nil
+                } onConfirm: { draft in
+                    addPortfolioDraft(draft)
+                }
+            }
         }
     }
 
@@ -2912,36 +3480,39 @@ private struct AddCategorySheet: View {
         }
     }
 
-    private func uploadPortfolioItems(_ items: [PhotosPickerItem]) async {
+    private func addPortfolioDraft(_ draft: PhotoDraft) {
         isUploadingPortfolio = true
         portfolioStatusMessage = nil
-        defer {
-            isUploadingPortfolio = false
-            selectedPortfolioItems = []
-        }
+        defer { isUploadingPortfolio = false }
 
-        do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            var uploadedAssets: [RemoteImageAsset] = []
-            for item in items {
-                let asset = try await uploadService.uploadImage(from: item, purpose: "taskerCategoryPortfolio")
-                uploadedAssets.append(asset)
-            }
-
-            let remainingSlots = max(0, 10 - portfolioAssets.count)
-            portfolioAssets.append(contentsOf: uploadedAssets.prefix(remainingSlots))
-            if coverAssetId == nil {
-                coverAssetId = portfolioAssets.first?.id
-            }
-            portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Portfolio updated.")
-        } catch {
-            portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        if remainingSlots > 0 {
+            portfolioPhotos.append(.draft(draft))
         }
+        if coverPhotoId == nil {
+            coverPhotoId = portfolioPhotos.first?.id
+        }
+        portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Portfolio updated.")
+        presentNextPortfolioCrop()
+    }
+
+    private func startPortfolioCropQueue(_ images: [UIImage]) {
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        portfolioCropQueue = Array(images.prefix(remainingSlots))
+        presentNextPortfolioCrop()
+    }
+
+    private func presentNextPortfolioCrop() {
+        guard !portfolioCropQueue.isEmpty else {
+            portfolioPhotoSheet = nil
+            return
+        }
+        let image = portfolioCropQueue.removeFirst()
+        portfolioPhotoSheet = .crop(PhotoCropInput(image: image, purpose: .taskerCategoryPortfolio))
     }
 }
 
 private struct EditableTaskerCategorySheet: View {
-    @Environment(SessionStore.self) private var sessionStore
     @Environment(\.dismiss) private var dismiss
 
     let category: TaskerManagedCategory
@@ -2953,14 +3524,16 @@ private struct EditableTaskerCategorySheet: View {
     @State private var hourlyRate: String
     @State private var fixedRate: String
     @State private var serviceRadius: Int
-    @State private var portfolioAssets: [RemoteImageAsset]
-    @State private var coverAssetId: ConvexID?
-    @State private var selectedPortfolioItems: [PhotosPickerItem] = []
+    @State private var portfolioPhotos: [TaskerPortfolioPhoto]
+    @State private var coverPhotoId: String?
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var portfolioStatusMessage: SubscriptionFeedbackMessage?
     @State private var isSaving = false
     @State private var isRemoving = false
     @State private var isUploadingPortfolio = false
+    @State private var showsPortfolioPhotoOptions = false
+    @State private var portfolioPhotoSheet: PortfolioPhotoSheet?
+    @State private var portfolioCropQueue: [UIImage] = []
     @State private var showsRemoveConfirmation = false
 
     init(
@@ -2978,8 +3551,8 @@ private struct EditableTaskerCategorySheet: View {
         _hourlyRate = State(initialValue: draft.hourlyRate)
         _fixedRate = State(initialValue: draft.fixedRate)
         _serviceRadius = State(initialValue: draft.serviceRadius)
-        _portfolioAssets = State(initialValue: category.portfolioImages ?? [])
-        _coverAssetId = State(initialValue: draft.coverAssetId)
+        _portfolioPhotos = State(initialValue: draft.portfolioPhotos)
+        _coverPhotoId = State(initialValue: draft.coverPhotoId)
     }
 
     var body: some View {
@@ -3016,12 +3589,12 @@ private struct EditableTaskerCategorySheet: View {
                     )
 
                     TaskerCategoryPortfolioEditor(
-                        portfolioAssets: $portfolioAssets,
-                        coverAssetId: $coverAssetId,
-                        selectedItems: $selectedPortfolioItems,
+                        portfolioPhotos: $portfolioPhotos,
+                        coverPhotoId: $coverPhotoId,
                         isUploading: isUploadingPortfolio,
                         statusMessage: portfolioStatusMessage,
-                        accessibilityPrefix: "TaskerProfileCategorySheet.portfolio"
+                        accessibilityPrefix: "TaskerProfileCategorySheet.portfolio",
+                        onAddPhotos: { showsPortfolioPhotoOptions = true }
                     )
 
                     PatchworkSurfaceCard {
@@ -3068,11 +3641,35 @@ private struct EditableTaskerCategorySheet: View {
         } message: {
             Text("This removes the service from your public tasker profile.")
         }
-        .onChange(of: selectedPortfolioItems) { _, newItems in
-            guard !newItems.isEmpty else {
-                return
+        .confirmationDialog("Portfolio photos", isPresented: $showsPortfolioPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    portfolioPhotoSheet = .camera
+                }
             }
-            Task { await uploadPortfolioItems(newItems) }
+            Button("Choose from Gallery") {
+                portfolioPhotoSheet = .gallery
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $portfolioPhotoSheet) { sheet in
+            switch sheet {
+            case .camera:
+                CameraCaptureView { image in
+                    startPortfolioCropQueue(image.map { [$0] } ?? [])
+                }
+            case .gallery:
+                GalleryPickerView(selectionLimit: max(1, 10 - portfolioPhotos.count)) { images in
+                    startPortfolioCropQueue(images)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    portfolioCropQueue.removeAll()
+                    portfolioPhotoSheet = nil
+                } onConfirm: { draft in
+                    addPortfolioDraft(draft)
+                }
+            }
         }
     }
 
@@ -3106,8 +3703,8 @@ private struct EditableTaskerCategorySheet: View {
                     hourlyRate: hourlyRate.trimmingCharacters(in: .whitespacesAndNewlines),
                     fixedRate: fixedRate.trimmingCharacters(in: .whitespacesAndNewlines),
                     serviceRadius: serviceRadius,
-                    portfolioAssetIds: portfolioAssets.map(\.id),
-                    coverAssetId: coverAssetId ?? portfolioAssets.first?.id
+                    portfolioPhotos: portfolioPhotos,
+                    coverPhotoId: coverPhotoId ?? portfolioPhotos.first?.id
                 )
             )
             dismiss()
@@ -3129,30 +3726,35 @@ private struct EditableTaskerCategorySheet: View {
         }
     }
 
-    private func uploadPortfolioItems(_ items: [PhotosPickerItem]) async {
+    private func addPortfolioDraft(_ draft: PhotoDraft) {
         isUploadingPortfolio = true
         portfolioStatusMessage = nil
-        defer {
-            isUploadingPortfolio = false
-            selectedPortfolioItems = []
-        }
+        defer { isUploadingPortfolio = false }
 
-        do {
-            let uploadService = ImageAssetUploadService(client: sessionStore.client)
-            var uploadedAssets: [RemoteImageAsset] = []
-            for item in items {
-                let asset = try await uploadService.uploadImage(from: item, purpose: "taskerCategoryPortfolio")
-                uploadedAssets.append(asset)
-            }
-            let remainingSlots = max(0, 10 - portfolioAssets.count)
-            portfolioAssets.append(contentsOf: uploadedAssets.prefix(remainingSlots))
-            if coverAssetId == nil {
-                coverAssetId = portfolioAssets.first?.id
-            }
-            portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Portfolio updated.")
-        } catch {
-            portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        if remainingSlots > 0 {
+            portfolioPhotos.append(.draft(draft))
         }
+        if coverPhotoId == nil {
+            coverPhotoId = portfolioPhotos.first?.id
+        }
+        portfolioStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Portfolio updated.")
+        presentNextPortfolioCrop()
+    }
+
+    private func startPortfolioCropQueue(_ images: [UIImage]) {
+        let remainingSlots = max(0, 10 - portfolioPhotos.count)
+        portfolioCropQueue = Array(images.prefix(remainingSlots))
+        presentNextPortfolioCrop()
+    }
+
+    private func presentNextPortfolioCrop() {
+        guard !portfolioCropQueue.isEmpty else {
+            portfolioPhotoSheet = nil
+            return
+        }
+        let image = portfolioCropQueue.removeFirst()
+        portfolioPhotoSheet = .crop(PhotoCropInput(image: image, purpose: .taskerCategoryPortfolio))
     }
 
     private func detailRow(_ title: String, value: String) -> some View {
@@ -3351,15 +3953,21 @@ private struct FeedbackView: View {
 
 private struct StepHeader: View {
     let currentStep: Int
+    let totalSteps: Int
+
+    init(currentStep: Int, totalSteps: Int = 3) {
+        self.currentStep = currentStep
+        self.totalSteps = totalSteps
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(1 ... 3, id: \.self) { value in
+            ForEach(1 ... max(totalSteps, 1), id: \.self) { value in
                 Circle()
                     .fill(value <= currentStep ? PatchworkTheme.brand : PatchworkTheme.stroke)
                     .frame(width: 28, height: 28)
                     .overlay {
-                        Text(value <= currentStep && value < currentStep ? "\u{2713}" : "\(value)")
+                        Text(value < currentStep ? "\u{2713}" : "\(value)")
                             .font(.caption.bold())
                             .foregroundStyle(value <= currentStep ? Color.white : PatchworkTheme.textSecondary)
                     }

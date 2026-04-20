@@ -202,7 +202,7 @@ struct PatchworkAnimatedMark: View {
     let swirlDuration: Double
     let pauseDuration: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var reduceMotionOpacity: Double = 0.72
+    private let isUITesting = ProcessInfo.processInfo.arguments.contains("--uitesting")
 
     init(
         size: CGFloat = 86,
@@ -227,9 +227,8 @@ struct PatchworkAnimatedMark: View {
                     .blur(radius: size * 0.18)
 
                 Group {
-                    if reduceMotion {
+                    if reduceMotion || isUITesting {
                         PatchworkMarkCircles(size: size, settleProgress: 1)
-                            .opacity(reduceMotionOpacity)
                     } else {
                         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                             let cycleDuration = swirlDuration + pauseDuration
@@ -253,15 +252,6 @@ struct PatchworkAnimatedMark: View {
                     .foregroundStyle(foregroundTreatment.wordmarkColor)
                     .shadow(color: foregroundTreatment.wordmarkShadowColor, radius: size * 0.14, y: size * 0.08)
                     .accessibilityHidden(true)
-            }
-        }
-        .onAppear {
-            guard reduceMotion else {
-                return
-            }
-
-            withAnimation(.easeOut(duration: 0.45)) {
-                reduceMotionOpacity = 1
             }
         }
         .accessibilityElement(children: .combine)

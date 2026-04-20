@@ -174,6 +174,7 @@ struct TaskerBillingSheet: View {
 
     private var inactiveBillingContent: some View {
         GeometryReader { proxy in
+            let contentMinHeight = proxy.size.height.isFinite ? max(proxy.size.height, 0) : 0
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     topBar
@@ -196,7 +197,7 @@ struct TaskerBillingSheet: View {
                         missingOfferingState
                     }
                 }
-                .frame(minHeight: proxy.size.height, alignment: .top)
+                .frame(minHeight: contentMinHeight, alignment: .top)
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 34)

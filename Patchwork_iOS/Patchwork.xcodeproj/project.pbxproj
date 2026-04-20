@@ -19,6 +19,7 @@
 		48CD452FB3052C6976D36007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 729E33D4E7B681C1ABDBD69A /* RootView.swift */; };
 		4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDAD88D57BEC8C727115A6F /* MessagesView.swift */; };
 		564B737D2E7437747205E99D /* PatchworkRemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */; };
+		588A7F67A90BF95EC963D2FA /* PatchworkPhotoFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506758267AC6069C7C563862 /* PatchworkPhotoFlow.swift */; };
 		5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09019FECF835A15001917199 /* CategoriesView.swift */; };
 		607AB8F7707AD6EE1662A1CE /* SubscriptionReconciliation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */; };
 		62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B810AFA2F7D8E281A10001B8 /* ProfileView.swift */; };
@@ -31,6 +32,7 @@
 		9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */; };
 		A087AA9759E50A7CDF5F14C3 /* JobDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2645A99676B08C632ABA998 /* JobDetailView.swift */; };
 		A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF295505C244A4858E39A5D /* RevenueCatManager.swift */; };
+		AED712E0EB69F15230E4CAAF /* PhotoCropJPEGHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */; };
 		AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */; };
 		B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */; };
 		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
@@ -82,6 +84,7 @@
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
 		462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkImageCache.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		506758267AC6069C7C563862 /* PatchworkPhotoFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkPhotoFlow.swift; sourceTree = "<group>"; };
 		5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		68BA4F09EB1C8E4E34CCC252 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		68D08930C048430E82A75FF1 /* UITheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITheme.swift; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 		B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkRemoteImage.swift; sourceTree = "<group>"; };
 		B810AFA2F7D8E281A10001B8 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliationTests.swift; sourceTree = "<group>"; };
+		BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCropJPEGHelperTests.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2FF7A5790E5506D5EF7226A /* JobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsView.swift; sourceTree = "<group>"; };
 		C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerPaywallArtworkView.swift; sourceTree = "<group>"; };
@@ -185,6 +189,14 @@
 			path = Patchwork;
 			sourceTree = "<group>";
 		};
+		9677B2ADB59675EB4F05A2C2 /* Photos */ = {
+			isa = PBXGroup;
+			children = (
+				506758267AC6069C7C563862 /* PatchworkPhotoFlow.swift */,
+			);
+			path = Photos;
+			sourceTree = "<group>";
+		};
 		9A88F4BFE0152202D1433ACF /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -200,6 +212,7 @@
 			children = (
 				8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */,
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
+				BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */,
 				B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */,
 			);
 			path = PatchworkTests;
@@ -268,6 +281,7 @@
 				519C93B72D3CD174ABE13197 /* Home */,
 				61BD51C437D3C8EBD32CB189 /* Jobs */,
 				BE901AEF2A31157915F1E50A /* Messages */,
+				9677B2ADB59675EB4F05A2C2 /* Photos */,
 				64A7478B27F5090FB678ADA8 /* Profile */,
 			);
 			path = Features;
@@ -425,6 +439,7 @@
 				DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */,
 				081259B88E7B10011383049D /* PatchworkImageCache.swift in Sources */,
 				B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */,
+				588A7F67A90BF95EC963D2FA /* PatchworkPhotoFlow.swift in Sources */,
 				564B737D2E7437747205E99D /* PatchworkRemoteImage.swift in Sources */,
 				CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */,
 				FAFE4B58A3664CE4D1443EF5 /* PatchworkSheetChrome.swift in Sources */,
@@ -452,6 +467,7 @@
 			files = (
 				BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */,
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
+				AED712E0EB69F15230E4CAAF /* PhotoCropJPEGHelperTests.swift in Sources */,
 				31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -611,7 +627,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 40;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -694,7 +710,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 40;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;

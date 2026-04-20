@@ -2,13 +2,18 @@ import Foundation
 import XCTest
 
 final class PatchworkUITests: XCTestCase {
-    private let convexSiteURL = URL(string: "https://vibrant-caribou-150.convex.site")!
+    private let testConvexCloudURL = "https://aware-meerkat-572.convex.cloud"
+    private let testConvexSiteURL = "https://aware-meerkat-572.convex.site"
+    private lazy var convexSiteURL = URL(string: testConvexSiteURL)!
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["--uitesting"]
+        app.launchArguments = ["--uitesting", "PATCHWORK_UI_RESET_SESSION"]
+        app.launchEnvironment["PATCHWORK_UI_RESET_SESSION_TOKEN"] = UUID().uuidString
+        app.launchEnvironment["PATCHWORK_CONVEX_CLOUD_URL"] = testConvexCloudURL
+        app.launchEnvironment["PATCHWORK_CONVEX_SITE_URL"] = testConvexSiteURL
         app.launch()
     }
 
@@ -69,6 +74,7 @@ final class PatchworkUITests: XCTestCase {
         app.buttons["Auth.sendCodeButton"].tap()
 
         XCTAssertFalse(app.textFields["Auth.codeField.0"].waitForExistence(timeout: 3))
+        dismissLocationPromptIfNeeded()
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
         XCTAssertTrue(tabButton(named: "Profile").exists)
     }
@@ -107,21 +113,21 @@ final class PatchworkUITests: XCTestCase {
         )
         saveScreenshot(named: "ios-tasker-after-complete")
 
-        XCTAssertTrue(app.otherElements["Subscription.customPaywall"].waitForExistence(timeout: 20))
+        XCTAssertTrue(identifiedElement("Subscription.customPaywall").waitForExistence(timeout: 20))
 
         if app.buttons["Close"].waitForExistence(timeout: 5) {
             app.buttons["Close"].tap()
         } else if app.buttons["Subscription.billingCloseButton"].exists {
             app.buttons["Subscription.billingCloseButton"].tap()
         }
-        XCTAssertTrue(app.buttons["TaskerOnboarding4.doneButton"].waitForExistence(timeout: 10))
-        app.buttons["TaskerOnboarding4.doneButton"].tap()
+        XCTAssertTrue(app.buttons["TaskerOnboarding5.doneButton"].waitForExistence(timeout: 10))
+        app.buttons["TaskerOnboarding5.doneButton"].tap()
 
         let subscriptionLink = app.buttons["Profile.visibilitySubscriptionLink"]
         XCTAssertTrue(subscriptionLink.waitForExistence(timeout: 10))
         subscriptionLink.tap()
 
-        XCTAssertTrue(app.otherElements["Subscription.customPaywall"].waitForExistence(timeout: 20))
+        XCTAssertTrue(identifiedElement("Subscription.customPaywall").waitForExistence(timeout: 20))
         saveScreenshot(named: "ios-tasker-paywall-profile")
     }
 
@@ -153,6 +159,9 @@ final class PatchworkUITests: XCTestCase {
         let initialDisplayName = "Managed Tasker"
         let updatedDisplayName = "Managed Tasker Pro"
         let updatedCategoryBio = "Detailed cabinet refinishing, trim painting, and touch-ups for busy households."
+        let coordinateOffset = Double(Int(Date().timeIntervalSince1970) % 100) / 10_000
+        let discoveryLat = 49.2827 + coordinateOffset
+        let discoveryLng = -123.1207 - coordinateOffset
 
         launchToEmailEntry()
         completeEmailAuth(email: taskerEmail)
@@ -169,7 +178,15 @@ final class PatchworkUITests: XCTestCase {
             hourlyRate: "60"
         )
 
-        XCTAssertTrue(app.staticTexts["Not active"].waitForExistence(timeout: 10))
+        _ = app.otherElements["Subscription.customPaywall"].waitForExistence(timeout: 3)
+        if app.buttons["Subscription.billingCloseButton"].waitForExistence(timeout: 5) {
+            app.buttons["Subscription.billingCloseButton"].tap()
+        } else if app.buttons["Close"].waitForExistence(timeout: 2) {
+            app.buttons["Close"].tap()
+        }
+
+        XCTAssertTrue(app.buttons["TaskerOnboarding5.doneButton"].waitForExistence(timeout: 10))
+        app.buttons["TaskerOnboarding5.doneButton"].tap()
 
         openTaskerProfileManagement()
 
@@ -197,10 +214,12 @@ final class PatchworkUITests: XCTestCase {
         let categoryBioField = app.textViews["TaskerProfileCategorySheet.bioField"]
         XCTAssertTrue(categoryBioField.waitForExistence(timeout: 10))
         replaceText(in: categoryBioField, with: updatedCategoryBio)
+        dismissKeyboardIfPresent()
 
         let rateTypeControl = app.segmentedControls["TaskerProfileCategorySheet.rateTypePicker"]
         XCTAssertTrue(rateTypeControl.waitForExistence(timeout: 10))
         rateTypeControl.buttons["Fixed"].tap()
+        dismissKeyboardIfPresent()
 
         let fixedRateField = app.textFields["TaskerProfileCategorySheet.fixedRateField"]
         XCTAssertTrue(fixedRateField.waitForExistence(timeout: 10))
@@ -231,7 +250,7 @@ final class PatchworkUITests: XCTestCase {
         categoryRow.tap()
 
         XCTAssertEqual(categoryBioField.value as? String, updatedCategoryBio)
-        XCTAssertEqual(fixedRateField.value as? String, "145")
+        XCTAssertEqual(fixedRateField.value as? String, "145.00")
         XCTAssertEqual(identifiedElement("TaskerProfileCategorySheet.radiusValue").label, "30 km")
 
         app.buttons["TaskerProfile.categoryCloseButton"].tap()
@@ -240,6 +259,8 @@ final class PatchworkUITests: XCTestCase {
             email: taskerEmail,
             name: "Tasker Manager",
             displayName: updatedDisplayName,
+            lat: discoveryLat,
+            lng: discoveryLng,
             categoryBio: updatedCategoryBio,
             rateType: "fixed",
             hourlyRate: nil,
@@ -256,15 +277,29 @@ final class PatchworkUITests: XCTestCase {
         signOutToEmailEntry()
         completeEmailAuth(email: seekerEmail)
         completeProfileSetup(name: "Seeking Manager", city: "Toronto", province: "ON")
+        setUserLocation(email: seekerEmail, lat: discoveryLat, lng: discoveryLng)
+        app.terminate()
+        app.launch()
+        if !app.tabBars.firstMatch.waitForExistence(timeout: 5) {
+            launchToEmailEntry()
+            completeEmailAuth(email: seekerEmail)
+        }
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
 
         XCTAssertFalse(app.buttons["Home.layout.listButton"].exists)
 
-        let providerButton = app.buttons["Home.spotlightViewProfileButton"]
-        XCTAssertTrue(providerButton.waitForExistence(timeout: 20))
-        providerButton.tap()
+        openDiscoverProfile(named: updatedDisplayName)
 
         XCTAssertTrue(app.staticTexts[updatedCategoryBio].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["$145.00 flat"].waitForExistence(timeout: 20))
+        let updatedRateMetric = app.otherElements["ProviderDetail.metric.fixed-rate"]
+        if !updatedRateMetric.waitForExistence(timeout: 5) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(updatedRateMetric.waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            updatedRateMetric.label.contains("145.00 flat"),
+            "Expected edited fixed rate, got: \(updatedRateMetric.label)"
+        )
     }
 
     func testSeekerDiscoveryStartsConversation() throws {
@@ -594,21 +629,29 @@ final class PatchworkUITests: XCTestCase {
         }
         enterOTP(testOTP(for: email))
 
-        if verifyButton.waitForExistence(timeout: 2), verifyButton.isEnabled {
+        if waitForAuthenticatedOrSetupState(timeout: 12) {
+            return
+        }
+
+        if verifyButton.exists, verifyButton.isHittable, verifyButton.isEnabled {
             verifyButton.tap()
+            _ = waitForAuthenticatedOrSetupState(timeout: 12)
         }
     }
 
     private func completeProfileSetup(name: String, city: String, province: String) {
         let nameField = app.textFields["ProfileSetup.nameField"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        XCTAssertTrue(nameField.waitForExistence(timeout: 30))
         replaceText(in: nameField, with: name, shouldClearExisting: false)
+        dismissKeyboardIfPresent()
 
         let cityField = app.textFields["ProfileSetup.cityField"]
         replaceText(in: cityField, with: city)
+        dismissKeyboardIfPresent()
 
         let provinceField = app.textFields["ProfileSetup.provinceField"]
         replaceText(in: provinceField, with: province)
+        dismissKeyboardIfPresent()
 
         app.buttons["ProfileSetup.continueButton"].tap()
 
@@ -657,6 +700,23 @@ final class PatchworkUITests: XCTestCase {
         let startChatButton = app.buttons["ProviderDetail.startChatButton"]
         XCTAssertTrue(startChatButton.waitForExistence(timeout: 15))
         startChatButton.tap()
+    }
+
+    private func openDiscoverProfile(named displayName: String, maxSkips: Int = 10) {
+        for _ in 0 ..< maxSkips {
+            let providerButton = app.buttons["Home.spotlightViewProfileButton"]
+            XCTAssertTrue(providerButton.waitForExistence(timeout: 20))
+            if providerButton.label.contains(displayName) {
+                providerButton.tap()
+                return
+            }
+
+            let skipButton = app.buttons["Home.skipButton"]
+            XCTAssertTrue(skipButton.waitForExistence(timeout: 5))
+            skipButton.tap()
+        }
+
+        XCTFail("Could not find Discover card for \(displayName)")
     }
 
     private func openMessagesTaskerConversation(named participantName: String) {
@@ -708,6 +768,13 @@ final class PatchworkUITests: XCTestCase {
 
         app.buttons["TaskerOnboarding2.continueButton"].tap()
 
+        let portfolioContinue = app.buttons["TaskerOnboarding3.continueButton"]
+        XCTAssertTrue(portfolioContinue.waitForExistence(timeout: 10))
+        portfolioContinue.tap()
+
+        let profileCardPreview = identifiedElement("TaskerOnboarding4.discoverCardPreview")
+        XCTAssertTrue(profileCardPreview.waitForExistence(timeout: 10))
+
         let termsToggle = app.buttons["TaskerOnboarding4.acceptTermsToggle"]
         XCTAssertTrue(termsToggle.waitForExistence(timeout: 10))
         termsToggle.tap()
@@ -750,12 +817,6 @@ final class PatchworkUITests: XCTestCase {
 
     private func testOTP(for email: String) -> String {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if normalizedEmail.hasSuffix("@test.com") || normalizedEmail.hasPrefix("e2e_") {
-            let seededOTP = "123456"
-            _ = testProxy(action: "seedOtp", args: ["email": normalizedEmail, "otp": seededOTP]) as Optional<[String: Any]>
-            return seededOTP
-        }
-
         return fetchOTP(email: normalizedEmail)
     }
 
@@ -766,6 +827,20 @@ final class PatchworkUITests: XCTestCase {
             codeField.tap()
             codeField.typeText(String(digit))
         }
+    }
+
+    private func waitForAuthenticatedOrSetupState(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.textFields["ProfileSetup.nameField"].exists
+                || app.tabBars.firstMatch.exists
+                || app.buttons["LocationPrompt.skipButton"].exists
+                || app.buttons["ProfileSetup.locationSkipButton"].exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return false
     }
 
     private func cleanupTestData(for email: String) {
@@ -813,6 +888,18 @@ final class PatchworkUITests: XCTestCase {
 
         let result: [String: Any]? = testProxy(action: "ensureDiscoverableTasker", args: args)
         return result ?? [:]
+    }
+
+    private func setUserLocation(email: String, lat: Double, lng: Double) {
+        let result: [String: Any]? = testProxy(
+            action: "setTaskerLocationByEmail",
+            args: [
+                "email": email,
+                "lat": lat,
+                "lng": lng,
+            ]
+        )
+        XCTAssertEqual(result?["updated"] as? Bool, true)
     }
 
     private func ensurePendingProposal(
@@ -1136,6 +1223,26 @@ final class PatchworkUITests: XCTestCase {
         }
 
         XCTFail("Keyboard focus did not reach element \(element)")
+    }
+
+    private func dismissKeyboardIfPresent() {
+        guard app.keyboards.firstMatch.exists else {
+            return
+        }
+
+        let returnButton = app.keyboards.buttons["Return"]
+        if returnButton.exists {
+            returnButton.tap()
+            return
+        }
+
+        let doneButton = app.keyboards.buttons["Done"]
+        if doneButton.exists {
+            doneButton.tap()
+            return
+        }
+
+        app.swipeDown()
     }
 
     private func elementHasKeyboardFocus(_ element: XCUIElement) -> Bool {

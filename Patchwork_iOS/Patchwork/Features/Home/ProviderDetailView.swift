@@ -365,6 +365,7 @@ struct ProviderDetailView: View {
         .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), \(value)")
+        .accessibilityIdentifier("ProviderDetail.metric.\(title.normalizedAccessibilityIdentifier)")
     }
 
     @ViewBuilder
@@ -470,6 +471,14 @@ struct ProviderDetailView: View {
             chatError = "Unable to start chat right now. Please try again."
             appState.lastError = error.localizedDescription
         }
+    }
+}
+
+private extension String {
+    var normalizedAccessibilityIdentifier: String {
+        lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
     }
 }
 
