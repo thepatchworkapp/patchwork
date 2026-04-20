@@ -2,6 +2,61 @@ import Foundation
 
 typealias ConvexID = String
 
+struct RemoteImageVariant: Codable, Hashable {
+    let url: String?
+    let width: Int?
+    let height: Int?
+    let contentType: String?
+    let byteSize: Int?
+}
+
+struct RemoteImageVariants: Codable, Hashable {
+    let thumb: RemoteImageVariant?
+    let display: RemoteImageVariant?
+    let large: RemoteImageVariant?
+}
+
+struct RemoteImageAsset: Codable, Hashable {
+    let id: ConvexID
+    let cacheKey: String
+    let updatedAt: Int?
+    let variants: RemoteImageVariants?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case legacyId = "_id"
+        case cacheKey
+        case updatedAt
+        case variants
+    }
+
+    init(id: ConvexID, cacheKey: String, updatedAt: Int?, variants: RemoteImageVariants?) {
+        self.id = id
+        self.cacheKey = cacheKey
+        self.updatedAt = updatedAt
+        self.variants = variants
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedID =
+            try container.decodeIfPresent(ConvexID.self, forKey: .id)
+            ?? container.decode(ConvexID.self, forKey: .legacyId)
+        id = decodedID
+        cacheKey = try container.decodeIfPresent(String.self, forKey: .cacheKey) ?? decodedID
+        updatedAt = try container.decodeIfPresent(Int.self, forKey: .updatedAt)
+        variants = try container.decodeIfPresent(RemoteImageVariants.self, forKey: .variants)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(cacheKey, forKey: .cacheKey)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(variants, forKey: .variants)
+    }
+}
+
 struct Category: Identifiable, Codable, Hashable {
     let id: ConvexID
     let name: String
@@ -32,6 +87,8 @@ struct TaskerSummary: Identifiable, Codable, Hashable {
     let completedJobs: Int?
     let avatarUrl: String?
     let categoryPhotoUrl: String?
+    let avatarImage: RemoteImageAsset?
+    let categoryCoverImage: RemoteImageAsset?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -47,6 +104,8 @@ struct TaskerSummary: Identifiable, Codable, Hashable {
         case completedJobs
         case avatarUrl
         case categoryPhotoUrl
+        case avatarImage
+        case categoryCoverImage
     }
 }
 
@@ -60,6 +119,7 @@ struct TaskerDetail: Codable, Hashable {
     let verified: Bool?
     let completedJobs: Int?
     let userPhotoUrl: String?
+    let profileImage: RemoteImageAsset?
     let reviews: [TaskerReview]
     let categoryProfiles: [TaskerCategoryProfile]
 
@@ -73,6 +133,7 @@ struct TaskerDetail: Codable, Hashable {
         case verified
         case completedJobs
         case userPhotoUrl
+        case profileImage
         case reviews
         case categoryProfiles = "categories"
     }
@@ -82,6 +143,7 @@ struct TaskerReview: Identifiable, Codable, Hashable {
     let id: ConvexID
     let reviewerName: String
     let reviewerPhotoUrl: String?
+    let reviewerImage: RemoteImageAsset?
     let rating: Int
     let text: String
     let createdAt: Int
@@ -90,6 +152,7 @@ struct TaskerReview: Identifiable, Codable, Hashable {
         case id
         case reviewerName
         case reviewerPhotoUrl
+        case reviewerImage
         case rating
         case text
         case createdAt
@@ -108,6 +171,8 @@ struct TaskerCategoryProfile: Identifiable, Codable, Hashable {
     let serviceRadius: Int?
     let completedJobs: Int?
     let firstPhotoUrl: String?
+    let coverImage: RemoteImageAsset?
+    let portfolioImages: [RemoteImageAsset]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -121,6 +186,8 @@ struct TaskerCategoryProfile: Identifiable, Codable, Hashable {
         case serviceRadius
         case completedJobs
         case firstPhotoUrl
+        case coverImage
+        case portfolioImages
     }
 }
 
@@ -132,6 +199,7 @@ struct CurrentUser: Codable, Hashable {
     let location: UserLocation?
     let settings: UserSettings?
     let createdAt: Int?
+    let photoImage: RemoteImageAsset?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -141,6 +209,7 @@ struct CurrentUser: Codable, Hashable {
         case location
         case settings
         case createdAt
+        case photoImage
     }
 }
 
@@ -176,6 +245,7 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
     let taskerUnreadCount: Int?
     let participantName: String?
     let participantPhotoUrl: String?
+    let participantImage: RemoteImageAsset?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -188,6 +258,7 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         case taskerUnreadCount
         case participantName
         case participantPhotoUrl
+        case participantImage
     }
 }
 
@@ -198,6 +269,7 @@ struct ConversationDetail: Identifiable, Codable, Hashable {
     let jobId: ConvexID?
     let participantName: String?
     let participantPhotoUrl: String?
+    let participantImage: RemoteImageAsset?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -206,6 +278,7 @@ struct ConversationDetail: Identifiable, Codable, Hashable {
         case jobId
         case participantName
         case participantPhotoUrl
+        case participantImage
     }
 }
 
@@ -273,6 +346,7 @@ struct JobSummary: Identifiable, Codable, Hashable {
     let completedDate: String?
     let counterpartyName: String?
     let counterpartyPhotoUrl: String?
+    let counterpartyImage: RemoteImageAsset?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -286,6 +360,7 @@ struct JobSummary: Identifiable, Codable, Hashable {
         case completedDate
         case counterpartyName
         case counterpartyPhotoUrl
+        case counterpartyImage
     }
 }
 
@@ -336,6 +411,8 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let verified: Bool?
     let responseTime: String?
     let createdAt: Int?
+    let photoSource: String?
+    let photoImage: RemoteImageAsset?
     let categories: [TaskerManagedCategory]
 
     enum CodingKeys: String, CodingKey {
@@ -355,6 +432,8 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case verified
         case responseTime
         case createdAt
+        case photoSource
+        case photoImage
         case categories
     }
 }
@@ -372,6 +451,9 @@ struct TaskerManagedCategory: Identifiable, Codable, Hashable {
     let rating: Double?
     let reviewCount: Int?
     let completedJobs: Int?
+    let coverAssetId: ConvexID?
+    let coverImage: RemoteImageAsset?
+    let portfolioImages: [RemoteImageAsset]?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -386,6 +468,9 @@ struct TaskerManagedCategory: Identifiable, Codable, Hashable {
         case rating
         case reviewCount
         case completedJobs
+        case coverAssetId
+        case coverImage
+        case portfolioImages
     }
 }
 

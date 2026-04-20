@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class AppState {
+    private static let imagePrefetchCount = 12
+
     enum Tab: Hashable {
         case home
         case messages
@@ -128,6 +130,7 @@ final class AppState {
                     "conversations:listConversations",
                     args: ["role": conversationRole, "limit": 50]
                 )
+                prefetchConversationImages(conversations)
             } catch {
                 conversations = previousConversations
             }
@@ -137,6 +140,7 @@ final class AppState {
                     "jobs:listJobs",
                     args: ["statusGroup": jobsStatusGroup, "limit": 50]
                 )
+                prefetchJobImages(jobs)
             } catch {
                 jobs = previousJobs
             }
@@ -164,6 +168,7 @@ final class AppState {
                 "conversations:listConversations",
                 args: ["role": role, "limit": 50]
             )
+            prefetchConversationImages(conversations)
         } catch {
             presentError(error, prefix: "Failed to refresh conversations")
         }
@@ -176,6 +181,7 @@ final class AppState {
                 "jobs:listJobs",
                 args: ["statusGroup": statusGroup, "limit": 50]
             )
+            prefetchJobImages(jobs)
         } catch {
             presentError(error, prefix: "Failed to refresh jobs")
         }
@@ -249,6 +255,7 @@ final class AppState {
             }
 
             taskers = try await client.query("search:searchTaskers", args: args)
+            prefetchTaskerImages(taskers)
         } catch {
             if isCancellationError(error) {
                 return
@@ -299,5 +306,55 @@ final class AppState {
         categoriesErrorMessage = nil
         isLoadingCategories = false
         lastError = nil
+    }
+
+    private func prefetchTaskerImages(_ taskers: [TaskerSummary]) {
+        let targets = taskers.prefix(Self.imagePrefetchCount)
+        let requests = targets.flatMap { tasker in
+            [
+                PatchworkImageCache.PrefetchRequest(
+                    asset: tasker.avatarImage,
+                    preferredVariant: .thumb,
+                    legacyURL: tasker.avatarUrl
+                ),
+                PatchworkImageCache.PrefetchRequest(
+                    asset: tasker.categoryCoverImage,
+                    preferredVariant: .display,
+                    legacyURL: tasker.categoryPhotoUrl
+                ),
+            ]
+        }
+        guard !requests.isEmpty else { return }
+        Task(priority: .utility) {
+            await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
+    }
+
+    private func prefetchConversationImages(_ conversations: [ConversationSummary]) {
+        let requests = conversations.prefix(Self.imagePrefetchCount).map { conversation in
+            PatchworkImageCache.PrefetchRequest(
+                asset: conversation.participantImage,
+                preferredVariant: .thumb,
+                legacyURL: conversation.participantPhotoUrl
+            )
+        }
+        guard !requests.isEmpty else { return }
+        Task(priority: .utility) {
+            await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
+    }
+
+    private func prefetchJobImages(_ jobs: [JobSummary]) {
+        let requests = jobs.prefix(Self.imagePrefetchCount).map { job in
+            PatchworkImageCache.PrefetchRequest(
+                asset: job.counterpartyImage,
+                preferredVariant: .thumb,
+                legacyURL: job.counterpartyPhotoUrl
+            )
+        }
+        guard !requests.isEmpty else { return }
+        Task(priority: .utility) {
+            await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
     }
 }
