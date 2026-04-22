@@ -35,13 +35,9 @@ struct RootView: View {
     private var liveRoot: some View {
         Group {
             if sessionStore.isAuthenticated {
-                if isForegroundRefreshPending && !preserveOnboardingRouteDuringForegroundRefresh {
-                    if appState.currentUser == nil {
-                        PatchworkBrandLoadingCard()
-                    } else {
-                        MainTabView()
-                    }
-                } else if (sessionStore.isRestoringSession || sessionStore.needsSessionRestore) && !(isForegroundRefreshPending && preserveOnboardingRouteDuringForegroundRefresh) {
+                if shouldShowForegroundRefreshLoading {
+                    PatchworkBrandLoadingCard()
+                } else if shouldShowSessionRestoreLoading {
                     PatchworkBrandLoadingCard()
                 } else if !appState.isBootstrapped {
                     PatchworkBrandLoadingCard()
@@ -139,11 +135,29 @@ struct RootView: View {
         }
     }
 
-    private var preserveOnboardingRouteDuringForegroundRefresh: Bool {
-        sessionStore.isAuthenticated
+    private var shouldShowForegroundRefreshLoading: Bool {
+        isForegroundRefreshPending
             && appState.currentUser == nil
-            && appState.isBootstrapped
-            && !sessionStore.launchedWithPersistedSession
+            && !preserveAuthenticatedRouteDuringForegroundRefresh
+    }
+
+    private var shouldShowSessionRestoreLoading: Bool {
+        (sessionStore.isRestoringSession || sessionStore.needsSessionRestore)
+            && !preserveAuthenticatedRouteDuringForegroundRefresh
+    }
+
+    private var preserveAuthenticatedRouteDuringForegroundRefresh: Bool {
+        guard isForegroundRefreshPending,
+              sessionStore.isAuthenticated,
+              appState.isBootstrapped else {
+            return false
+        }
+
+        if appState.currentUser != nil {
+            return true
+        }
+
+        return !sessionStore.launchedWithPersistedSession
     }
 
 #if DEBUG

@@ -150,6 +150,86 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertFalse(app.textFields["ProfileSetup.nameField"].exists)
     }
 
+    func testProfileSetupDraftSurvivesBackgroundResume() throws {
+        let email = uniqueTestEmail(prefix: "ios-profile-draft")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+
+        let name = "Draft Resume Tester"
+        let city = "Toronto"
+        let province = "ON"
+
+        let nameField = app.textFields["ProfileSetup.nameField"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 30))
+        replaceText(in: nameField, with: name, shouldClearExisting: false)
+        dismissKeyboardIfPresent()
+
+        let cityField = app.textFields["ProfileSetup.cityField"]
+        replaceText(in: cityField, with: city)
+        dismissKeyboardIfPresent()
+
+        let provinceField = app.textFields["ProfileSetup.provinceField"]
+        replaceText(in: provinceField, with: province)
+        dismissKeyboardIfPresent()
+
+        backgroundAndRestoreApp()
+
+        XCTAssertTrue(app.textFields["ProfileSetup.nameField"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["ProfileSetup.nameField"].value as? String, name)
+        XCTAssertEqual(app.textFields["ProfileSetup.cityField"].value as? String, city)
+        XCTAssertEqual(app.textFields["ProfileSetup.provinceField"].value as? String, province)
+    }
+
+    func testTaskerOnboardingDraftSurvivesBackgroundResume() throws {
+        let email = uniqueTestEmail(prefix: "ios-tasker-draft")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "Tasker Draft Tester", city: "Toronto", province: "ON")
+
+        openProfileTab()
+        let primaryAction = app.buttons["Profile.taskerOnboardingLink"]
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
+        primaryAction.tap()
+
+        let displayName = "Unsaved Tasker Draft"
+        let bio = "Careful local help that should survive an app resume."
+        let hourlyRate = "75"
+
+        let displayNameField = app.textFields["TaskerOnboarding1.displayNameField"]
+        XCTAssertTrue(displayNameField.waitForExistence(timeout: 10))
+        replaceText(in: displayNameField, with: displayName)
+
+        app.buttons["TaskerOnboarding1.categoryPicker"].tap()
+        let categoryRow = app.buttons["Categories.row.cleaning"]
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 10))
+        categoryRow.tap()
+
+        app.buttons["TaskerOnboarding1.continueButton"].tap()
+
+        let bioField = app.textViews["TaskerOnboarding2.bioField"]
+        XCTAssertTrue(bioField.waitForExistence(timeout: 10))
+        replaceText(in: bioField, with: bio)
+
+        let hourlyRateField = app.textFields["TaskerOnboarding2.hourlyRateField"]
+        XCTAssertTrue(hourlyRateField.waitForExistence(timeout: 10))
+        replaceText(in: hourlyRateField, with: hourlyRate)
+        dismissKeyboardIfPresent()
+
+        backgroundAndRestoreApp()
+
+        XCTAssertTrue(app.textViews["TaskerOnboarding2.bioField"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textViews["TaskerOnboarding2.bioField"].value as? String, bio)
+        XCTAssertEqual(app.textFields["TaskerOnboarding2.hourlyRateField"].value as? String, hourlyRate)
+
+        app.buttons["TaskerOnboarding2.backButton"].tap()
+        XCTAssertEqual(app.textFields["TaskerOnboarding1.displayNameField"].value as? String, displayName)
+        XCTAssertTrue(app.buttons["TaskerOnboarding1.categoryPicker"].label.contains("Cleaning"))
+    }
+
     func testTaskerProfileManagementPersistsDisplayNameAndCategoryEdits() throws {
         let taskerEmail = uniqueTestEmail(prefix: "ios-tasker-manage")
         let seekerEmail = uniqueTestEmail(prefix: "ios-seeker-manage")
