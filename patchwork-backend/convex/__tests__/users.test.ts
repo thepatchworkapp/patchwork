@@ -10,6 +10,7 @@ import * as authModule from "../auth";
 import * as httpModule from "../http";
 import * as conversationsModule from "../conversations";
 import * as messagesModule from "../messages";
+import * as moderationModule from "../moderation";
 import * as proposalsModule from "../proposals";
 import * as jobsModule from "../jobs";
 
@@ -22,6 +23,7 @@ const modules: Record<string, () => Promise<any>> = {
   "../http.ts": async () => httpModule,
   "../conversations.ts": async () => conversationsModule,
   "../messages.ts": async () => messagesModule,
+  "../moderation.ts": async () => moderationModule,
   "../proposals.ts": async () => proposalsModule,
   "../jobs.ts": async () => jobsModule,
   "../_generated/api.ts": async () => ({ default: api }),

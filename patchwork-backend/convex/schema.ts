@@ -181,6 +181,45 @@ export default defineSchema({
     .index("by_createdAt", ["createdAt"]),
 
   /**
+   * One-way user blocks. A block from A -> B freezes direct messaging in both
+   * directions, but only A can remove the block row.
+   */
+  userBlocks: defineTable({
+    blockerId: v.id("users"),
+    blockedId: v.id("users"),
+    conversationId: v.optional(v.id("conversations")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_blocker_blocked", ["blockerId", "blockedId"])
+    .index("by_blocker_createdAt", ["blockerId", "createdAt"])
+    .index("by_blocked_createdAt", ["blockedId", "createdAt"])
+    .index("by_conversation", ["conversationId"]),
+
+  /**
+   * User reports from chat safety actions.
+   */
+  userReports: defineTable({
+    reporterId: v.id("users"),
+    reportedUserId: v.id("users"),
+    conversationId: v.optional(v.id("conversations")),
+    reason: v.string(),
+    action: v.union(v.literal("report"), v.literal("block_and_report")),
+    status: v.union(
+      v.literal("open"),
+      v.literal("reviewing"),
+      v.literal("resolved"),
+      v.literal("dismissed")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_reporter_createdAt", ["reporterId", "createdAt"])
+    .index("by_reported_createdAt", ["reportedUserId", "createdAt"])
+    .index("by_conversation_createdAt", ["conversationId", "createdAt"])
+    .index("by_createdAt", ["createdAt"]),
+
+  /**
    * Tasker's category-specific settings
    */
   taskerCategories: defineTable({

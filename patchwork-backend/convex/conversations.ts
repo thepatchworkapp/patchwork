@@ -6,6 +6,7 @@ import {
   getTaskerProfileImageAssetDto,
   getUserPhotoImageAssetDto,
 } from "./imageAssetHelpers";
+import { assertUsersCanMessage } from "./moderation";
 
 export const startConversation = mutation({
   args: {
@@ -19,6 +20,11 @@ export const startConversation = mutation({
     if (user._id === args.taskerId) {
       throw new ConvexError("Cannot start conversation with yourself");
     }
+
+    const taskerUser = await ctx.db.get(args.taskerId);
+    if (!taskerUser) throw new ConvexError("User not found");
+
+    await assertUsersCanMessage(ctx, user._id, args.taskerId);
 
     // Input validation
     if (args.initialMessage && args.initialMessage.length > 5000) {

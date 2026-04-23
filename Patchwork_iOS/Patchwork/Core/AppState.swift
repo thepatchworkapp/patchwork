@@ -21,6 +21,7 @@ final class AppState {
     var isLoadingCategories = false
     var taskers: [TaskerSummary] = []
     var favouriteTaskers: [TaskerSummary] = []
+    var blockedUsers: [BlockedUserSummary] = []
     var conversations: [ConversationSummary] = []
     var jobs: [JobSummary] = []
     var currentUser: CurrentUser?
@@ -292,11 +293,27 @@ final class AppState {
         }
     }
 
+    func refreshBlockedUsers(client: ConvexHTTPClient) async {
+        do {
+            blockedUsers = try await client.query(
+                "moderation:listBlockedUsers",
+                args: ["limit": 50]
+            )
+            prefetchBlockedUserImages(blockedUsers)
+        } catch {
+            if isCancellationError(error) {
+                return
+            }
+            presentError(error, prefix: "Failed to load blocked users")
+        }
+    }
+
     func resetForSignedOutSession() {
         selectedTab = .home
         isBootstrapped = false
         taskers = []
         favouriteTaskers = []
+        blockedUsers = []
         conversations = []
         jobs = []
         currentUser = nil
@@ -323,6 +340,20 @@ final class AppState {
                     legacyURL: tasker.categoryPhotoUrl
                 ),
             ]
+        }
+        guard !requests.isEmpty else { return }
+        Task(priority: .utility) {
+            await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
+    }
+
+    private func prefetchBlockedUserImages(_ users: [BlockedUserSummary]) {
+        let requests = users.prefix(Self.imagePrefetchCount).map { user in
+            PatchworkImageCache.PrefetchRequest(
+                asset: user.photoImage,
+                preferredVariant: .thumb,
+                legacyURL: user.photoUrl
+            )
         }
         guard !requests.isEmpty else { return }
         Task(priority: .utility) {

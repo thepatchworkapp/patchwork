@@ -229,6 +229,8 @@ type ResetDatabaseResult = {
   deletedAdminOtps: number;
   deletedUsers: number;
   deletedImageAssets: number;
+  deletedUserBlocks: number;
+  deletedUserReports: number;
   deletedStorageFiles: number;
   failedStorageFiles?: number;
   preservedAdminEmails: string[];
@@ -397,6 +399,10 @@ type AdminUserDetail = {
   reviewsGiven: any[];
   reviewsReceived: any[];
   feedbackSubmissions: FeedbackSubmissionRow[];
+  blocksCreated: ModerationBlockRow[];
+  blocksReceived: ModerationBlockRow[];
+  reportsSubmitted: ModerationReportRow[];
+  reportsReceived: ModerationReportRow[];
 };
 
 type FeedbackSubmissionRow = {
@@ -407,6 +413,35 @@ type FeedbackSubmissionRow = {
   updatedAt?: number | null;
   userName?: string | null;
   userEmail?: string | null;
+};
+
+type ModerationBlockRow = {
+  _id: string;
+  blockerId: string;
+  blockerName?: string | null;
+  blockerEmail?: string | null;
+  blockedId: string;
+  blockedUserName?: string | null;
+  blockedUserEmail?: string | null;
+  conversationId?: string | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+};
+
+type ModerationReportRow = {
+  _id: string;
+  reporterId: string;
+  reporterName?: string | null;
+  reporterEmail?: string | null;
+  reportedUserId: string;
+  reportedUserName?: string | null;
+  reportedUserEmail?: string | null;
+  conversationId?: string | null;
+  reason: string;
+  action: "report" | "block_and_report";
+  status: "open" | "reviewing" | "resolved" | "dismissed";
+  createdAt?: number | null;
+  updatedAt?: number | null;
 };
 
 type ReviewAccessStatus = {
@@ -660,6 +695,9 @@ function DashboardShell({ email }: { email: string }) {
   const recentFeedback = useQuery(api.admin.listRecentFeedback, { limit: 12 }) as
     | FeedbackSubmissionRow[]
     | undefined;
+  const recentReports = useQuery(api.admin.listRecentReports, { limit: 12 }) as
+    | ModerationReportRow[]
+    | undefined;
 
   const data = useQuery(api.admin.listAllUsers, { limit }) as
     | { users: UserRow[]; cursor: string | null }
@@ -747,6 +785,50 @@ function DashboardShell({ email }: { email: string }) {
                       {item.message}
                     </div>
                   </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Surface>
+
+      <Surface className="pw-card pw-fade-up mb-6 rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
+        <div className="mb-3 flex items-center gap-2">
+          <ShieldAlert className="size-4 text-kumo-muted" />
+          <div className="pw-display text-base tracking-tight">Recent reports</div>
+          <Badge variant="outline" className="pw-badge-tight">
+            {recentReports?.length ?? 0}
+          </Badge>
+        </div>
+
+        {!recentReports ? (
+          <EmptyHint title="Loading reports…" body="Fetching the latest user reports from Convex." />
+        ) : recentReports.length === 0 ? (
+          <EmptyHint title="No reports yet" body="User reports will appear here once submitted from chat." />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {recentReports.map((item) => (
+              <button
+                key={item._id}
+                type="button"
+                className="pw-subcard text-left transition hover:bg-kumo-tint"
+                onClick={() => setSelectedUserId(item.reportedUserId)}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={item.status === "open" ? "destructive" : "outline"} className="pw-badge-tight">
+                    {item.status}
+                  </Badge>
+                  <Badge variant="outline" className="pw-badge-tight">
+                    {item.action === "block_and_report" ? "block & report" : "report"}
+                  </Badge>
+                  <div className="pw-mono text-[11px] text-kumo-muted">{formatDate(item.createdAt)}</div>
+                </div>
+                <div className="mt-2 text-sm font-semibold text-kumo-strong">
+                  {item.reporterName || item.reporterEmail || shortId(item.reporterId)} -&gt;{" "}
+                  {item.reportedUserName || item.reportedUserEmail || shortId(item.reportedUserId)}
+                </div>
+                <div className="mt-2 line-clamp-3 text-sm leading-relaxed text-kumo-default whitespace-pre-wrap">
+                  {item.reason}
                 </div>
               </button>
             ))}
@@ -923,7 +1005,7 @@ function UserDetailView({
 
   type PhotoLightboxItem = { url: string; label: string; meta?: string };
 
-  const [tab, setTab] = useState<"overview" | "seeker" | "tasker" | "jobs" | "reviews" | "feedback" | "photos" | "raw">("overview");
+  const [tab, setTab] = useState<"overview" | "seeker" | "tasker" | "jobs" | "reviews" | "moderation" | "feedback" | "photos" | "raw">("overview");
   const [rawOpen, setRawOpen] = useState(false);
   const [lightbox, setLightbox] = useState<PhotoLightboxItem | null>(null);
 
@@ -941,6 +1023,10 @@ function UserDetailView({
     (c) => getCategoryPhotoUrls(c).length > 0
   );
   const feedbackSubmissions = Array.isArray(detail.feedbackSubmissions) ? detail.feedbackSubmissions : [];
+  const blocksCreated = Array.isArray(detail.blocksCreated) ? detail.blocksCreated : [];
+  const blocksReceived = Array.isArray(detail.blocksReceived) ? detail.blocksReceived : [];
+  const reportsSubmitted = Array.isArray(detail.reportsSubmitted) ? detail.reportsSubmitted : [];
+  const reportsReceived = Array.isArray(detail.reportsReceived) ? detail.reportsReceived : [];
 
   useEffect(() => {
     setTab("overview");
@@ -954,6 +1040,7 @@ function UserDetailView({
     { value: "tasker", label: `Tasker (${taskerCategoryCount})` },
     { value: "jobs", label: `Jobs (${(detail.jobsAsSeeker?.length ?? 0) + (detail.jobsAsTasker?.length ?? 0)})` },
     { value: "reviews", label: `Reviews (${(detail.reviewsReceived?.length ?? 0) + (detail.reviewsGiven?.length ?? 0)})` },
+    { value: "moderation", label: `Safety (${blocksCreated.length + blocksReceived.length + reportsSubmitted.length + reportsReceived.length})` },
     { value: "feedback", label: `Feedback (${feedbackSubmissions.length})` },
     { value: "photos", label: `Photos (${totalPhotoCount})` },
     { value: "raw", label: "Raw" },
@@ -1105,6 +1192,105 @@ function UserDetailView({
             </div>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const renderReports = (items: ModerationReportRow[], emptyTitle: string) => {
+    if (!items.length) {
+      return <EmptyHint title={emptyTitle} body="No user reports found for this side of the case." />;
+    }
+
+    return (
+      <div className="grid gap-4">
+        {items.map((item) => (
+          <div key={item._id} className="pw-subcard p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={item.status === "open" ? "destructive" : "outline"} className="pw-badge-tight">
+                {item.status}
+              </Badge>
+              <Badge variant="outline" className="pw-badge-tight">
+                {item.action === "block_and_report" ? "block & report" : "report"}
+              </Badge>
+              <div className="pw-mono text-xs text-kumo-muted">{formatDate(item.createdAt)}</div>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <div className="pw-mono mb-1 text-xs text-kumo-muted">Reporter</div>
+                <div className="text-sm text-kumo-strong">
+                  {item.reporterName || item.reporterEmail || shortId(item.reporterId)}
+                </div>
+              </div>
+              <div>
+                <div className="pw-mono mb-1 text-xs text-kumo-muted">Reported user</div>
+                <div className="text-sm text-kumo-strong">
+                  {item.reportedUserName || item.reportedUserEmail || shortId(item.reportedUserId)}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 text-sm leading-relaxed text-kumo-default whitespace-pre-wrap">
+              {item.reason}
+            </div>
+
+            {item.conversationId && (
+              <div className="mt-3">
+                <div className="pw-mono mb-1 text-xs text-kumo-muted">Conversation ID</div>
+                <ClipboardText size="sm" text={item.conversationId} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderBlocks = (items: ModerationBlockRow[], emptyTitle: string) => {
+    if (!items.length) {
+      return <EmptyHint title={emptyTitle} body="No block records found for this side of the case." />;
+    }
+
+    return (
+      <div className="pw-inset">
+        <div className="max-h-[32dvh] overflow-auto">
+          <Table layout="fixed" className="w-full text-[13px]">
+            <Table.Header className="pw-inset-header">
+              <Table.Row>
+                <Table.Head className="pw-th w-[28%]">Blocker</Table.Head>
+                <Table.Head className="pw-th w-[28%]">Blocked</Table.Head>
+                <Table.Head className="pw-th w-[24%]">Conversation</Table.Head>
+                <Table.Head className="pw-th w-[20%]">Created</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body className="divide-y divide-kumo-fill/80">
+              {items.map((item) => (
+                <Table.Row key={item._id}>
+                  <Table.Cell className="pw-td">
+                    <div className="text-sm text-kumo-strong">
+                      {item.blockerName || item.blockerEmail || shortId(item.blockerId)}
+                    </div>
+                    <div className="pw-mono text-xs text-kumo-muted">{shortId(item.blockerId)}</div>
+                  </Table.Cell>
+                  <Table.Cell className="pw-td">
+                    <div className="text-sm text-kumo-strong">
+                      {item.blockedUserName || item.blockedUserEmail || shortId(item.blockedId)}
+                    </div>
+                    <div className="pw-mono text-xs text-kumo-muted">{shortId(item.blockedId)}</div>
+                  </Table.Cell>
+                  <Table.Cell className="pw-td">
+                    <div className="pw-mono text-xs text-kumo-muted">
+                      {item.conversationId ? shortId(item.conversationId) : "—"}
+                    </div>
+                  </Table.Cell>
+                  <Table.Cell className="pw-td">
+                    <div className="text-xs text-kumo-muted">{formatDate(item.createdAt)}</div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        </div>
       </div>
     );
   };
@@ -1511,6 +1697,46 @@ function UserDetailView({
               <Badge variant="outline">{detail.reviewsGiven?.length ?? 0}</Badge>
             </div>
             {renderReviews(detail.reviewsGiven ?? [], "given")}
+          </div>
+        </div>
+      )}
+
+      {tab === "moderation" && (
+        <div className="grid gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <ShieldAlert className="size-4 text-kumo-muted" />
+              <div className="pw-display text-sm tracking-tight">Reports received</div>
+              <Badge variant="outline">{reportsReceived.length}</Badge>
+            </div>
+            {renderReports(reportsReceived, "No reports received")}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <ShieldAlert className="size-4 text-kumo-muted" />
+              <div className="pw-display text-sm tracking-tight">Reports submitted</div>
+              <Badge variant="outline">{reportsSubmitted.length}</Badge>
+            </div>
+            {renderReports(reportsSubmitted, "No reports submitted")}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <User className="size-4 text-kumo-muted" />
+              <div className="pw-display text-sm tracking-tight">Users blocked by this user</div>
+              <Badge variant="outline">{blocksCreated.length}</Badge>
+            </div>
+            {renderBlocks(blocksCreated, "No blocks created")}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <User className="size-4 text-kumo-muted" />
+              <div className="pw-display text-sm tracking-tight">Users blocking this user</div>
+              <Badge variant="outline">{blocksReceived.length}</Badge>
+            </div>
+            {renderBlocks(blocksReceived, "No incoming blocks")}
           </div>
         </div>
       )}

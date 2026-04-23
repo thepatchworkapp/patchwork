@@ -5,6 +5,7 @@ import schema from "../schema";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
 import * as messagesModule from "../messages";
+import * as moderationModule from "../moderation";
 import * as categoriesModule from "../categories";
 import * as filesModule from "../files";
 import * as taskersModule from "../taskers";
@@ -15,6 +16,7 @@ const modules: Record<string, () => Promise<any>> = {
   "../conversations.ts": async () => conversationsModule,
   "../users.ts": async () => usersModule,
   "../messages.ts": async () => messagesModule,
+  "../moderation.ts": async () => moderationModule,
   "../categories.ts": async () => categoriesModule,
   "../files.ts": async () => filesModule,
   "../taskers.ts": async () => taskersModule,
@@ -583,5 +585,106 @@ describe("messages", () => {
         content: "Hacked message",
       })
     ).rejects.toThrow("Not a participant in this conversation");
+  });
+
+  test("one-way block prevents messages in both directions and only blocker can unblock", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_block_msg",
+      email: "seeker_block_msg@example.com",
+    });
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Block",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_block_msg",
+      email: "tasker_block_msg@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Block",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const firstBlockStatus = await asSeeker.mutation((api as any).moderation.blockUser, {
+      blockedUserId: taskerId,
+      conversationId,
+    });
+    const duplicateBlockStatus = await asSeeker.mutation((api as any).moderation.blockUser, {
+      blockedUserId: taskerId,
+      conversationId,
+    });
+
+    expect(firstBlockStatus.currentUserBlockedOther).toBe(true);
+    expect(duplicateBlockStatus.blockId).toStrictEqual(firstBlockStatus.blockId);
+
+    await expect(
+      asTasker.mutation(api.messages.sendMessage, {
+        conversationId,
+        content: "Can you see this?",
+      })
+    ).rejects.toThrow("This conversation is unavailable.");
+
+    await expect(
+      asSeeker.mutation(api.messages.sendMessage, {
+        conversationId,
+        content: "I should not be able to send either.",
+      })
+    ).rejects.toThrow("This conversation is unavailable.");
+
+    const taskerUnblockAttempt = await asTasker.mutation((api as any).moderation.unblockUser, {
+      blockedUserId: seekerId,
+    });
+    expect(taskerUnblockAttempt.currentUserBlockedOther).toBe(false);
+    expect(taskerUnblockAttempt.currentUserBlockedByOther).toBe(true);
+
+    await expect(
+      asTasker.mutation(api.messages.sendMessage, {
+        conversationId,
+        content: "Still blocked.",
+      })
+    ).rejects.toThrow("This conversation is unavailable.");
+
+    const unblockStatus = await asSeeker.mutation((api as any).moderation.unblockUser, {
+      blockedUserId: taskerId,
+    });
+    expect(unblockStatus.isBlocked).toBe(false);
+
+    const messageId = await asTasker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Unblocked now.",
+    });
+    expect(messageId).toBeDefined();
+
+    await expect(
+      asSeeker.mutation((api as any).moderation.reportUser, {
+        reportedUserId: taskerId,
+        conversationId,
+        reason: "Too short",
+      })
+    ).rejects.toThrow("Report must be at least 100 characters");
+
+    const reportResult = await asSeeker.mutation((api as any).moderation.reportUser, {
+      reportedUserId: taskerId,
+      conversationId,
+      reason: "A".repeat(100),
+      block: true,
+    });
+    expect(reportResult.reportId).toBeDefined();
+    expect(reportResult.blockId).toBeDefined();
+
+    const blockedUsers = await asSeeker.query((api as any).moderation.listBlockedUsers, {
+      limit: 10,
+    });
+    expect(blockedUsers).toHaveLength(1);
+    expect(blockedUsers[0]?.blockedUserId).toBe(taskerId);
   });
 });

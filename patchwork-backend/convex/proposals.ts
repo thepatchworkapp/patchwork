@@ -3,6 +3,7 @@ import { mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { requireAppUser } from "./authHelpers";
+import { assertUsersCanMessage } from "./moderation";
 
 export const sendProposal = mutation({
   args: {
@@ -33,6 +34,7 @@ export const sendProposal = mutation({
       conversation.seekerId === user._id
         ? conversation.taskerId
         : conversation.seekerId;
+    await assertUsersCanMessage(ctx, user._id, receiverId);
 
     const now = Date.now();
 
@@ -80,6 +82,7 @@ export const acceptProposal = mutation({
     if (proposal.receiverId !== user._id) {
       throw new ConvexError("Only the proposal receiver can accept");
     }
+    await assertUsersCanMessage(ctx, user._id, proposal.senderId);
 
     if (proposal.status !== "pending") {
       throw new ConvexError("Proposal is not in pending status");
@@ -119,6 +122,7 @@ export const declineProposal = mutation({
     if (proposal.receiverId !== user._id) {
       throw new ConvexError("Only the proposal receiver can decline");
     }
+    await assertUsersCanMessage(ctx, user._id, proposal.senderId);
 
     const now = Date.now();
 
@@ -159,6 +163,7 @@ export const counterProposal = mutation({
     if (originalProposal.receiverId !== user._id) {
       throw new ConvexError("Only the proposal receiver can counter");
     }
+    await assertUsersCanMessage(ctx, user._id, originalProposal.senderId);
 
     const now = Date.now();
 

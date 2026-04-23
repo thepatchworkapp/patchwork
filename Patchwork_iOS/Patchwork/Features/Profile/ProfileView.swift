@@ -4,6 +4,7 @@ import UIKit
 
 private enum ProfileSidebarDestination: String, Identifiable {
     case favourites
+    case blocked
 
     var id: String { rawValue }
 }
@@ -77,6 +78,9 @@ struct ProfileView: View {
                     onClose: closeSidebar,
                     onOpenFavourites: {
                         openDestination(.favourites)
+                    },
+                    onOpenBlocked: {
+                        openDestination(.blocked)
                     }
                 )
                 .padding(.top, MainLayout.topRhythm)
@@ -88,6 +92,12 @@ struct ProfileView: View {
 
             if activeDestination == .favourites {
                 FavouriteTaskersPanel(onClose: closeActiveDestination)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .zIndex(2)
+            }
+
+            if activeDestination == .blocked {
+                BlockedUsersPanel(onClose: closeActiveDestination)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                     .zIndex(2)
             }
@@ -1003,6 +1013,7 @@ private struct ProfileSidebarMenu: View {
     let userName: String?
     let onClose: () -> Void
     let onOpenFavourites: () -> Void
+    let onOpenBlocked: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1066,6 +1077,43 @@ private struct ProfileSidebarMenu: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("Profile.sidebarFavouritesButton")
             .accessibilityLabel("Open favourites")
+
+            Button(action: onOpenBlocked) {
+                HStack(spacing: 12) {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(PatchworkTheme.danger)
+                        .frame(width: 42, height: 42)
+                        .background(PatchworkTheme.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Blocked")
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                        Text("Blocked users")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PatchworkTheme.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                .padding(16)
+                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                )
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Profile.sidebarBlockedButton")
+            .accessibilityLabel("Open blocked users")
 
             Spacer(minLength: 0)
         }
@@ -1257,6 +1305,174 @@ private struct FavouriteTaskersPanel: View {
             Text(text)
                 .font(.patchworkCaption)
                 .foregroundStyle(PatchworkTheme.textPrimary)
+        }
+    }
+}
+
+private struct BlockedUsersPanel: View {
+    @Environment(AppState.self) private var appState
+    @Environment(SessionStore.self) private var sessionStore
+
+    private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
+
+    let onClose: () -> Void
+
+    @State private var unblockingUserIds: Set<ConvexID> = []
+
+    var body: some View {
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.danger)
+
+            VStack(spacing: 0) {
+                PatchworkSurfaceCard {
+                    HStack(spacing: 14) {
+                        Button(action: onClose) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+                                .frame(width: 50, height: 50)
+                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back to settings")
+                        .accessibilityIdentifier("Profile.blockedBackButton")
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Blocked")
+                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+
+                            Text(blockedSubtitle)
+                                .font(.patchworkCaption)
+                                .foregroundStyle(PatchworkTheme.textSecondary)
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+
+                ScrollView {
+                    VStack(spacing: 14) {
+                        if appState.blockedUsers.isEmpty {
+                            PatchworkEmptyStateCard(
+                                systemImage: "hand.raised.slash",
+                                title: "No blocked users",
+                                message: "People you block from chat will appear here."
+                            )
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("Profile.blockedEmptyState")
+                        } else {
+                            ForEach(appState.blockedUsers) { blockedUser in
+                                blockedUserRow(blockedUser)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 28)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .task {
+            guard !usesVisualPreview else {
+                return
+            }
+            await appState.refreshBlockedUsers(client: sessionStore.client)
+        }
+    }
+
+    private var blockedSubtitle: String {
+        let count = appState.blockedUsers.count
+        if count == 0 {
+            return "Blocked users will appear here"
+        }
+        return count == 1 ? "1 blocked user" : "\(count) blocked users"
+    }
+
+    private func blockedUserRow(_ blockedUser: BlockedUserSummary) -> some View {
+        PatchworkSurfaceCard {
+            HStack(alignment: .center, spacing: 14) {
+                blockedAvatar(for: blockedUser)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(blockedUser.name)
+                        .font(.patchworkBodyStrong)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                    Text("Blocked \(blockedDateLabel(blockedUser.createdAt))")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    Task { await unblock(blockedUser) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                        .frame(width: 38, height: 38)
+                        .background(PatchworkTheme.surfaceMuted, in: Circle())
+                        .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(unblockingUserIds.contains(blockedUser.blockedUserId))
+                .accessibilityLabel("Unblock \(blockedUser.name)")
+                .accessibilityIdentifier("Profile.unblockUser.\(blockedUser.blockedUserId)")
+            }
+        }
+        .accessibilityIdentifier("Profile.blockedUser.\(blockedUser.blockedUserId)")
+    }
+
+    private func blockedAvatar(for blockedUser: BlockedUserSummary) -> some View {
+        PatchworkRemoteImage(
+            asset: blockedUser.photoImage,
+            legacyURL: blockedUser.photoUrl,
+            preferredVariant: .thumb,
+            contentMode: .fill
+        ) {
+            ZStack {
+                PatchworkTheme.surfaceMuted
+                Text(String(blockedUser.name.prefix(1)).uppercased())
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(PatchworkTheme.danger)
+            }
+        }
+        .frame(width: 58, height: 58)
+        .clipShape(.rect(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
+        .accessibilityHidden(true)
+    }
+
+    private func blockedDateLabel(_ millis: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
+        return date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
+    private func unblock(_ blockedUser: BlockedUserSummary) async {
+        guard !unblockingUserIds.contains(blockedUser.blockedUserId) else { return }
+        unblockingUserIds.insert(blockedUser.blockedUserId)
+        defer { unblockingUserIds.remove(blockedUser.blockedUserId) }
+
+        do {
+            _ = try await sessionStore.client.mutation(
+                "moderation:unblockUser",
+                args: ["blockedUserId": blockedUser.blockedUserId]
+            ) as ModerationBlockStatus
+            await appState.refreshBlockedUsers(client: sessionStore.client)
+        } catch {
+            appState.presentError(error)
         }
     }
 }

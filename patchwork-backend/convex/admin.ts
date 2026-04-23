@@ -45,6 +45,8 @@ const resetTableNameValidator = v.union(
   v.literal("seekerProfiles"),
   v.literal("imageAssets"),
   v.literal("feedbackSubmissions"),
+  v.literal("userBlocks"),
+  v.literal("userReports"),
   v.literal("reviewAccess"),
   v.literal("otps"),
   v.literal("adminOtps"),
@@ -62,6 +64,8 @@ const RESET_TABLES = [
   "seekerProfiles",
   "imageAssets",
   "feedbackSubmissions",
+  "userBlocks",
+  "userReports",
   "reviewAccess",
   "otps",
   "adminOtps",
@@ -85,6 +89,8 @@ type ResetCounts = {
   deletedSeekerProfiles: number;
   deletedImageAssets: number;
   deletedFeedbackSubmissions: number;
+  deletedUserBlocks: number;
+  deletedUserReports: number;
   deletedReviewAccess: number;
   deletedOtps: number;
   deletedAdminOtps: number;
@@ -110,6 +116,27 @@ const feedbackSubmissionAdminValidator = v.object({
   userName: v.string(),
   userEmail: v.union(v.string(), v.null()),
   message: v.string(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+const userReportAdminValidator = v.object({
+  _id: v.id("userReports"),
+  _creationTime: v.number(),
+  reporterId: v.id("users"),
+  reporterName: v.string(),
+  reporterEmail: v.union(v.string(), v.null()),
+  reportedUserId: v.id("users"),
+  reportedUserName: v.string(),
+  reportedUserEmail: v.union(v.string(), v.null()),
+  conversationId: v.union(v.id("conversations"), v.null()),
+  reason: v.string(),
+  action: v.union(v.literal("report"), v.literal("block_and_report")),
+  status: v.union(
+    v.literal("open"),
+    v.literal("reviewing"),
+    v.literal("resolved"),
+    v.literal("dismissed")
+  ),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -166,6 +193,8 @@ function createEmptyResetCounts(): ResetCounts {
     deletedSeekerProfiles: 0,
     deletedImageAssets: 0,
     deletedFeedbackSubmissions: 0,
+    deletedUserBlocks: 0,
+    deletedUserReports: 0,
     deletedReviewAccess: 0,
     deletedOtps: 0,
     deletedAdminOtps: 0,
@@ -210,6 +239,12 @@ function incrementResetCount(resetCounts: ResetCounts, tableName: ResetTableName
       return;
     case "feedbackSubmissions":
       resetCounts.deletedFeedbackSubmissions += count;
+      return;
+    case "userBlocks":
+      resetCounts.deletedUserBlocks += count;
+      return;
+    case "userReports":
+      resetCounts.deletedUserReports += count;
       return;
     case "reviewAccess":
       resetCounts.deletedReviewAccess += count;
@@ -454,6 +489,38 @@ async function enrichFeedbackSubmission(ctx: any, submission: any) {
     ...submission,
     userName: user?.name ?? "Unknown user",
     userEmail: user?.email ?? null,
+  };
+}
+
+async function enrichUserReport(ctx: any, report: any) {
+  const [reporter, reportedUser] = await Promise.all([
+    ctx.db.get(report.reporterId),
+    ctx.db.get(report.reportedUserId),
+  ]);
+
+  return {
+    ...report,
+    conversationId: report.conversationId ?? null,
+    reporterName: reporter?.name ?? "Unknown user",
+    reporterEmail: reporter?.email ?? null,
+    reportedUserName: reportedUser?.name ?? "Unknown user",
+    reportedUserEmail: reportedUser?.email ?? null,
+  };
+}
+
+async function enrichUserBlock(ctx: any, block: any) {
+  const [blocker, blockedUser] = await Promise.all([
+    ctx.db.get(block.blockerId),
+    ctx.db.get(block.blockedId),
+  ]);
+
+  return {
+    ...block,
+    conversationId: block.conversationId ?? null,
+    blockerName: blocker?.name ?? "Unknown user",
+    blockerEmail: blocker?.email ?? null,
+    blockedUserName: blockedUser?.name ?? "Unknown user",
+    blockedUserEmail: blockedUser?.email ?? null,
   };
 }
 
@@ -832,6 +899,38 @@ export const getUserDetail = query({
       feedbackSubmissions.map(async (submission) => await enrichFeedbackSubmission(ctx, submission))
     );
 
+    const blocksCreated = await ctx.db
+      .query("userBlocks")
+      .withIndex("by_blocker_createdAt", (q) => q.eq("blockerId", args.userId))
+      .order("desc")
+      .take(20);
+
+    const blocksReceived = await ctx.db
+      .query("userBlocks")
+      .withIndex("by_blocked_createdAt", (q) => q.eq("blockedId", args.userId))
+      .order("desc")
+      .take(20);
+
+    const reportsSubmitted = await ctx.db
+      .query("userReports")
+      .withIndex("by_reporter_createdAt", (q) => q.eq("reporterId", args.userId))
+      .order("desc")
+      .take(20);
+
+    const reportsReceived = await ctx.db
+      .query("userReports")
+      .withIndex("by_reported_createdAt", (q) => q.eq("reportedUserId", args.userId))
+      .order("desc")
+      .take(20);
+
+    const [blocksCreatedEnriched, blocksReceivedEnriched, reportsSubmittedEnriched, reportsReceivedEnriched] =
+      await Promise.all([
+        Promise.all(blocksCreated.map(async (block) => await enrichUserBlock(ctx, block))),
+        Promise.all(blocksReceived.map(async (block) => await enrichUserBlock(ctx, block))),
+        Promise.all(reportsSubmitted.map(async (report) => await enrichUserReport(ctx, report))),
+        Promise.all(reportsReceived.map(async (report) => await enrichUserReport(ctx, report))),
+      ]);
+
     return {
       user,
       userPhotoUrl,
@@ -843,6 +942,10 @@ export const getUserDetail = query({
       reviewsGiven: reviewsGivenEnriched,
       reviewsReceived: reviewsReceivedEnriched,
       feedbackSubmissions: feedbackSubmissionsEnriched,
+      blocksCreated: blocksCreatedEnriched,
+      blocksReceived: blocksReceivedEnriched,
+      reportsSubmitted: reportsSubmittedEnriched,
+      reportsReceived: reportsReceivedEnriched,
     };
   },
 });
@@ -863,5 +966,24 @@ export const listRecentFeedback = query({
       .take(limit);
 
     return await Promise.all(submissions.map(async (submission) => await enrichFeedbackSubmission(ctx, submission)));
+  },
+});
+
+export const listRecentReports = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(userReportAdminValidator),
+  handler: async (ctx, args) => {
+    if (!(await requireAdmin(ctx))) return [];
+
+    const limit = Math.max(1, Math.min(args.limit ?? 12, 50));
+    const reports = await ctx.db
+      .query("userReports")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(limit);
+
+    return await Promise.all(reports.map(async (report) => await enrichUserReport(ctx, report)));
   },
 });

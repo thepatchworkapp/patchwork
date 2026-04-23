@@ -305,6 +305,28 @@ export const deleteAccount = mutation({
       .collect();
     await Promise.all(feedbackSubmissions.map((feedback) => ctx.db.delete(feedback._id)));
 
+    const blocksCreated = await ctx.db
+      .query("userBlocks")
+      .withIndex("by_blocker_createdAt", (q) => q.eq("blockerId", user._id))
+      .collect();
+    const blocksReceived = await ctx.db
+      .query("userBlocks")
+      .withIndex("by_blocked_createdAt", (q) => q.eq("blockedId", user._id))
+      .collect();
+    const blockIds = new Set([...blocksCreated, ...blocksReceived].map((block) => block._id));
+    await Promise.all(Array.from(blockIds).map((blockId) => ctx.db.delete(blockId)));
+
+    const reportsSubmitted = await ctx.db
+      .query("userReports")
+      .withIndex("by_reporter_createdAt", (q) => q.eq("reporterId", user._id))
+      .collect();
+    const reportsReceived = await ctx.db
+      .query("userReports")
+      .withIndex("by_reported_createdAt", (q) => q.eq("reportedUserId", user._id))
+      .collect();
+    const reportIds = new Set([...reportsSubmitted, ...reportsReceived].map((report) => report._id));
+    await Promise.all(Array.from(reportIds).map((reportId) => ctx.db.delete(reportId)));
+
     const taskerCategories = await ctx.db
       .query("taskerCategories")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))

@@ -5,11 +5,13 @@ import schema from "../schema";
 
 async function feedbackModules() {
   const feedbackModule = await import("../feedback");
+  const moderationModule = await import("../moderation");
   const usersModule = await import("../users");
   const authModule = await import("../auth");
 
   return {
     "../feedback.ts": async () => feedbackModule,
+    "../moderation.ts": async () => moderationModule,
     "../users.ts": async () => usersModule,
     "../auth.ts": async () => authModule,
     "../_generated/api.ts": async () => ({ default: api }),
@@ -108,15 +110,33 @@ describe("feedback", () => {
         tokenIdentifier: "google|feedback-user",
         email: "feedback-detail@example.com",
       });
+      const asReportedUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-reported-user",
+        email: "reported-detail@example.com",
+      });
 
       const userId = await asUser.mutation(api.users.createProfile, {
         name: "Feedback Detail User",
         city: "Toronto",
         province: "ON",
       });
+      const reportedUserId = await asReportedUser.mutation(api.users.createProfile, {
+        name: "Reported Detail User",
+        city: "Toronto",
+        province: "ON",
+      });
 
       await asUser.mutation(api.feedback.submit, {
         message: "The feedback form should not error after sending.",
+      });
+      const blockStatus = await asUser.mutation((api as any).moderation.blockUser, {
+        blockedUserId: reportedUserId,
+      });
+      expect(blockStatus.currentUserBlockedOther).toBe(true);
+      await asUser.mutation((api as any).moderation.reportUser, {
+        reportedUserId,
+        reason: "A".repeat(100),
+        block: true,
       });
 
       const recentFeedback = await asAdmin.query((api as any).admin.listRecentFeedback, {
@@ -131,18 +151,28 @@ describe("feedback", () => {
       const detail = await asAdmin.query((api as any).admin.getUserDetail, {
         userId,
       });
+      const recentReports = await asAdmin.query((api as any).admin.listRecentReports, {
+        limit: 10,
+      });
 
       const users = await asAdmin.query((api as any).admin.listAllUsers, {
         limit: 10,
       });
 
-      expect(users.users).toHaveLength(1);
+      expect(users.users).toHaveLength(2);
       const listedUser = users.users.find((row: any) => row._id === userId);
       expect(listedUser?.photoImage).toBeNull();
       expect(listedUser?.photoAssetId).toBeUndefined();
 
       expect(detail?.feedbackSubmissions).toHaveLength(1);
       expect(detail?.feedbackSubmissions[0]?.message).toBe("The feedback form should not error after sending.");
+      expect(detail?.blocksCreated).toHaveLength(1);
+      expect(detail?.blocksCreated[0]?.blockedId).toBe(reportedUserId);
+      expect(detail?.reportsSubmitted).toHaveLength(1);
+      expect(detail?.reportsSubmitted[0]?.reportedUserId).toBe(reportedUserId);
+      expect(recentReports).toHaveLength(1);
+      expect(recentReports[0]?.reporterId).toBe(userId);
+      expect(recentReports[0]?.reportedUserId).toBe(reportedUserId);
       expect(detail?.userPhotoImage).toBeNull();
     } finally {
       process.env.ADMIN_EMAILS = previousAdminEmails;

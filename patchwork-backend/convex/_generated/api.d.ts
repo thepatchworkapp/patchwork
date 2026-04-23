@@ -23,6 +23,7 @@ import type * as jobRequests from "../jobRequests.js";
 import type * as jobs from "../jobs.js";
 import type * as location from "../location.js";
 import type * as messages from "../messages.js";
+import type * as moderation from "../moderation.js";
 import type * as proposals from "../proposals.js";
 import type * as resend from "../resend.js";
 import type * as reviewAccess from "../reviewAccess.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   jobs: typeof jobs;
   location: typeof location;
   messages: typeof messages;
+  moderation: typeof moderation;
   proposals: typeof proposals;
   resend: typeof resend;
   reviewAccess: typeof reviewAccess;

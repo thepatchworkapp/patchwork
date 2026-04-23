@@ -328,6 +328,27 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 }
 
+struct ModerationBlockStatus: Codable, Hashable {
+    let otherUserId: ConvexID
+    let currentUserBlockedOther: Bool
+    let currentUserBlockedByOther: Bool
+    let isBlocked: Bool
+    let blockId: ConvexID?
+}
+
+struct BlockedUserSummary: Identifiable, Codable, Hashable {
+    let blockId: ConvexID
+    let blockedUserId: ConvexID
+    let name: String
+    let email: String?
+    let photoUrl: String?
+    let photoImage: RemoteImageAsset?
+    let conversationId: ConvexID?
+    let createdAt: Int
+
+    var id: ConvexID { blockId }
+}
+
 struct MessagesPage: Decodable {
     let page: [ChatMessage]
     let isDone: Bool

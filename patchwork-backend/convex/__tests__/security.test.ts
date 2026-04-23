@@ -10,6 +10,7 @@ import * as filesModule from "../files";
 import * as taskersModule from "../taskers";
 import * as conversationsModule from "../conversations";
 import * as messagesModule from "../messages";
+import * as moderationModule from "../moderation";
 import * as proposalsModule from "../proposals";
 import * as jobsModule from "../jobs";
 import * as jobRequestsModule from "../jobRequests";
@@ -24,6 +25,7 @@ const modules: Record<string, () => Promise<any>> = {
   "../taskers.ts": async () => taskersModule,
   "../conversations.ts": async () => conversationsModule,
   "../messages.ts": async () => messagesModule,
+  "../moderation.ts": async () => moderationModule,
   "../proposals.ts": async () => proposalsModule,
   "../jobs.ts": async () => jobsModule,
   "../jobRequests.ts": async () => jobRequestsModule,

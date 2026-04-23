@@ -322,6 +322,15 @@ struct MessagesView: View {
     }
 }
 
+private enum ChatSafetyAction: String, Identifiable {
+    case block
+    case unblock
+    case report
+    case blockAndReport
+
+    var id: String { rawValue }
+}
+
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
@@ -338,6 +347,10 @@ struct ChatView: View {
     @State private var conversation: ConversationDetail?
     @State private var job: JobDetail?
     @State private var canReview = false
+    @State private var safetyStatus: ModerationBlockStatus?
+    @State private var pendingSafetyConfirmation: ChatSafetyAction?
+    @State private var reportSheetAction: ChatSafetyAction?
+    @State private var safetyFeedbackMessage: SubscriptionFeedbackMessage?
 
     @State private var showProposalForm = false
     @State private var counteringProposal: ProposalPayload?
@@ -359,6 +372,18 @@ struct ChatView: View {
             VStack(spacing: 12) {
                 chatHeader
                     .padding(.horizontal, 16)
+
+                if let safetyFeedbackMessage {
+                    PatchworkInlineStatusBanner(tone: safetyFeedbackMessage.tone, text: safetyFeedbackMessage.text)
+                        .padding(.horizontal, 20)
+                        .accessibilityIdentifier("Chat.safetyStatusBanner")
+                }
+
+                if let blockMessage = blockStateMessage {
+                    PatchworkInlineStatusBanner(tone: .warning, text: blockMessage)
+                        .padding(.horizontal, 20)
+                        .accessibilityIdentifier("Chat.blockedBanner")
+                }
 
                 if canLoadMore {
                     Button("Load older messages") {
@@ -396,18 +421,21 @@ struct ChatView: View {
                     }
                 }
 
-                ChatActionBar(
-                    canShowCompleteButton: canShowCompleteButton,
-                    hasAcceptedProposal: hasAcceptedProposal,
-                    onCompleteTap: { showCompleteConfirm = true },
-                    onProposeTap: {
-                        resetProposalForm()
-                        showProposalForm = true
-                    }
-                )
+                if !isConversationBlocked {
+                    ChatActionBar(
+                        canShowCompleteButton: canShowCompleteButton,
+                        hasAcceptedProposal: hasAcceptedProposal,
+                        onCompleteTap: { showCompleteConfirm = true },
+                        onProposeTap: {
+                            resetProposalForm()
+                            showProposalForm = true
+                        }
+                    )
+                }
 
                 ChatComposerBar(
                     text: $text,
+                    isDisabled: isConversationBlocked,
                     onSend: { Task { await send() } }
                 )
                 .padding(.horizontal, 20)
@@ -454,6 +482,43 @@ struct ChatView: View {
             )
             .patchworkSheetChrome(detents: [.height(320)])
         }
+        .sheet(item: $reportSheetAction) { action in
+            ChatReportSheet(
+                action: action,
+                participantName: conversation?.participantName ?? "this user",
+                onSubmit: { reason in
+                    try await submitReport(reason: reason, shouldBlock: action == .blockAndReport)
+                }
+            )
+            .patchworkSheetChrome()
+        }
+        .confirmationDialog(
+            safetyConfirmationTitle,
+            isPresented: Binding(
+                get: { pendingSafetyConfirmation != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingSafetyConfirmation = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            if pendingSafetyConfirmation == .block {
+                Button("Block User", role: .destructive) {
+                    Task { await blockParticipant() }
+                }
+            } else if pendingSafetyConfirmation == .unblock {
+                Button("Unblock", role: .destructive) {
+                    Task { await unblockParticipant() }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingSafetyConfirmation = nil
+            }
+        } message: {
+            Text(safetyConfirmationMessage)
+        }
     }
 
     private var chatHeader: some View {
@@ -489,6 +554,48 @@ struct ChatView: View {
             }
 
             Spacer()
+
+            if otherUserId != nil {
+                Menu {
+                    Menu("User Actions") {
+                        if safetyStatus?.currentUserBlockedOther == true {
+                            Button {
+                                pendingSafetyConfirmation = .unblock
+                            } label: {
+                                Label("Unblock", systemImage: "hand.raised.slash")
+                            }
+                        } else {
+                            Button(role: .destructive) {
+                                pendingSafetyConfirmation = .block
+                            } label: {
+                                Label("Block User", systemImage: "hand.raised.fill")
+                            }
+                        }
+
+                        Button {
+                            reportSheetAction = .report
+                        } label: {
+                            Label("Report User", systemImage: "exclamationmark.bubble")
+                        }
+
+                        if safetyStatus?.currentUserBlockedOther != true {
+                            Button(role: .destructive) {
+                                reportSheetAction = .blockAndReport
+                            } label: {
+                                Label("Block & Report", systemImage: "exclamationmark.shield")
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .background(PatchworkTheme.surfaceMuted, in: Circle())
+                }
+                .accessibilityLabel("User actions")
+                .accessibilityIdentifier("Chat.userActionsMenu")
+            }
         }
         .padding(12)
         .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -496,7 +603,7 @@ struct ChatView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("Chat.header")
     }
 
     private var chatAvatarPlaceholder: some View {
@@ -506,6 +613,52 @@ struct ChatView: View {
             Text(String(name.prefix(1)).uppercased())
                 .font(.headline.weight(.bold))
                 .foregroundStyle(PatchworkTheme.brand)
+        }
+    }
+
+    private var otherUserId: ConvexID? {
+        guard let conversation,
+              let currentUserId = appState.currentUser?.id else { return nil }
+        if conversation.seekerId == currentUserId {
+            return conversation.taskerId
+        }
+        if conversation.taskerId == currentUserId {
+            return conversation.seekerId
+        }
+        return nil
+    }
+
+    private var isConversationBlocked: Bool {
+        safetyStatus?.isBlocked == true
+    }
+
+    private var blockStateMessage: String? {
+        guard let safetyStatus, safetyStatus.isBlocked else { return nil }
+        if safetyStatus.currentUserBlockedOther {
+            return "You blocked this user. Unblock them to send new messages."
+        }
+        return "This conversation is unavailable."
+    }
+
+    private var safetyConfirmationTitle: String {
+        switch pendingSafetyConfirmation {
+        case .block:
+            return "Block \(conversation?.participantName ?? "user")?"
+        case .unblock:
+            return "Unblock \(conversation?.participantName ?? "user")?"
+        default:
+            return "User Actions"
+        }
+    }
+
+    private var safetyConfirmationMessage: String {
+        switch pendingSafetyConfirmation {
+        case .block:
+            return "You will no longer be able to send messages to each other. You can unblock them from your profile."
+        case .unblock:
+            return "This will allow messages between you and this user again."
+        default:
+            return ""
         }
     }
 
@@ -524,9 +677,21 @@ struct ChatView: View {
         await appState.refreshAuthedData(client: sessionStore.client)
         await appState.loadConversation(client: sessionStore.client, conversationId: conversationId)
         conversation = appState.selectedConversation
+        await loadSafetyStatus()
         await markRead()
         await loadMessages(loadMore: false)
         await refreshJobState()
+    }
+
+    private func loadSafetyStatus() async {
+        do {
+            safetyStatus = try await sessionStore.client.query(
+                "moderation:getConversationSafetyStatus",
+                args: ["conversationId": conversationId]
+            )
+        } catch {
+            appState.presentError(error)
+        }
     }
 
     private func refreshJobState() async {
@@ -578,6 +743,7 @@ struct ChatView: View {
     }
 
     private func send() async {
+        guard !isConversationBlocked else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
@@ -590,6 +756,69 @@ struct ChatView: View {
         } catch {
             appState.presentError(error)
         }
+    }
+
+    private func blockParticipant() async {
+        pendingSafetyConfirmation = nil
+        guard let otherUserId else { return }
+        do {
+            safetyStatus = try await sessionStore.client.mutation(
+                "moderation:blockUser",
+                args: [
+                    "blockedUserId": otherUserId,
+                    "conversationId": conversationId,
+                ]
+            )
+            text = ""
+            safetyFeedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "User blocked.")
+            await appState.refreshBlockedUsers(client: sessionStore.client)
+        } catch {
+            appState.presentError(error)
+        }
+    }
+
+    private func unblockParticipant() async {
+        pendingSafetyConfirmation = nil
+        guard let otherUserId else { return }
+        do {
+            safetyStatus = try await sessionStore.client.mutation(
+                "moderation:unblockUser",
+                args: ["blockedUserId": otherUserId]
+            )
+            safetyFeedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "User unblocked.")
+            await appState.refreshBlockedUsers(client: sessionStore.client)
+        } catch {
+            appState.presentError(error)
+        }
+    }
+
+    private func submitReport(reason: String, shouldBlock: Bool) async throws {
+        guard let otherUserId else { return }
+        struct ReportResult: Decodable {
+            let reportId: ConvexID
+            let blockId: ConvexID?
+        }
+
+        _ = try await sessionStore.client.mutation(
+            "moderation:reportUser",
+            args: [
+                "reportedUserId": otherUserId,
+                "conversationId": conversationId,
+                "reason": reason,
+                "block": shouldBlock,
+            ]
+        ) as ReportResult
+
+        if shouldBlock {
+            await loadSafetyStatus()
+            text = ""
+            await appState.refreshBlockedUsers(client: sessionStore.client)
+        }
+
+        safetyFeedbackMessage = SubscriptionFeedbackMessage(
+            tone: .success,
+            text: "Thanks for the report. Our team will review it."
+        )
     }
 
     private func submitProposal() async {
@@ -1037,17 +1266,19 @@ private struct ChatActionBar: View {
 
 private struct ChatComposerBar: View {
     @Binding var text: String
+    let isDisabled: Bool
     let onSend: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            TextField("Type a message...", text: $text, axis: .vertical)
+            TextField(isDisabled ? "Messaging unavailable" : "Type a message...", text: $text, axis: .vertical)
                 .font(.patchworkBody)
-                .foregroundStyle(PatchworkTheme.textPrimary)
+                .foregroundStyle(isDisabled ? PatchworkTheme.textSecondary : PatchworkTheme.textPrimary)
                 .lineLimit(1 ... 5)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .disabled(isDisabled)
                 .accessibilityLabel("Message")
                 .accessibilityIdentifier("Chat.messageField")
 
@@ -1058,8 +1289,9 @@ private struct ChatComposerBar: View {
             .foregroundStyle(.white)
             .frame(width: 48, height: 48)
             .background(PatchworkTheme.heroGradient, in: Circle())
+            .opacity(isDisabled ? 0.45 : 1)
             .buttonStyle(.plain)
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isDisabled || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel("Send message")
             .accessibilityHint("Sends your message to this conversation.")
             .accessibilityIdentifier("Chat.sendButton")
@@ -1139,6 +1371,106 @@ private struct CompleteJobSheet: View {
                 }
             }
             .padding(.horizontal, 20)
+        }
+    }
+}
+
+private struct ChatReportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let action: ChatSafetyAction
+    let participantName: String
+    let onSubmit: (String) async throws -> Void
+
+    @State private var reportText = ""
+    @State private var feedbackMessage: SubscriptionFeedbackMessage?
+    @State private var isSubmitting = false
+
+    private let minReportLength = 100
+    private let maxReportLength = 4000
+
+    private var trimmedReportText: String {
+        reportText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var title: String {
+        action == .blockAndReport ? "Block & Report" : "Report User"
+    }
+
+    private var submitTitle: String {
+        if isSubmitting {
+            return "Sending..."
+        }
+        return action == .blockAndReport ? "Block & Report" : "Submit Report"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PatchworkSectionIntro(
+                    eyebrow: "Safety",
+                    title: title,
+                    message: "Tell us what happened with \(participantName)."
+                )
+
+                if let feedbackMessage {
+                    PatchworkInlineStatusBanner(tone: feedbackMessage.tone, text: feedbackMessage.text)
+                        .accessibilityIdentifier("Chat.reportStatusBanner")
+                }
+
+                TextEditor(text: $reportText)
+                    .patchworkTextEditorStyle(minHeight: 170)
+                    .onChange(of: reportText) { _, newValue in
+                        if newValue.count > maxReportLength {
+                            reportText = String(newValue.prefix(maxReportLength))
+                        }
+                    }
+                    .accessibilityLabel("Report details")
+                    .accessibilityIdentifier("Chat.reportTextField")
+
+                Text("\(trimmedReportText.count)/\(minReportLength) minimum")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(trimmedReportText.count >= minReportLength ? PatchworkTheme.success : PatchworkTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityIdentifier("Chat.reportCharacterCount")
+
+                HStack(spacing: 12) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .buttonStyle(PatchworkSecondaryButtonStyle())
+                    .disabled(isSubmitting)
+
+                    Button(submitTitle) {
+                        Task { await submit() }
+                    }
+                    .buttonStyle(PatchworkPrimaryButtonStyle())
+                    .disabled(isSubmitting || trimmedReportText.count < minReportLength)
+                    .accessibilityIdentifier("Chat.submitReportButton")
+                }
+            }
+            .padding(20)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func submit() async {
+        guard trimmedReportText.count >= minReportLength else {
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: "Report must be at least \(minReportLength) characters.")
+            return
+        }
+
+        isSubmitting = true
+        feedbackMessage = nil
+        defer { isSubmitting = false }
+
+        do {
+            try await onSubmit(trimmedReportText)
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Thanks for the report. Our team will review it.")
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            dismiss()
+        } catch {
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }
 }

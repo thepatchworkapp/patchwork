@@ -3,6 +3,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { messagesPageValidator } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
+import { assertUsersCanMessage } from "./moderation";
 
 type SystemMessageType =
   | "proposal_sent"
@@ -35,6 +36,11 @@ export const sendMessage = mutation({
     if (conversation.seekerId !== user._id && conversation.taskerId !== user._id) {
       throw new ConvexError("Not a participant in this conversation");
     }
+
+    const recipientId = conversation.seekerId === user._id
+      ? conversation.taskerId
+      : conversation.seekerId;
+    await assertUsersCanMessage(ctx, user._id, recipientId);
 
     const now = Date.now();
 
@@ -75,8 +81,14 @@ export const sendProposalMessage = internalMutation({
   },
   returns: v.id("messages"),
   handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new ConvexError("Conversation not found");
+
+    const isSeeker = conversation.seekerId === args.senderId;
+    const recipientId = isSeeker ? conversation.taskerId : conversation.seekerId;
+    await assertUsersCanMessage(ctx, args.senderId, recipientId);
+
     const now = Date.now();
-    
     const messageId = await ctx.db.insert("messages", {
       conversationId: args.conversationId,
       senderId: args.senderId,
@@ -87,10 +99,6 @@ export const sendProposalMessage = internalMutation({
       updatedAt: now,
     });
 
-    const conversation = await ctx.db.get(args.conversationId);
-    if (!conversation) throw new ConvexError("Conversation not found");
-
-    const isSeeker = conversation.seekerId === args.senderId;
     const currentUnreadCount = isSeeker
       ? conversation.taskerUnreadCount || 0
       : conversation.seekerUnreadCount || 0;
@@ -223,6 +231,8 @@ export const sendSystemMessage = internalMutation({
 
     const conversation = await ctx.db.get(args.conversationId);
     if (!conversation) throw new ConvexError("Conversation not found");
+
+    await assertUsersCanMessage(ctx, conversation.seekerId, conversation.taskerId);
 
     const messageId = await ctx.db.insert("messages", {
       conversationId: args.conversationId,
