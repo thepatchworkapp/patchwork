@@ -512,14 +512,9 @@ struct PhotoCropEditor: View {
     let onConfirm: (PhotoDraft) -> Void
 
     @StateObject private var imageContext: CropImageContext
-    @State private var scale: CGFloat = 1
-    @State private var lastScale: CGFloat = 1
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
+    @StateObject private var cropState = PhotoCropInteractionState()
+    @State private var resetToken = 0
     @State private var errorMessage: String?
-
-    private let minScale: CGFloat = 1
-    private let maxScale: CGFloat = 5
 
     init(input: PhotoCropInput, onCancel: @escaping () -> Void, onConfirm: @escaping (PhotoDraft) -> Void) {
         self.input = input
@@ -542,13 +537,13 @@ struct PhotoCropEditor: View {
                     ZStack {
                         Color.black.opacity(0.88)
 
-                        Image(uiImage: imageContext.displayPreviewImage)
-                            .resizable()
-                            .scaledToFill()
+                        PhotoCropZoomView(
+                            image: imageContext.displayPreviewImage,
+                            cropState: cropState,
+                            resetToken: resetToken
+                        )
                             .frame(width: cropSize.width, height: cropSize.height)
-                            .scaleEffect(scale)
-                            .offset(offset)
-                            .gesture(cropGesture(cropSize: cropSize))
+                            .accessibilityLabel("Photo crop preview")
 
                         cropOverlay(cropSize: cropSize)
                     }
@@ -595,7 +590,7 @@ struct PhotoCropEditor: View {
         init(image: UIImage) {
             let normalized = image.normalizedForPatchworkCropping()
             normalizedSourceImage = normalized
-            displayPreviewImage = normalized.downsampledForPatchworkDisplay(maxPixelSize: 2_048)
+            displayPreviewImage = normalized.downsampledForPatchworkDisplay(maxPixelSize: 1_536)
         }
     }
 
@@ -615,35 +610,6 @@ struct PhotoCropEditor: View {
         return CGSize(width: width, height: height)
     }
 
-    private func cropGesture(cropSize: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture()
-                .onChanged { value in
-                    let proposed = CGSize(
-                        width: lastOffset.width + value.translation.width,
-                        height: lastOffset.height + value.translation.height
-                    )
-                    offset = clampedOffset(proposed, cropSize: cropSize, scale: scale)
-                }
-                .onEnded { _ in
-                    offset = clampedOffset(offset, cropSize: cropSize, scale: scale)
-                    lastOffset = offset
-                },
-            MagnificationGesture()
-                .onChanged { value in
-                    let proposedScale = min(max(lastScale * value, minScale), maxScale)
-                    scale = proposedScale
-                    offset = clampedOffset(offset, cropSize: cropSize, scale: proposedScale)
-                }
-                .onEnded { _ in
-                    scale = min(max(scale, minScale), maxScale)
-                    offset = clampedOffset(offset, cropSize: cropSize, scale: scale)
-                    lastScale = scale
-                    lastOffset = offset
-                }
-        )
-    }
-
     private func cropOverlay(cropSize: CGSize) -> some View {
         Group {
             if input.purpose == .taskerCategoryPortfolio {
@@ -660,11 +626,13 @@ struct PhotoCropEditor: View {
 
     private func confirmCrop() {
         do {
+            let cropScale = cropState.scale
+            let cropOffset = cropState.offset
             let rendered = try PatchworkPhotoCropRenderer.renderCrop(
                 image: imageContext.normalizedSourceImage,
                 purpose: input.purpose,
-                scale: scale,
-                offset: offset,
+                scale: cropScale,
+                offset: cropOffset,
                 normalizeInput: false
             )
             guard let data = rendered.jpegData(compressionQuality: 0.86), !data.isEmpty else {
@@ -676,29 +644,186 @@ struct PhotoCropEditor: View {
         }
     }
 
-    private func clampedOffset(_ proposed: CGSize, cropSize: CGSize, scale: CGFloat) -> CGSize {
-        let fittedSize = PatchworkPhotoCropRenderer.aspectFillSize(
-            imageSize: imageContext.normalizedSourceImage.size,
-            cropSize: cropSize
-        )
-        let scaledWidth = fittedSize.width * scale
-        let scaledHeight = fittedSize.height * scale
-        let maxX = max(0, (scaledWidth - cropSize.width) / 2)
-        let maxY = max(0, (scaledHeight - cropSize.height) / 2)
-
-        return CGSize(
-            width: min(max(proposed.width, -maxX), maxX),
-            height: min(max(proposed.height, -maxY), maxY)
-        )
-    }
-
     private func resetCrop() {
-        scale = 1
-        lastScale = 1
-        offset = .zero
-        lastOffset = .zero
+        cropState.reset()
+        resetToken &+= 1
+        errorMessage = nil
     }
 
+}
+
+private final class PhotoCropInteractionState: ObservableObject {
+    var scale: CGFloat = 1
+    var offset: CGSize = .zero
+
+    func reset() {
+        scale = 1
+        offset = .zero
+    }
+}
+
+private struct PhotoCropZoomView: UIViewRepresentable {
+    let image: UIImage
+    let cropState: PhotoCropInteractionState
+    let resetToken: Int
+
+    func makeUIView(context: Context) -> PhotoCropZoomContainerView {
+        PhotoCropZoomContainerView()
+    }
+
+    func updateUIView(_ uiView: PhotoCropZoomContainerView, context: Context) {
+        uiView.configure(image: image, cropState: cropState, resetToken: resetToken)
+    }
+}
+
+private final class PhotoCropZoomContainerView: UIView, UIScrollViewDelegate {
+    private let scrollView = UIScrollView()
+    private let imageView = UIImageView()
+    private weak var cropState: PhotoCropInteractionState?
+    private var configuredImage: UIImage?
+    private var lastBoundsSize: CGSize = .zero
+    private var lastResetToken: Int?
+    private var isApplyingViewport = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+
+    func configure(image: UIImage, cropState: PhotoCropInteractionState, resetToken: Int) {
+        self.cropState = cropState
+
+        let imageChanged = configuredImage !== image
+        if imageChanged {
+            configuredImage = image
+            imageView.image = image
+        }
+
+        let resetRequested = lastResetToken != resetToken
+        lastResetToken = resetToken
+
+        guard imageChanged || resetRequested else {
+            return
+        }
+
+        configureImageFrame(resetViewport: true)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scrollView.frame = bounds
+
+        guard bounds.size != lastBoundsSize else {
+            return
+        }
+
+        lastBoundsSize = bounds.size
+        configureImageFrame(resetViewport: true)
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        imageView
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateCropState()
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        updateCropState()
+    }
+
+    private func setup() {
+        backgroundColor = .clear
+        clipsToBounds = true
+
+        scrollView.delegate = self
+        scrollView.backgroundColor = .clear
+        scrollView.clipsToBounds = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.bounces = false
+        scrollView.bouncesZoom = false
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 5
+        scrollView.decelerationRate = .fast
+        addSubview(scrollView)
+
+        imageView.contentMode = .scaleToFill
+        imageView.isUserInteractionEnabled = true
+        scrollView.addSubview(imageView)
+    }
+
+    private func configureImageFrame(resetViewport: Bool) {
+        guard let image = configuredImage, bounds.width > 0, bounds.height > 0 else {
+            return
+        }
+
+        let fittedSize = PatchworkPhotoCropRenderer.aspectFillSize(imageSize: image.size, cropSize: bounds.size)
+        isApplyingViewport = true
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 5
+        scrollView.zoomScale = 1
+        imageView.frame = CGRect(origin: .zero, size: fittedSize)
+        scrollView.contentSize = fittedSize
+
+        if resetViewport {
+            resetViewportToCenter()
+        } else {
+            applyCropStateToViewport()
+        }
+
+        isApplyingViewport = false
+        updateCropState()
+    }
+
+    private func resetViewportToCenter() {
+        scrollView.zoomScale = 1
+        scrollView.contentOffset = centeredContentOffset(contentSize: scrollView.contentSize)
+        cropState?.reset()
+    }
+
+    private func applyCropStateToViewport() {
+        guard let cropState else {
+            resetViewportToCenter()
+            return
+        }
+
+        let scale = min(max(cropState.scale, scrollView.minimumZoomScale), scrollView.maximumZoomScale)
+        scrollView.zoomScale = scale
+        let contentSize = scrollView.contentSize
+        let centeredOffset = centeredContentOffset(contentSize: contentSize)
+        scrollView.contentOffset = CGPoint(
+            x: centeredOffset.x - cropState.offset.width,
+            y: centeredOffset.y - cropState.offset.height
+        )
+    }
+
+    private func updateCropState() {
+        guard !isApplyingViewport, bounds.width > 0, bounds.height > 0 else {
+            return
+        }
+
+        let contentSize = scrollView.contentSize
+        let centeredOffset = centeredContentOffset(contentSize: contentSize)
+        cropState?.scale = scrollView.zoomScale
+        cropState?.offset = CGSize(
+            width: centeredOffset.x - scrollView.contentOffset.x,
+            height: centeredOffset.y - scrollView.contentOffset.y
+        )
+    }
+
+    private func centeredContentOffset(contentSize: CGSize) -> CGPoint {
+        CGPoint(
+            x: max(0, (contentSize.width - bounds.width) / 2),
+            y: max(0, (contentSize.height - bounds.height) / 2)
+        )
+    }
 }
 
 extension UIImage {
