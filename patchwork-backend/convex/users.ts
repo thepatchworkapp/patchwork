@@ -2,13 +2,89 @@ import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { currentUserValidator } from "../lib/convex/validators";
+import { authComponent } from "./auth";
 import {
   deleteImageAssetIfUnreferenced,
   getDisplayStorageId,
+  getImageAssetStorageIds,
   getOwnedImageAsset,
   getUserPhotoImageAssetDto,
+  markImageAssetDeleted,
 } from "./imageAssetHelpers";
 import { requireAppUser } from "./authHelpers";
+
+function tombstoneEmail(userId: string) {
+  return `deleted+${userId}@deleted.patchwork.local`;
+}
+
+function tombstoneAuthId(userId: string, now: number) {
+  return `deleted:${userId}:${now}`;
+}
+
+function authUserIdFromTokenIdentifier(tokenIdentifier: string) {
+  const marker = tokenIdentifier.lastIndexOf("|");
+  if (marker === -1 || marker === tokenIdentifier.length - 1) {
+    return null;
+  }
+  return tokenIdentifier.slice(marker + 1);
+}
+
+async function deleteAuthModelIfPresent(ctx: any, model: string, where?: Array<any>) {
+  const authAdapter = await authComponent.adapter(ctx)({});
+  try {
+    await authAdapter.deleteMany({ model, where });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.includes(`Model "${model}" not found in schema`) ||
+      message.includes('Component "betterAuth" is not registered')
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function deleteAuthRecordsForIdentity(ctx: any, tokenIdentifier: string, email: string) {
+  const authUserId = authUserIdFromTokenIdentifier(tokenIdentifier);
+  const authCleanupTasks = [
+    deleteAuthModelIfPresent(ctx, "user", [{ field: "email", operator: "eq" as const, value: email }]),
+  ];
+
+  if (authUserId) {
+    const userIdFilter = [{ field: "userId", operator: "eq" as const, value: authUserId }];
+    authCleanupTasks.push(
+      deleteAuthModelIfPresent(ctx, "session", userIdFilter),
+      deleteAuthModelIfPresent(ctx, "account", userIdFilter),
+      deleteAuthModelIfPresent(ctx, "twoFactor", userIdFilter),
+      deleteAuthModelIfPresent(ctx, "passkey", userIdFilter),
+      deleteAuthModelIfPresent(ctx, "oauthAccessToken", userIdFilter),
+      deleteAuthModelIfPresent(ctx, "oauthConsent", userIdFilter)
+    );
+  }
+
+  await Promise.all(authCleanupTasks);
+}
+
+async function deleteLooseStorageFiles(ctx: any, storageIds: Set<string>) {
+  let deleted = 0;
+  let failed = 0;
+
+  for (const storageId of storageIds) {
+    try {
+      await ctx.storage.delete(storageId);
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn("[AccountDeletion] Failed to delete uploaded storage file", {
+        storageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { deleted, failed };
+}
 
 export const createProfile = mutation({
   args: {
@@ -128,6 +204,194 @@ export const getCurrentUser = query({
       settings: user.settings,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  },
+});
+
+export const deleteAccount = mutation({
+  args: {},
+  returns: v.object({
+    deleted: v.boolean(),
+    authCleanupSucceeded: v.boolean(),
+    imageAssetsDeleted: v.number(),
+    imageAssetStorageFailures: v.number(),
+    looseStorageDeleted: v.number(),
+    looseStorageFailures: v.number(),
+  }),
+  handler: async (ctx) => {
+    const { identity, user } = await requireAppUser(ctx);
+
+    const activeSeekerJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_seeker_status", (q) => q.eq("seekerId", user._id).eq("status", "in_progress"))
+      .take(1);
+    const pendingSeekerJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_seeker_status", (q) => q.eq("seekerId", user._id).eq("status", "pending"))
+      .take(1);
+    const activeTaskerJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_tasker_status", (q) => q.eq("taskerId", user._id).eq("status", "in_progress"))
+      .take(1);
+    const pendingTaskerJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_tasker_status", (q) => q.eq("taskerId", user._id).eq("status", "pending"))
+      .take(1);
+
+    if (
+      activeSeekerJobs.length ||
+      pendingSeekerJobs.length ||
+      activeTaskerJobs.length ||
+      pendingTaskerJobs.length
+    ) {
+      throw new ConvexError("Resolve active jobs before deleting your account.");
+    }
+
+    const now = Date.now();
+    const ownedImageAssets = await ctx.db
+      .query("imageAssets")
+      .withIndex("by_owner", (q) => q.eq("ownerUserId", user._id))
+      .collect();
+    const imageAssetStorageIds = new Set(
+      ownedImageAssets.flatMap((imageAsset) =>
+        getImageAssetStorageIds(imageAsset).map((storageId) => String(storageId))
+      )
+    );
+    const looseStorageIds = new Set<string>();
+
+    if (user.photo && !imageAssetStorageIds.has(String(user.photo))) {
+      looseStorageIds.add(String(user.photo));
+    }
+
+    const sentMessages = await ctx.db
+      .query("messages")
+      .withIndex("by_sender", (q) => q.eq("senderId", user._id))
+      .collect();
+    await Promise.all(
+      sentMessages.map(async (message) => {
+        for (const attachment of message.attachments ?? []) {
+          if (!imageAssetStorageIds.has(String(attachment))) {
+            looseStorageIds.add(String(attachment));
+          }
+        }
+
+        if (message.attachments?.length) {
+          await ctx.db.patch(message._id, {
+            attachments: undefined,
+            updatedAt: now,
+          });
+        }
+      })
+    );
+
+    const jobRequests = await ctx.db
+      .query("jobRequests")
+      .withIndex("by_seeker", (q) => q.eq("seekerId", user._id))
+      .collect();
+    await Promise.all(
+      jobRequests.map(async (jobRequest) => {
+        for (const photo of jobRequest.photos ?? []) {
+          if (!imageAssetStorageIds.has(String(photo))) {
+            looseStorageIds.add(String(photo));
+          }
+        }
+        await ctx.db.delete(jobRequest._id);
+      })
+    );
+
+    const feedbackSubmissions = await ctx.db
+      .query("feedbackSubmissions")
+      .withIndex("by_userId_createdAt", (q) => q.eq("userId", user._id))
+      .collect();
+    await Promise.all(feedbackSubmissions.map((feedback) => ctx.db.delete(feedback._id)));
+
+    const taskerCategories = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .collect();
+    await Promise.all(taskerCategories.map((category) => ctx.db.delete(category._id)));
+
+    const taskerProfile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .unique();
+    if (taskerProfile) {
+      await ctx.db.delete(taskerProfile._id);
+    }
+
+    const seekerProfile = await ctx.db
+      .query("seekerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .unique();
+    if (seekerProfile) {
+      await ctx.db.delete(seekerProfile._id);
+    }
+
+    const seekerProfiles = await ctx.db.query("seekerProfiles").collect();
+    await Promise.all(
+      seekerProfiles.map(async (profile) => {
+        if (!profile.favouriteTaskers.some((taskerId) => taskerId === user._id)) {
+          return;
+        }
+
+        await ctx.db.patch(profile._id, {
+          favouriteTaskers: profile.favouriteTaskers.filter((taskerId) => taskerId !== user._id),
+          updatedAt: now,
+        });
+      })
+    );
+
+    await ctx.db.patch(user._id, {
+      authId: tombstoneAuthId(user._id, now),
+      email: tombstoneEmail(user._id),
+      emailVerified: false,
+      name: "Deleted User",
+      photo: undefined,
+      photoAssetId: undefined,
+      location: {
+        city: "",
+        province: "",
+      },
+      roles: {
+        isSeeker: false,
+        isTasker: false,
+      },
+      settings: {
+        notificationsEnabled: false,
+        locationEnabled: false,
+      },
+      updatedAt: now,
+    });
+
+    let imageAssetsDeleted = 0;
+    let imageAssetStorageFailures = 0;
+    for (const imageAsset of ownedImageAssets) {
+      const result = await markImageAssetDeleted(ctx, imageAsset);
+      if (imageAsset.status !== "deleted") {
+        imageAssetsDeleted += 1;
+      }
+      imageAssetStorageFailures += result.failed;
+    }
+
+    const looseStorageResult = await deleteLooseStorageFiles(ctx, looseStorageIds);
+    let authCleanupSucceeded = true;
+    try {
+      await deleteAuthRecordsForIdentity(ctx, identity.tokenIdentifier, user.email);
+    } catch (error) {
+      authCleanupSucceeded = false;
+      console.warn("[AccountDeletion] Failed to delete auth records", {
+        userId: user._id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return {
+      deleted: true,
+      authCleanupSucceeded,
+      imageAssetsDeleted,
+      imageAssetStorageFailures,
+      looseStorageDeleted: looseStorageResult.deleted,
+      looseStorageFailures: looseStorageResult.failed,
     };
   },
 });

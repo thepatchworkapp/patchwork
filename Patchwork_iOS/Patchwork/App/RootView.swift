@@ -1171,6 +1171,10 @@ private struct MainTabView: View {
                 ProfileView(onSignOut: {
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
+                }, onDeleteAccount: {
+                    let _: EmptyResponse = try await sessionStore.client.mutation("users:deleteAccount", args: [:])
+                    appState.resetForSignedOutSession()
+                    await sessionStore.signOut()
                 })
             }
             .accessibilityIdentifier("Tab.profile")

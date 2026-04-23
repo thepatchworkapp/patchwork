@@ -22,6 +22,7 @@ struct ProfileView: View {
     @State private var activeDestination: ProfileSidebarDestination?
 
     let onSignOut: () async -> Void
+    let onDeleteAccount: () async throws -> Void
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -42,7 +43,10 @@ struct ProfileView: View {
                         userName: appState.currentUser?.name,
                         taskerProfile: appState.taskerProfile
                     )
-                    ProfileSupportSection(onSignOut: onSignOut)
+                    ProfileSupportSection(
+                        onSignOut: onSignOut,
+                        onDeleteAccount: onDeleteAccount
+                    )
                     Text(appVersionLabel)
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
@@ -1259,6 +1263,16 @@ private struct FavouriteTaskersPanel: View {
 
 private struct ProfileSupportSection: View {
     let onSignOut: () async -> Void
+    let onDeleteAccount: () async throws -> Void
+
+    @State private var isShowingDeleteConfirmation = false
+    @State private var deleteConfirmationText = ""
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
+
+    private var canConfirmAccountDeletion: Bool {
+        deleteConfirmationText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "delete"
+    }
 
     var body: some View {
         PatchworkSurfaceCard {
@@ -1278,7 +1292,53 @@ private struct ProfileSupportSection: View {
                 }
                 .buttonStyle(PatchworkDestructiveButtonStyle())
                 .accessibilityIdentifier("Profile.signOutButton")
+
+                Button(isDeletingAccount ? "Deleting..." : "Delete Account", role: .destructive) {
+                    deleteConfirmationText = ""
+                    deleteAccountError = nil
+                    isShowingDeleteConfirmation = true
+                }
+                .buttonStyle(PatchworkDestructiveButtonStyle())
+                .disabled(isDeletingAccount)
+                .accessibilityIdentifier("Profile.deleteAccountButton")
+
+                if let deleteAccountError {
+                    PatchworkInlineStatusBanner(tone: .error, text: deleteAccountError)
+                    .accessibilityIdentifier("Profile.deleteAccountError")
+                }
             }
+        }
+        .alert("Delete Account", isPresented: $isShowingDeleteConfirmation) {
+            TextField("Type delete", text: $deleteConfirmationText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            Button("Delete Account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            .disabled(!canConfirmAccountDeletion || isDeletingAccount)
+
+            Button("Cancel", role: .cancel) {
+                deleteConfirmationText = ""
+            }
+        } message: {
+            Text("This removes your account information and uploaded profile photos. Completed jobs and message threads are retained for transaction history. If you have an active App Store subscription, billing continues until you cancel it with Apple.")
+        }
+    }
+
+    private func deleteAccount() async {
+        guard canConfirmAccountDeletion, !isDeletingAccount else {
+            return
+        }
+
+        isDeletingAccount = true
+        deleteAccountError = nil
+        defer { isDeletingAccount = false }
+
+        do {
+            try await onDeleteAccount()
+        } catch {
+            deleteAccountError = error.localizedDescription
         }
     }
 }
