@@ -3430,7 +3430,8 @@ private struct TaskerCategoryPortfolioEditor: View {
     let accessibilityPrefix: String
     let onAddPhotos: () -> Void
 
-    private let columns = [GridItem(.flexible()), GridItem(.flexible())]
+    @State private var selectedPhotoId: String?
+
     private let maxAssets = 10
 
     var body: some View {
@@ -3461,52 +3462,41 @@ private struct TaskerCategoryPortfolioEditor: View {
                     Text("Add up to 10 photos. Choose one 4:3 image as the cover.")
                         .font(.patchworkCaption)
                         .foregroundStyle(PatchworkTheme.textSecondary)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(portfolioPhotos) { photo in
-                            VStack(alignment: .leading, spacing: 8) {
-                                TaskerPortfolioPhotoImage(photo: photo, preferredVariant: .display) {
-                                    PatchworkTheme.brandSoft
-                                }
-                                .aspectRatio(4.0 / 3.0, contentMode: .fill)
-                                .frame(maxWidth: .infinity)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(photo.id == activeCoverPhotoId ? PatchworkTheme.brand : PatchworkTheme.stroke, lineWidth: photo.id == activeCoverPhotoId ? 2 : 1)
-                                )
+                } else if let activePhoto {
+                    VStack(alignment: .leading, spacing: 12) {
+                        TaskerPortfolioPhotoImage(photo: activePhoto, preferredVariant: .display) {
+                            PatchworkTheme.brandSoft
+                        }
+                        .aspectRatio(4.0 / 3.0, contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(activePhoto.id == activeCoverPhotoId ? PatchworkTheme.brand : PatchworkTheme.stroke, lineWidth: activePhoto.id == activeCoverPhotoId ? 2 : 1)
+                        )
+                        .accessibilityLabel(activePhoto.id == activeCoverPhotoId ? "Selected cover portfolio photo" : "Selected portfolio photo")
 
-                                HStack(spacing: 6) {
-                                    Button("Up") {
-                                        movePhoto(photo, direction: -1)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(portfolioPhotos) { photo in
+                                    Button {
+                                        selectedPhotoId = photo.id
+                                    } label: {
+                                        TaskerPortfolioThumbnail(
+                                            photo: photo,
+                                            isSelected: photo.id == activePhoto.id,
+                                            isCover: photo.id == activeCoverPhotoId
+                                        )
                                     }
-                                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .disabled(indexForPhoto(photo) == 0)
-                                    .accessibilityIdentifier("\(accessibilityPrefix).moveUp.\(photo.id)")
-
-                                    Button("Down") {
-                                        movePhoto(photo, direction: 1)
-                                    }
-                                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .disabled(indexForPhoto(photo) == portfolioPhotos.count - 1)
-                                    .accessibilityIdentifier("\(accessibilityPrefix).moveDown.\(photo.id)")
-                                }
-
-                                HStack(spacing: 6) {
-                                    Button(photo.id == activeCoverPhotoId ? "Cover 4:3" : "Set 4:3 Cover") {
-                                        coverPhotoId = photo.id
-                                    }
-                                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .accessibilityIdentifier("\(accessibilityPrefix).setCover.\(photo.id)")
-
-                                    Button("Remove", role: .destructive) {
-                                        removePhoto(photo)
-                                    }
-                                    .buttonStyle(PatchworkSecondaryButtonStyle())
-                                    .accessibilityIdentifier("\(accessibilityPrefix).remove.\(photo.id)")
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(photo.id == activeCoverPhotoId ? "Cover portfolio photo" : "Portfolio photo")
+                                    .accessibilityIdentifier("\(accessibilityPrefix).thumbnail.\(photo.id)")
                                 }
                             }
+                            .padding(.vertical, 2)
                         }
+
+                        portfolioActions(for: activePhoto)
                     }
                 }
 
@@ -3530,6 +3520,93 @@ private struct TaskerCategoryPortfolioEditor: View {
         coverPhotoId ?? portfolioPhotos.first?.id
     }
 
+    private var activePhoto: TaskerPortfolioPhoto? {
+        if let selectedPhotoId,
+           let selectedPhoto = portfolioPhotos.first(where: { $0.id == selectedPhotoId }) {
+            return selectedPhoto
+        }
+        if let activeCoverPhotoId,
+           let coverPhoto = portfolioPhotos.first(where: { $0.id == activeCoverPhotoId }) {
+            return coverPhoto
+        }
+        return portfolioPhotos.first
+    }
+
+    @ViewBuilder
+    private func portfolioActions(for photo: TaskerPortfolioPhoto) -> some View {
+        HStack(spacing: 10) {
+            portfolioActionButton(
+                systemImage: "chevron.left",
+                label: "Move photo left",
+                accessibilityIdentifier: "\(accessibilityPrefix).moveUp.\(photo.id)",
+                isDisabled: indexForPhoto(photo) == 0
+            ) {
+                movePhoto(photo, direction: -1)
+            }
+
+            portfolioActionButton(
+                systemImage: "chevron.right",
+                label: "Move photo right",
+                accessibilityIdentifier: "\(accessibilityPrefix).moveDown.\(photo.id)",
+                isDisabled: indexForPhoto(photo) == portfolioPhotos.count - 1
+            ) {
+                movePhoto(photo, direction: 1)
+            }
+
+            portfolioActionButton(
+                systemImage: photo.id == activeCoverPhotoId ? "checkmark.seal.fill" : "seal",
+                label: photo.id == activeCoverPhotoId ? "Cover photo" : "Set as cover photo",
+                accessibilityIdentifier: "\(accessibilityPrefix).setCover.\(photo.id)",
+                foreground: photo.id == activeCoverPhotoId ? PatchworkTheme.brand : PatchworkTheme.textPrimary,
+                stroke: photo.id == activeCoverPhotoId ? PatchworkTheme.brand.opacity(0.42) : PatchworkTheme.strokeStrong
+            ) {
+                coverPhotoId = photo.id
+            }
+
+            portfolioActionButton(
+                systemImage: "trash",
+                label: "Remove portfolio photo",
+                accessibilityIdentifier: "\(accessibilityPrefix).remove.\(photo.id)",
+                foreground: PatchworkTheme.danger,
+                stroke: PatchworkTheme.danger.opacity(0.26),
+                fill: PatchworkTheme.danger.opacity(0.10)
+            ) {
+                removePhoto(photo)
+            }
+        }
+    }
+
+    private func portfolioActionButton(
+        systemImage: String,
+        label: String,
+        accessibilityIdentifier: String,
+        foreground: Color = PatchworkTheme.textPrimary,
+        stroke: Color = PatchworkTheme.strokeStrong,
+        fill: Color = PatchworkTheme.surface,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    fill.opacity(0.92),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(stroke, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.45 : 1)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
     private func indexForPhoto(_ photo: TaskerPortfolioPhoto) -> Int {
         portfolioPhotos.firstIndex(where: { $0.id == photo.id }) ?? 0
     }
@@ -3543,6 +3620,7 @@ private struct TaskerCategoryPortfolioEditor: View {
             return
         }
         portfolioPhotos.swapAt(index, newIndex)
+        selectedPhotoId = photo.id
         if coverPhotoId == nil {
             coverPhotoId = portfolioPhotos.first?.id
         }
@@ -3552,6 +3630,39 @@ private struct TaskerCategoryPortfolioEditor: View {
         portfolioPhotos.removeAll { $0.id == photo.id }
         if coverPhotoId == photo.id {
             coverPhotoId = portfolioPhotos.first?.id
+        }
+        if selectedPhotoId == photo.id {
+            selectedPhotoId = activeCoverPhotoId ?? portfolioPhotos.first?.id
+        }
+    }
+}
+
+private struct TaskerPortfolioThumbnail: View {
+    let photo: TaskerPortfolioPhoto
+    let isSelected: Bool
+    let isCover: Bool
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            TaskerPortfolioPhotoImage(photo: photo, preferredVariant: .thumb) {
+                PatchworkTheme.brandSoft
+            }
+            .aspectRatio(4.0 / 3.0, contentMode: .fill)
+            .frame(width: 78, height: 58)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isSelected ? PatchworkTheme.brand : PatchworkTheme.stroke, lineWidth: isSelected ? 2 : 1)
+            )
+
+            if isCover {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(PatchworkTheme.brand)
+                    .padding(5)
+                    .background(PatchworkTheme.surface.opacity(0.92), in: Circle())
+                    .padding(4)
+            }
         }
     }
 }
