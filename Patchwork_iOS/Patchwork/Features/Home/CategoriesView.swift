@@ -172,7 +172,11 @@ struct CategoriesView: View {
     }
 
     private var filteredCategories: [Category] {
-        let availableCategories = appState.categories.filter { !excludedCategoryIDs.contains($0.id) }
+        let availableCategories = appState.categories
+            .filter { !excludedCategoryIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
         guard !searchText.isEmpty else { return availableCategories }
         return availableCategories.filter { category in
             category.name.localizedStandardContains(searchText)
@@ -198,6 +202,15 @@ struct CategoriesView: View {
         let grouped = Dictionary(grouping: filteredCategories) { category in
             category.group ?? "Other"
         }
-        return grouped.sorted(by: { $0.key < $1.key })
+        return grouped
+            .map { group, categories in
+                (
+                    key: group,
+                    value: categories.sorted { lhs, rhs in
+                        lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    }
+                )
+            }
+            .sorted(by: { $0.key.localizedStandardCompare($1.key) == .orderedAscending })
     }
 }

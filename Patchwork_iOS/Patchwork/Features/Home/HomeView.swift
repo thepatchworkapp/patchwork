@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var radiusKm = 25
     @State private var showRadiusSheet = false
     @State private var showCategorySheet = false
+    @State private var categorySearchText = ""
     @State private var isStartingChat = false
     @State private var currentCardIndex = 0
     @State private var cardDragOffset: CGFloat = 0
@@ -41,6 +42,11 @@ struct HomeView: View {
         .sheet(isPresented: $showCategorySheet) {
             categorySheet
                 .patchworkSheetChrome(detents: [.medium, .large])
+        }
+        .onChange(of: showCategorySheet) { _, isPresented in
+            if !isPresented {
+                categorySearchText = ""
+            }
         }
         .navigationDestination(item: $taskerRoute) { route in
             ProviderDetailView(taskerId: route.id)
@@ -408,17 +414,55 @@ struct HomeView: View {
                 VStack(spacing: 18) {
                     PatchworkTopBar(title: "Category", onBack: { showCategorySheet = false })
 
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                            .accessibilityHidden(true)
+
+                        TextField("Search categories", text: $categorySearchText)
+                            .font(.patchworkBody)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                            .submitLabel(.search)
+                            .accessibilityIdentifier("Home.categorySearchField")
+                            .accessibilityLabel("Search categories")
+
+                        if !categorySearchText.isEmpty {
+                            Button {
+                                categorySearchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(PatchworkTheme.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("Home.categorySearchClearButton")
+                            .accessibilityLabel("Clear category search")
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 48)
+                    .background(PatchworkTheme.surface.opacity(0.92), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 12)
+
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            categorySheetRow(
-                                label: "All categories",
-                                isSelected: selectedCategorySlug == nil,
-                                accessibilityIdentifier: "Home.categoryOption.all"
-                            ) {
-                                selectCategory(nil)
+                            if shouldShowAllCategoriesOption {
+                                categorySheetRow(
+                                    label: "All categories",
+                                    isSelected: selectedCategorySlug == nil,
+                                    accessibilityIdentifier: "Home.categoryOption.all"
+                                ) {
+                                    selectCategory(nil)
+                                }
                             }
 
-                            ForEach(appState.categories, id: \.id) { category in
+                            ForEach(discoverCategoryOptions, id: \.id) { category in
                                 categorySheetRow(
                                     label: categoryMenuLabel(for: category),
                                     isSelected: selectedCategorySlug == category.slug,
@@ -426,6 +470,26 @@ struct HomeView: View {
                                 ) {
                                     selectCategory(category.slug)
                                 }
+                            }
+
+                            if discoverCategoryOptions.isEmpty && !shouldShowAllCategoriesOption {
+                                VStack(spacing: 10) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(PatchworkTheme.brand)
+                                        .accessibilityHidden(true)
+
+                                    Text("No categories found")
+                                        .font(.patchworkBodyStrong)
+                                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                    Text("Try a different search term.")
+                                        .font(.patchworkCaption)
+                                        .foregroundStyle(PatchworkTheme.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .accessibilityIdentifier("Home.categorySearchEmptyState")
                             }
                         }
                         .padding(.horizontal, 12)
@@ -489,6 +553,27 @@ struct HomeView: View {
     private func categoryMenuLabel(for category: Category) -> String {
         let emoji = category.emoji.map { "\($0) " } ?? ""
         return "\(emoji)\(category.name)"
+    }
+
+    private var discoverCategoryOptions: [Category] {
+        sortedDiscoverCategories.filter { category in
+            let query = trimmedCategorySearchText
+            return query.isEmpty || category.name.localizedStandardContains(query)
+        }
+    }
+
+    private var sortedDiscoverCategories: [Category] {
+        appState.categories.sorted { lhs, rhs in
+            lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var shouldShowAllCategoriesOption: Bool {
+        trimmedCategorySearchText.isEmpty || "All categories".localizedStandardContains(trimmedCategorySearchText)
+    }
+
+    private var trimmedCategorySearchText: String {
+        categorySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var categoriesUnavailable: Bool {

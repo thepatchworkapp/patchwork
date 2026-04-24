@@ -18,6 +18,9 @@ const trustedOrigins = Array.from(
 );
 const enableTestingHelpers = process.env.ENABLE_TESTING_HELPERS === "true";
 
+export const AUTH_SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 90;
+export const AUTH_SESSION_UPDATE_AGE_SECONDS = 60 * 60 * 24;
+
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
@@ -26,8 +29,8 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     database: authComponent.adapter(ctx),
     session: {
       // Match the native app's persistent-login UX instead of Better Auth's 7-day default.
-      expiresIn: 60 * 60 * 24 * 90,
-      updateAge: 60 * 60 * 24,
+      expiresIn: AUTH_SESSION_EXPIRES_IN_SECONDS,
+      updateAge: AUTH_SESSION_UPDATE_AGE_SECONDS,
     },
     
     socialProviders: {
