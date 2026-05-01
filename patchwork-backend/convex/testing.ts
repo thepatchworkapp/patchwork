@@ -27,7 +27,6 @@ async function ensureSeekerProfile(ctx: any, userId: string) {
     completedJobs: 0,
     rating: 0,
     ratingCount: 0,
-    favouriteTaskers: [],
     updatedAt: Date.now(),
   });
 
@@ -397,7 +396,6 @@ export const ensureDiscoverableTasker = internalMutation({
         completedJobs: 0,
         rating: 0,
         ratingCount: 0,
-        favouriteTaskers: [],
         updatedAt: now,
       });
     }

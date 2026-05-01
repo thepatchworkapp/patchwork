@@ -97,9 +97,18 @@ export default defineSchema({
     completedJobs: v.number(),
     rating: v.number(),
     ratingCount: v.number(),
-    favouriteTaskers: v.array(v.id("users")),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
+
+  favouriteTaskers: defineTable({
+    seekerId: v.id("users"),
+    taskerUserId: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_seeker_createdAt", ["seekerId", "createdAt"])
+    .index("by_seeker_tasker", ["seekerId", "taskerUserId"])
+    .index("by_tasker_user", ["taskerUserId"]),
 
   /**
    * Tasker's main profile

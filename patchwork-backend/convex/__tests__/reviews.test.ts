@@ -80,7 +80,6 @@ async function createCompletedJob(t: any, seekerAuth: any, taskerAuth: any) {
         completedJobs: 0,
         rating: 0,
         ratingCount: 0,
-        favouriteTaskers: [],
         updatedAt: Date.now(),
       });
     });
@@ -203,7 +202,6 @@ describe("reviews - rating aggregation", () => {
         completedJobs: 0,
         rating: 0,
         ratingCount: 0,
-        favouriteTaskers: [],
         updatedAt: Date.now(),
       });
     });
@@ -408,7 +406,6 @@ describe("reviews - rating aggregation", () => {
           completedJobs: 0,
           rating: 0,
           ratingCount: 0,
-          favouriteTaskers: [],
           updatedAt: Date.now(),
         });
       });

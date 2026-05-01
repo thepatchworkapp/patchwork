@@ -10,6 +10,8 @@ struct ProviderDetailView: View {
     @State private var isStartingChat = false
     @State private var chatError: String?
     @State private var hasLoadedTasker = false
+    @State private var isFavourite = false
+    @State private var isUpdatingFavourite = false
 
     var body: some View {
         ZStack {
@@ -41,17 +43,34 @@ struct ProviderDetailView: View {
         }
         .navigationTitle("Provider")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if tasker != nil {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    favouriteToggleButton
+                }
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            isFavourite = tasker?.isFavourite ?? false
+        }
         .task {
             await appState.loadTaskerDetail(client: sessionStore.client, taskerId: taskerId)
             if !hasLoadedTasker {
                 selectedCategoryID = tasker?.categoryProfiles.first?.id
+                isFavourite = tasker?.isFavourite ?? false
                 hasLoadedTasker = true
             }
         }
         .onChange(of: tasker?.id) { _, _ in
             selectedCategoryID = tasker?.categoryProfiles.first?.id
+            isFavourite = tasker?.isFavourite ?? false
             hasLoadedTasker = true
+        }
+        .onChange(of: tasker?.isFavourite) { _, newValue in
+            if let newValue {
+                isFavourite = newValue
+            }
         }
         .accessibilityIdentifier("ProviderDetail.screen.\(taskerId)")
     }
@@ -59,6 +78,27 @@ struct ProviderDetailView: View {
     private var tasker: TaskerDetail? {
         guard let selected = appState.selectedTasker, selected.id == taskerId else { return nil }
         return selected
+    }
+
+    private var favouriteToggleButton: some View {
+        let isOwnProfile = appState.currentUser?.id == tasker?.userId
+
+        return Button {
+            Task { await toggleFavourite() }
+        } label: {
+            Image(systemName: isFavourite ? "heart.fill" : "heart")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isFavourite ? PatchworkTheme.danger : PatchworkTheme.textPrimary)
+                .frame(width: 34, height: 34)
+                .background(PatchworkTheme.surface, in: Circle())
+                .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(isUpdatingFavourite || isOwnProfile)
+        .opacity(isOwnProfile ? 0.55 : 1)
+        .accessibilityLabel(isFavourite ? "Remove from favourites" : "Add to favourites")
+        .accessibilityValue(isUpdatingFavourite ? "Updating" : (isFavourite ? "Favourite" : "Not favourite"))
+        .accessibilityIdentifier("ProviderDetail.favouriteToggle")
     }
 
     private var selectedProfile: TaskerCategoryProfile? {
@@ -470,6 +510,27 @@ struct ProviderDetailView: View {
         } catch {
             chatError = "Unable to start chat right now. Please try again."
             appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func toggleFavourite() async {
+        guard !isUpdatingFavourite else { return }
+        let previousValue = isFavourite
+        let nextValue = !previousValue
+        isFavourite = nextValue
+        isUpdatingFavourite = true
+        defer { isUpdatingFavourite = false }
+
+        do {
+            let result = try await PatchworkAPI(client: sessionStore.client).taskers.setFavourite(
+                taskerId: taskerId,
+                isFavourite: nextValue
+            )
+            isFavourite = result.isFavourite
+            await appState.refreshFavouriteTaskers(client: sessionStore.client)
+        } catch {
+            isFavourite = previousValue
+            appState.presentError(error, prefix: "Failed to update favourites")
         }
     }
 }

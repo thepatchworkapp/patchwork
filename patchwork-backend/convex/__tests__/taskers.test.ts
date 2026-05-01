@@ -292,6 +292,116 @@ describe("taskers", () => {
     expect(profile).toBeNull();
   });
 
+  test("setFavouriteTasker adds, lists, reflects detail status, and removes favourites", async () => {
+    const t = convexTest(schema, modules);
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|fav-tasker",
+      email: "fav-tasker@example.com",
+    });
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|fav-seeker",
+      email: "fav-seeker@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Favourite Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Favourite Seeker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumbing",
+    });
+
+    const taskerId = await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Favourite Pro",
+      categoryId: category!._id,
+      categoryBio: "Reliable plumbing help",
+      rateType: "hourly",
+      hourlyRate: 8500,
+      serviceRadius: 20,
+    });
+
+    const firstStatus = await asSeeker.mutation(api.taskers.setFavouriteTasker, {
+      taskerId,
+      isFavourite: true,
+    });
+    const secondStatus = await asSeeker.mutation(api.taskers.setFavouriteTasker, {
+      taskerId,
+      isFavourite: true,
+    });
+
+    expect(firstStatus).toEqual({ isFavourite: true });
+    expect(secondStatus).toEqual({ isFavourite: true });
+
+    const favouriteTaskers = await asSeeker.query(api.taskers.listFavouriteTaskers, {});
+    expect(favouriteTaskers).toHaveLength(1);
+    expect(favouriteTaskers[0].id).toBe(taskerId);
+    expect(favouriteTaskers[0].name).toBe("Favourite Pro");
+
+    const taskerDetail = await asSeeker.query(api.taskers.getTaskerById, {
+      taskerId,
+    });
+    expect(taskerDetail?.isFavourite).toBe(true);
+
+    const removeStatus = await asSeeker.mutation(api.taskers.setFavouriteTasker, {
+      taskerId,
+      isFavourite: false,
+    });
+    expect(removeStatus).toEqual({ isFavourite: false });
+    await expect(
+      asSeeker.query(api.taskers.listFavouriteTaskers, {})
+    ).resolves.toEqual([]);
+
+    const updatedDetail = await asSeeker.query(api.taskers.getTaskerById, {
+      taskerId,
+    });
+    expect(updatedDetail?.isFavourite).toBe(false);
+  });
+
+  test("setFavouriteTasker rejects favouriting yourself", async () => {
+    const t = convexTest(schema, modules);
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|fav-self",
+      email: "fav-self@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Self Favourite",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumbing",
+    });
+
+    const taskerId = await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Self Favourite Pro",
+      categoryId: category!._id,
+      categoryBio: "Plumbing help",
+      rateType: "hourly",
+      hourlyRate: 8500,
+      serviceRadius: 20,
+    });
+
+    await expect(
+      asTasker.mutation(api.taskers.setFavouriteTasker, {
+        taskerId,
+        isFavourite: true,
+      })
+    ).rejects.toThrow("You cannot favourite yourself");
+  });
+
   test("updateTaskerProfile updates displayName and bio", async () => {
     const t = convexTest(schema, modules);
     

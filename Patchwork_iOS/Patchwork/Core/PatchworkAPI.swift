@@ -136,6 +136,13 @@ struct PatchworkAPI {
                 args: ["limit": limit]
             )
         }
+
+        func setFavourite(taskerId: ConvexID, isFavourite: Bool) async throws -> TaskerFavouriteResult {
+            try await client.mutation(
+                "taskers:setFavouriteTasker",
+                args: ["taskerId": taskerId, "isFavourite": isFavourite]
+            )
+        }
     }
 
     struct Users {
@@ -157,4 +164,8 @@ struct PatchworkAPI {
             )
         }
     }
+}
+
+struct TaskerFavouriteResult: Codable, Hashable {
+    let isFavourite: Bool
 }

@@ -204,7 +204,6 @@ async function ensureSeekerProfile(ctx: any, userId: any) {
     completedJobs: 0,
     rating: 5,
     ratingCount: 1,
-    favouriteTaskers: [],
     updatedAt: Date.now(),
   });
 

@@ -120,6 +120,7 @@ struct TaskerDetail: Codable, Hashable {
     let completedJobs: Int?
     let userPhotoUrl: String?
     let profileImage: RemoteImageAsset?
+    let isFavourite: Bool
     let reviews: [TaskerReview]
     let categoryProfiles: [TaskerCategoryProfile]
 
@@ -134,6 +135,7 @@ struct TaskerDetail: Codable, Hashable {
         case completedJobs
         case userPhotoUrl
         case profileImage
+        case isFavourite
         case reviews
         case categoryProfiles = "categories"
     }

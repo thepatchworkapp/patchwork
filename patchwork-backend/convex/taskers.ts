@@ -27,6 +27,12 @@ import {
 
 const MAX_CATEGORY_BIO_LENGTH = 500;
 const MAX_CATEGORY_PORTFOLIO_ASSETS = 10;
+const DEFAULT_FAVOURITE_LIMIT = 50;
+const MAX_FAVOURITE_LIMIT = 50;
+
+const favouriteStatusValidator = v.object({
+  isFavourite: v.boolean(),
+});
 
 function buildSubscriptionView(profile: {
   subscriptionPlan: "none" | "tasker";
@@ -673,6 +679,14 @@ export const getTaskerById = query({
         };
       })
     );
+    const favourite = session
+      ? await ctx.db
+        .query("favouriteTaskers")
+        .withIndex("by_seeker_tasker", (q) =>
+          q.eq("seekerId", session.user._id).eq("taskerUserId", profile.userId)
+        )
+        .unique()
+      : null;
 
     return {
       id: profile._id,
@@ -687,9 +701,53 @@ export const getTaskerById = query({
       userPhoto: user.photo,
       userPhotoUrl,
       profileImage,
+      isFavourite: !!favourite,
       categories: categoriesWithNames,
       reviews: reviewsWithReviewers,
     };
+  },
+});
+
+export const setFavouriteTasker = mutation({
+  args: {
+    taskerId: v.id("taskerProfiles"),
+    isFavourite: v.boolean(),
+  },
+  returns: favouriteStatusValidator,
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+    const profile = await ctx.db.get(args.taskerId);
+    if (!profile || !profile.isOnboarded) {
+      throw new ConvexError("Tasker profile not found");
+    }
+    if (profile.userId === user._id) {
+      throw new ConvexError("You cannot favourite yourself");
+    }
+
+    const existing = await ctx.db
+      .query("favouriteTaskers")
+      .withIndex("by_seeker_tasker", (q) =>
+        q.eq("seekerId", user._id).eq("taskerUserId", profile.userId)
+      )
+      .unique();
+
+    if (args.isFavourite) {
+      if (!existing) {
+        const now = Date.now();
+        await ctx.db.insert("favouriteTaskers", {
+          seekerId: user._id,
+          taskerUserId: profile.userId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      return { isFavourite: true };
+    }
+
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+    return { isFavourite: false };
   },
 });
 
@@ -710,8 +768,13 @@ export const listFavouriteTaskers = query({
 
     if (!seekerProfile) return [];
 
-    const limit = Math.max(1, Math.min(args.limit ?? 50, 50));
-    const favouriteUserIds = seekerProfile.favouriteTaskers.slice(0, limit);
+    const limit = Math.max(1, Math.min(args.limit ?? DEFAULT_FAVOURITE_LIMIT, MAX_FAVOURITE_LIMIT));
+    const favouriteRows = await ctx.db
+      .query("favouriteTaskers")
+      .withIndex("by_seeker_createdAt", (q) => q.eq("seekerId", user._id))
+      .order("desc")
+      .take(limit);
+    const favouriteUserIds = favouriteRows.map((row) => row.taskerUserId);
 
     const results = await Promise.all(
       favouriteUserIds.map(async (favouriteUserId) => {

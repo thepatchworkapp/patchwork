@@ -13,6 +13,8 @@ import {
 } from "./imageAssetHelpers";
 import { requireAppUser } from "./authHelpers";
 
+const ACCOUNT_CLEANUP_BATCH_SIZE = 1000;
+
 function tombstoneEmail(userId: string) {
   return `deleted+${userId}@deleted.patchwork.local`;
 }
@@ -84,6 +86,26 @@ async function deleteLooseStorageFiles(ctx: any, storageIds: Set<string>) {
   }
 
   return { deleted, failed };
+}
+
+async function deleteFavouriteRowsForUser(ctx: any, userId: any) {
+  while (true) {
+    const rows = await ctx.db
+      .query("favouriteTaskers")
+      .withIndex("by_seeker_createdAt", (q: any) => q.eq("seekerId", userId))
+      .take(ACCOUNT_CLEANUP_BATCH_SIZE);
+    if (!rows.length) break;
+    await Promise.all(rows.map((row: any) => ctx.db.delete(row._id)));
+  }
+
+  while (true) {
+    const rows = await ctx.db
+      .query("favouriteTaskers")
+      .withIndex("by_tasker_user", (q: any) => q.eq("taskerUserId", userId))
+      .take(ACCOUNT_CLEANUP_BATCH_SIZE);
+    if (!rows.length) break;
+    await Promise.all(rows.map((row: any) => ctx.db.delete(row._id)));
+  }
 }
 
 export const createProfile = mutation({
@@ -164,7 +186,6 @@ export const createProfile = mutation({
       completedJobs: 0,
       rating: 0,
       ratingCount: 0,
-      favouriteTaskers: [],
       updatedAt: now,
     });
 
@@ -349,19 +370,7 @@ export const deleteAccount = mutation({
       await ctx.db.delete(seekerProfile._id);
     }
 
-    const seekerProfiles = await ctx.db.query("seekerProfiles").collect();
-    await Promise.all(
-      seekerProfiles.map(async (profile) => {
-        if (!profile.favouriteTaskers.some((taskerId) => taskerId === user._id)) {
-          return;
-        }
-
-        await ctx.db.patch(profile._id, {
-          favouriteTaskers: profile.favouriteTaskers.filter((taskerId) => taskerId !== user._id),
-          updatedAt: now,
-        });
-      })
-    );
+    await deleteFavouriteRowsForUser(ctx, user._id);
 
     await ctx.db.patch(user._id, {
       authId: tombstoneAuthId(user._id, now),

@@ -228,6 +228,7 @@ export const taskerDetailValidator = v.object({
   userPhoto: v.optional(v.id("_storage")),
   userPhotoUrl: v.union(v.string(), v.null()),
   profileImage: v.union(imageAssetValidator, v.null()),
+  isFavourite: v.boolean(),
   categories: v.array(taskerPublicCategoryValidator),
   reviews: v.array(taskerReviewValidator),
 });
