@@ -69,4 +69,5 @@
 
 - [ ] Deploy the local Convex changes that add `POST /revenuecat/webhook` and the `subscription | lifetime` contract.
 - [ ] Set `REVENUECAT_WEBHOOK_AUTHORIZATION` in production Convex.
+- [ ] Set `REVENUECAT_SECRET_API_KEY` in production Convex for server-side subscriber reconciliation and admin reset cleanup.
 - [ ] Create the RevenueCat webhook integration against the live Convex site URL.
