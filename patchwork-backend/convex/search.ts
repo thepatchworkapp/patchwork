@@ -2,13 +2,10 @@ import { query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { taskerGeo } from "./geospatial";
+import { buildTaskerSummaryDto } from "../lib/convex/dtoTaskers";
 import { getEffectiveGhostMode, hasActiveSubscription } from "../lib/convex/subscriptionState";
 import { searchTaskerResultValidator } from "../lib/convex/validators";
 import { getAppUserOrNull } from "./authHelpers";
-import {
-  getTaskerCategoryPortfolioImageDtos,
-  getTaskerProfileImageAssetDto,
-} from "./imageAssetHelpers";
 
 const MAX_SERVICE_RADIUS_KM = 250;
 const MAX_GEO_RESULTS = 100;
@@ -108,65 +105,26 @@ export const searchTaskers = query({
         }
       }
 
-      const price = formatPrice(
-        categoryData.rateType,
-        categoryData.hourlyRate,
-        categoryData.fixedRate
-      );
-
-      const avatarUrl = includeUrls && user.photo ? await ctx.storage.getUrl(user.photo) : null;
-      const avatarImage = await getTaskerProfileImageAssetDto(ctx, user, profile, includeUrls);
-      const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, categoryData, includeUrls);
-      const categoryPhotoStorageId = categoryData.photos?.[0];
-      const categoryPhotoUrl = categoryImages.coverImage?.variants.display.url
-        ?? (includeUrls && categoryPhotoStorageId
-          ? await ctx.storage.getUrl(categoryPhotoStorageId)
-          : null);
-
       const distanceKm = geoResult.distance / 1000;
       const maxOverlapDistance = args.radiusKm + categoryData.serviceRadius;
       if (distanceKm > maxOverlapDistance) {
         continue;
       }
 
-      results.push({
-        id: profile._id,
-        userId: profile.userId,
-        name: profile.displayName,
-        category: currentCategory?.name || "",
-        rating: categoryData.rating,
-        reviews: categoryData.reviewCount,
-        price,
+      results.push(await buildTaskerSummaryDto(ctx, {
+        profile,
+        user,
+        category: currentCategory,
+        categoryData,
         distance: formatDistance(distanceKm),
-        verified: profile.verified,
-        bio: categoryData.bio,
         completedJobs: categoryData.completedJobs,
-        avatarUrl,
-        categoryPhotoUrl,
-        avatarImage,
-        categoryCoverImage: categoryImages.coverImage,
-      });
+        includeUrls,
+      }));
     }
 
     return results;
   },
 });
-
-function formatPrice(
-  rateType: "hourly" | "fixed",
-  hourlyRate: number | undefined,
-  fixedRate: number | undefined
-): string {
-  if (rateType === "hourly" && hourlyRate) {
-    const dollars = hourlyRate / 100;
-    return `$${dollars}/hr`;
-  }
-  if (rateType === "fixed" && fixedRate) {
-    const dollars = fixedRate / 100;
-    return `$${dollars} flat`;
-  }
-  return "$0/hr";
-}
 
 function formatDistance(distanceKm: number): string {
   return `${distanceKm.toFixed(1)} km`;

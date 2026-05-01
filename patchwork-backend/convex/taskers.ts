@@ -13,6 +13,7 @@ import {
   taskerDetailValidator,
   taskerProfileResponseValidator,
 } from "../lib/convex/validators";
+import { buildTaskerSummaryDto } from "../lib/convex/dtoTaskers";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 import {
   deleteImageAssetIfUnreferenced,
@@ -742,52 +743,21 @@ export const listFavouriteTaskers = query({
           return null;
         }
 
-        const avatarUrl = taskerUser.photo ? await ctx.storage.getUrl(taskerUser.photo) : null;
-        const avatarImage = await getTaskerProfileImageAssetDto(ctx, taskerUser, profile, true);
-        const categoryImages = await getTaskerCategoryPortfolioImageDtos(ctx, categoryData, true);
-        const categoryPhotoStorageId = categoryData.photos?.[0];
-        const categoryPhotoUrl = categoryImages.coverImage?.variants.display.url
-          ?? (categoryPhotoStorageId ? await ctx.storage.getUrl(categoryPhotoStorageId) : null);
-
-        return {
-          id: profile._id,
-          userId: profile.userId,
-          name: profile.displayName,
-          category: category.name,
-          rating: categoryData.rating,
-          reviews: categoryData.reviewCount,
-          price: formatTaskerSummaryPrice(categoryData.rateType, categoryData.hourlyRate, categoryData.fixedRate),
+        return await buildTaskerSummaryDto(ctx, {
+          profile,
+          user: taskerUser,
+          category,
+          categoryData,
           distance: "",
-          verified: profile.verified,
-          bio: categoryData.bio,
           completedJobs: profile.completedJobs,
-          avatarUrl,
-          categoryPhotoUrl,
-          avatarImage,
-          categoryCoverImage: categoryImages.coverImage,
-        };
+          includeUrls: true,
+        });
       })
     );
 
     return results.filter((result): result is NonNullable<typeof result> => result !== null);
   },
 });
-
-function formatTaskerSummaryPrice(
-  rateType: "hourly" | "fixed",
-  hourlyRate: number | undefined,
-  fixedRate: number | undefined
-): string {
-  if (rateType === "hourly" && hourlyRate) {
-    const dollars = hourlyRate / 100;
-    return `$${dollars}/hr`;
-  }
-  if (rateType === "fixed" && fixedRate) {
-    const dollars = fixedRate / 100;
-    return `$${dollars} flat`;
-  }
-  return "$0/hr";
-}
 
 export const removeTaskerCategory = mutation({
   args: {
