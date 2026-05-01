@@ -3,6 +3,28 @@ import Foundation
 import UIKit
 
 actor PatchworkImageCache {
+    struct Configuration {
+        let memoryCountLimit: Int
+        let decodedImageMemoryLimit: Int
+        let diskSizeLimit: Int
+        let diskAgeLimit: TimeInterval
+        let trimInterval: TimeInterval
+
+        init(
+            memoryCountLimit: Int = 200,
+            decodedImageMemoryLimit: Int = 80 * 1024 * 1024,
+            diskSizeLimit: Int = 150 * 1024 * 1024,
+            diskAgeLimit: TimeInterval = 30 * 24 * 60 * 60,
+            trimInterval: TimeInterval = 60 * 60
+        ) {
+            self.memoryCountLimit = memoryCountLimit
+            self.decodedImageMemoryLimit = decodedImageMemoryLimit
+            self.diskSizeLimit = diskSizeLimit
+            self.diskAgeLimit = diskAgeLimit
+            self.trimInterval = trimInterval
+        }
+    }
+
     enum VariantPreference: String, CaseIterable, Hashable {
         case thumb
         case display
@@ -27,19 +49,24 @@ actor PatchworkImageCache {
 
     static let shared = PatchworkImageCache()
 
-    private let memoryCache = NSCache<NSString, NSData>()
+    private let dataCache = NSCache<NSString, NSData>()
+    private let decodedImageCache = NSCache<NSString, UIImage>()
     private let diskDirectoryURL: URL
     private let fileManager: FileManager
     private let urlSession: URLSession
+    private let configuration: Configuration
+    private var inFlightDownloads: [String: Task<Data?, Never>] = [:]
+    private var lastTrimDate: Date?
 
     init(
         fileManager: FileManager = .default,
         urlSession: URLSession = .shared,
         diskDirectoryURL: URL? = nil,
-        memoryCountLimit: Int = 200
+        configuration: Configuration = Configuration()
     ) {
         self.fileManager = fileManager
         self.urlSession = urlSession
+        self.configuration = configuration
 
         let defaultDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
             .first?
@@ -47,7 +74,8 @@ actor PatchworkImageCache {
         self.diskDirectoryURL = diskDirectoryURL ?? defaultDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("PatchworkImageCache", isDirectory: true)
 
-        memoryCache.countLimit = memoryCountLimit
+        dataCache.countLimit = configuration.memoryCountLimit
+        decodedImageCache.totalCostLimit = configuration.decodedImageMemoryLimit
 
         do {
             try fileManager.createDirectory(
@@ -89,15 +117,7 @@ actor PatchworkImageCache {
         }
 
         let legacyKey = Self.cacheKey(legacyURL: legacyURL, variant: preferredVariant)
-        if let data = cachedData(forKey: legacyKey) {
-            return UIImage(data: data)
-        }
-
-        guard let downloaded = await download(url: url) else {
-            return nil
-        }
-        store(data: downloaded, forKey: legacyKey)
-        return UIImage(data: downloaded)
+        return await image(forKey: legacyKey, url: url)
     }
 
     func prefetch(
@@ -109,7 +129,7 @@ actor PatchworkImageCache {
     }
 
     func prefetch(requests: [PrefetchRequest]) async {
-        for request in requests {
+        for request in deduplicated(requests) {
             _ = await fetchImage(
                 asset: request.asset,
                 preferredVariant: request.preferredVariant,
@@ -117,6 +137,12 @@ actor PatchworkImageCache {
             )
         }
     }
+
+#if DEBUG
+    func trimDiskCacheForTesting() {
+        trimDiskCacheIfNeeded(force: true)
+    }
+#endif
 
     private func fetchImageFromAsset(
         _ asset: RemoteImageAsset?,
@@ -133,16 +159,9 @@ actor PatchworkImageCache {
             }
 
             let key = Self.cacheKey(asset: asset, variant: variant)
-            if let cached = cachedData(forKey: key) {
-                return UIImage(data: cached)
+            if let image = await image(forKey: key, url: url) {
+                return image
             }
-
-            guard let downloaded = await download(url: url) else {
-                continue
-            }
-
-            store(data: downloaded, forKey: key)
-            return UIImage(data: downloaded)
         }
 
         return nil
@@ -170,8 +189,48 @@ actor PatchworkImageCache {
         }
     }
 
+    private func image(forKey key: String, url: URL) async -> UIImage? {
+        if let decoded = decodedImageCache.object(forKey: key as NSString) {
+            return decoded
+        }
+
+        if let cached = cachedData(forKey: key),
+           let image = decodedImage(from: cached, forKey: key) {
+            return image
+        }
+
+        guard let downloaded = await data(forKey: key, url: url) else {
+            return nil
+        }
+
+        store(data: downloaded, forKey: key)
+        return decodedImage(from: downloaded, forKey: key)
+    }
+
+    private func data(forKey key: String, url: URL) async -> Data? {
+        if let existingTask = inFlightDownloads[key] {
+            return await existingTask.value
+        }
+
+        let task = Task<Data?, Never> {
+            await download(url: url)
+        }
+        inFlightDownloads[key] = task
+        let data = await task.value
+        inFlightDownloads[key] = nil
+        return data
+    }
+
+    private func decodedImage(from data: Data, forKey key: String) -> UIImage? {
+        guard let image = UIImage(data: data) else {
+            return nil
+        }
+        decodedImageCache.setObject(image, forKey: key as NSString, cost: image.decodedCacheCost)
+        return image
+    }
+
     private func cachedData(forKey key: String) -> Data? {
-        if let inMemory = memoryCache.object(forKey: key as NSString) {
+        if let inMemory = dataCache.object(forKey: key as NSString) {
             return Data(referencing: inMemory)
         }
 
@@ -180,18 +239,92 @@ actor PatchworkImageCache {
             return nil
         }
 
-        memoryCache.setObject(diskData as NSData, forKey: key as NSString)
+        dataCache.setObject(diskData as NSData, forKey: key as NSString)
+        updateAccessDate(for: diskURL)
         return diskData
     }
 
     private func store(data: Data, forKey key: String) {
-        memoryCache.setObject(data as NSData, forKey: key as NSString)
+        dataCache.setObject(data as NSData, forKey: key as NSString)
         let diskURL = fileURL(for: key)
         try? data.write(to: diskURL, options: .atomic)
+        trimDiskCacheIfNeeded()
     }
 
     private func fileURL(for key: String) -> URL {
         diskDirectoryURL.appendingPathComponent(key).appendingPathExtension("cache")
+    }
+
+    private func deduplicated(_ requests: [PrefetchRequest]) -> [PrefetchRequest] {
+        var seen = Set<PrefetchRequest>()
+        var result: [PrefetchRequest] = []
+        for request in requests where seen.insert(request).inserted {
+            result.append(request)
+        }
+        return result
+    }
+
+    private func updateAccessDate(for url: URL) {
+        try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+    }
+
+    private func trimDiskCacheIfNeeded(force: Bool = false) {
+        let now = Date()
+        if !force,
+           let lastTrimDate,
+           now.timeIntervalSince(lastTrimDate) < configuration.trimInterval {
+            return
+        }
+
+        lastTrimDate = now
+        trimDiskCache(now: now)
+    }
+
+    private func trimDiskCache(now: Date) {
+        guard let enumerator = fileManager.enumerator(
+            at: diskDirectoryURL,
+            includingPropertiesForKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        var entries: [(url: URL, date: Date, size: Int)] = []
+        var totalSize = 0
+
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension == "cache" else {
+                continue
+            }
+
+            let values = try? fileURL.resourceValues(forKeys: [
+                .contentModificationDateKey,
+                .totalFileAllocatedSizeKey,
+                .fileSizeKey,
+            ])
+            let date = values?.contentModificationDate ?? .distantPast
+            let size = values?.totalFileAllocatedSize ?? values?.fileSize ?? 0
+
+            if now.timeIntervalSince(date) > configuration.diskAgeLimit {
+                try? fileManager.removeItem(at: fileURL)
+                continue
+            }
+
+            entries.append((fileURL, date, size))
+            totalSize += size
+        }
+
+        guard totalSize > configuration.diskSizeLimit else {
+            return
+        }
+
+        for entry in entries.sorted(by: { $0.date < $1.date }) {
+            try? fileManager.removeItem(at: entry.url)
+            totalSize -= entry.size
+            if totalSize <= configuration.diskSizeLimit {
+                break
+            }
+        }
     }
 
     private func download(url: URL) async -> Data? {
@@ -205,5 +338,13 @@ actor PatchworkImageCache {
         } catch {
             return nil
         }
+    }
+}
+
+private extension UIImage {
+    var decodedCacheCost: Int {
+        let width = Int(size.width * scale)
+        let height = Int(size.height * scale)
+        return max(width * height * 4, 1)
     }
 }

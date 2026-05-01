@@ -271,6 +271,70 @@ describe("image asset contract", () => {
     ).rejects.toThrow("Image asset not found");
   });
 
+  test("image asset DTO cacheKey includes id and updatedAt and changes after asset update", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|image_asset_cache_key",
+      email: "image_asset_cache_key@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Image Asset Cache Key",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asset = await createImageAsset(t, asUser, "userPhoto");
+    expect(asset.cacheKey).toBe(`${asset._id}:${asset.updatedAt}`);
+
+    const nextUpdatedAt = asset.updatedAt + 10_000;
+    await t.run(async (ctx) => {
+      await ctx.db.patch(asset._id, { updatedAt: nextUpdatedAt });
+    });
+
+    const updatedAsset = await asUser.query(api.files.getImageAsset, {
+      imageAssetId: asset._id,
+    });
+
+    expect(updatedAsset?._id).toBe(asset._id);
+    expect(updatedAsset?.updatedAt).toBe(nextUpdatedAt);
+    expect(updatedAsset?.cacheKey).toBe(`${asset._id}:${nextUpdatedAt}`);
+    expect(updatedAsset?.cacheKey).not.toBe(asset.cacheKey);
+  });
+
+  test("profile photo replacement returns a new image asset cacheKey", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|profile_photo_cache_key_replace",
+      email: "profile_photo_cache_key_replace@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Profile Photo Cache Key Replace",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const firstPhoto = await createImageAsset(t, asUser, "userPhoto");
+    const secondPhoto = await createImageAsset(t, asUser, "userPhoto");
+
+    const firstProfile = await asUser.mutation(api.users.updateProfilePhoto, {
+      photoAssetId: firstPhoto._id,
+    });
+    const secondProfile = await asUser.mutation(api.users.updateProfilePhoto, {
+      photoAssetId: secondPhoto._id,
+    });
+
+    expect(firstProfile.photoImage?.cacheKey).toBe(
+      `${firstProfile.photoImage?._id}:${firstProfile.photoImage?.updatedAt}`
+    );
+    expect(secondProfile.photoImage?.cacheKey).toBe(
+      `${secondProfile.photoImage?._id}:${secondProfile.photoImage?.updatedAt}`
+    );
+    expect(secondProfile.photoImage?._id).toBe(secondPhoto._id);
+    expect(secondProfile.photoImage?.cacheKey).not.toBe(firstProfile.photoImage?.cacheKey);
+  });
+
   test("deleteImageAsset marks asset deleted and removes variant storage", async () => {
     const t = convexTest(schema, modules);
     const asUser = t.withIdentity({
@@ -292,8 +356,18 @@ describe("image asset contract", () => {
     });
 
     expect(deleted?.status).toBe("deleted");
+    expect(deleted?.variants.thumb.url).toBeNull();
+    expect(deleted?.variants.display.url).toBeNull();
+    expect(deleted?.variants.large?.url).toBeUndefined();
     const storedAsset = await t.run(async (ctx) => await ctx.db.get(asset._id));
     expect(storedAsset?.status).toBe("deleted");
+    const queriedDeleted = await asUser.query(api.files.getImageAsset, {
+      imageAssetId: asset._id,
+    });
+    expect(queriedDeleted?.status).toBe("deleted");
+    expect(queriedDeleted?.variants.thumb.url).toBeNull();
+    expect(queriedDeleted?.variants.display.url).toBeNull();
+    expect(queriedDeleted?.variants.large?.url).toBeUndefined();
     await expectStorageIdsDeleted(t, storageIds);
   });
 

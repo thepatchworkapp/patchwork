@@ -235,6 +235,9 @@ final class AppState {
     func loadTaskerDetail(client: ConvexHTTPClient, taskerId: ConvexID) async {
         do {
             selectedTasker = try await PatchworkAPI(client: client).taskers.get(taskerId: taskerId)
+            if let selectedTasker {
+                prefetchTaskerDetailImages(selectedTasker)
+            }
         } catch {
             presentError(error, prefix: "Failed to load tasker details")
         }
@@ -412,6 +415,33 @@ final class AppState {
             )
         }
         guard !requests.isEmpty else { return }
+        Task(priority: .utility) {
+            await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
+    }
+
+    private func prefetchTaskerDetailImages(_ tasker: TaskerDetail) {
+        let firstCategory = tasker.categoryProfiles.first
+        var requests = [
+            PatchworkImageCache.PrefetchRequest(
+                asset: tasker.profileImage,
+                preferredVariant: .thumb,
+                legacyURL: tasker.userPhotoUrl
+            ),
+            PatchworkImageCache.PrefetchRequest(
+                asset: firstCategory?.coverImage ?? firstCategory?.portfolioImages?.first,
+                preferredVariant: .large,
+                legacyURL: firstCategory?.firstPhotoUrl
+            ),
+        ]
+
+        requests.append(contentsOf: (firstCategory?.portfolioImages ?? []).prefix(Self.imagePrefetchCount).map { asset in
+            PatchworkImageCache.PrefetchRequest(
+                asset: asset,
+                preferredVariant: .display
+            )
+        })
+
         Task(priority: .utility) {
             await PatchworkImageCache.shared.prefetch(requests: requests)
         }
