@@ -507,4 +507,53 @@ describe("feedback", () => {
       vi.resetModules();
     }
   });
+
+  test("admin resetDatabaseAndRevenueCat sends JSON content type when deleting RevenueCat customers", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    const previousRevenueCatSecret = process.env.REVENUECAT_SECRET_API_KEY;
+    const originalFetch = globalThis.fetch;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+    process.env.REVENUECAT_SECRET_API_KEY = "secret_test_key";
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ deleted: true }), { status: 200 }));
+    globalThis.fetch = fetchMock;
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules());
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reset-revenuecat-delete",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-user-reset-revenuecat-delete",
+        email: "feedback-reset-revenuecat-delete@example.com",
+      });
+
+      await asUser.mutation(api.users.createProfile, {
+        name: "RevenueCat Delete User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      const result = await asAdmin.action((api as any).admin.resetDatabaseAndRevenueCat, {});
+
+      expect(result.revenueCatCleanup.status).toBe("completed");
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(init?.method).toBe("DELETE");
+      expect(init?.headers).toMatchObject({
+        Authorization: "Bearer secret_test_key",
+        "Content-Type": "application/json",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      if (previousRevenueCatSecret === undefined) {
+        delete process.env.REVENUECAT_SECRET_API_KEY;
+      } else {
+        process.env.REVENUECAT_SECRET_API_KEY = previousRevenueCatSecret;
+      }
+      vi.resetModules();
+    }
+  });
 });

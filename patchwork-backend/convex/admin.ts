@@ -406,6 +406,7 @@ async function deleteRevenueCatCustomer(appUserId: string, secretApiKey: string)
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${secretApiKey}`,
+        "Content-Type": "application/json",
       },
     },
   );
