@@ -434,7 +434,11 @@ export default defineSchema({
      .index("by_tasker", ["taskerId"])
      .index("by_status", ["status"])
      .index("by_seeker_status", ["seekerId", "status"])
-     .index("by_tasker_status", ["taskerId", "status"]),
+     .index("by_tasker_status", ["taskerId", "status"])
+     .index("by_seeker_updated", ["seekerId", "updatedAt"])
+     .index("by_tasker_updated", ["taskerId", "updatedAt"])
+     .index("by_seeker_status_updated", ["seekerId", "status", "updatedAt"])
+     .index("by_tasker_status_updated", ["taskerId", "status", "updatedAt"]),
 
    /**
     * Review for a completed job (bidirectional)

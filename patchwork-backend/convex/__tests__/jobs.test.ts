@@ -2,7 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import { api, internal } from "../_generated/api";
 import schema from "../schema";
-import { Doc } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
 import * as messagesModule from "../messages";
@@ -32,6 +32,85 @@ const modules: Record<string, () => Promise<any>> = {
 };
 
 describe("jobs", () => {
+  const createListJobsFixture = async (t: ReturnType<typeof convexTest>) => {
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: `google|list_jobs_seeker_${crypto.randomUUID()}`,
+      email: `list_jobs_seeker_${crypto.randomUUID()}@example.com`,
+    });
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "List Jobs Seeker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: `google|list_jobs_tasker_${crypto.randomUUID()}`,
+      email: `list_jobs_tasker_${crypto.randomUUID()}@example.com`,
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "List Jobs Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const categoryId = await t.run(async (ctx) => {
+      return await ctx.db.insert("categories", {
+        name: "List Jobs Category",
+        slug: `list-jobs-${crypto.randomUUID()}`,
+        isActive: true,
+      });
+    });
+
+    const createJob = async (
+      overrides: {
+        status: Doc<"jobs">["status"];
+        updatedAt: number;
+        seekerId?: Id<"users">;
+        taskerId?: Id<"users">;
+      }
+    ) => {
+      return await t.run(async (ctx) => {
+        const now = overrides.updatedAt;
+        const conversationId = await ctx.db.insert("conversations", {
+          seekerId: overrides.seekerId ?? seekerId,
+          taskerId: overrides.taskerId ?? taskerId,
+          lastMessageAt: now,
+          seekerUnreadCount: 0,
+          taskerUnreadCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const proposalId = await ctx.db.insert("proposals", {
+          conversationId,
+          senderId: overrides.taskerId ?? taskerId,
+          receiverId: overrides.seekerId ?? seekerId,
+          rate: 5000,
+          rateType: "hourly",
+          startDateTime: "2026-02-15T10:00:00Z",
+          status: "accepted",
+          createdAt: now,
+          updatedAt: now,
+        });
+        return await ctx.db.insert("jobs", {
+          seekerId: overrides.seekerId ?? seekerId,
+          taskerId: overrides.taskerId ?? taskerId,
+          proposalId,
+          categoryId,
+          categoryName: "List Jobs Category",
+          description: "Controlled listJobs fixture",
+          rate: 5000,
+          rateType: "hourly",
+          startDate: "2026-02-15T10:00:00Z",
+          status: overrides.status,
+          createdAt: now - 100,
+          updatedAt: now,
+        });
+      });
+    };
+
+    return { asSeeker, asTasker, seekerId, taskerId, createJob };
+  };
+
   test("job created when proposal accepted", async () => {
     const t = convexTest(schema, modules);
 
@@ -342,6 +421,151 @@ describe("jobs", () => {
 
     const shouldNotExist = completedJobs.find((j) => j._id === result.jobId);
     expect(shouldNotExist).toBeUndefined();
+  });
+
+  test("listJobs orders mixed statuses by most recent update", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, createJob } = await createListJobsFixture(t);
+
+    const olderPendingId = await createJob({
+      status: "pending",
+      updatedAt: 1000,
+    });
+    const newestCompletedId = await createJob({
+      status: "completed",
+      updatedAt: 3000,
+    });
+    const middleInProgressId = await createJob({
+      status: "in_progress",
+      updatedAt: 2000,
+    });
+
+    const jobs = await asSeeker.query(api.jobs.listJobs, { limit: 3 });
+
+    expect(jobs.map((job) => job._id)).toEqual([
+      newestCompletedId,
+      middleInProgressId,
+      olderPendingId,
+    ]);
+  });
+
+  test("listJobs statusGroup active orders pending and in_progress jobs by recency", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, createJob } = await createListJobsFixture(t);
+
+    await createJob({
+      status: "pending",
+      updatedAt: 1000,
+    });
+    const newestPendingId = await createJob({
+      status: "pending",
+      updatedAt: 4000,
+    });
+    const middleInProgressId = await createJob({
+      status: "in_progress",
+      updatedAt: 3000,
+    });
+    await createJob({
+      status: "completed",
+      updatedAt: 5000,
+    });
+
+    const jobs = await asSeeker.query(api.jobs.listJobs, {
+      statusGroup: "active",
+      limit: 2,
+    });
+
+    expect(jobs.map((job) => job._id)).toEqual([
+      newestPendingId,
+      middleInProgressId,
+    ]);
+    expect(jobs.every((job) => ["pending", "in_progress"].includes(job.status))).toBe(true);
+  });
+
+  test("listJobs statusGroup completed returns completed jobs only within limit", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, createJob } = await createListJobsFixture(t);
+
+    const newestCompletedId = await createJob({
+      status: "completed",
+      updatedAt: 7000,
+    });
+    const olderCompletedId = await createJob({
+      status: "completed",
+      updatedAt: 5000,
+    });
+    await createJob({
+      status: "pending",
+      updatedAt: 9000,
+    });
+    await createJob({
+      status: "in_progress",
+      updatedAt: 8000,
+    });
+
+    const jobs = await asSeeker.query(api.jobs.listJobs, {
+      statusGroup: "completed",
+      limit: 2,
+    });
+
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((job) => job._id)).toEqual([newestCompletedId, olderCompletedId]);
+    expect(jobs.every((job) => job.status === "completed")).toBe(true);
+  });
+
+  test("listJobs status takes precedence over statusGroup", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, createJob } = await createListJobsFixture(t);
+
+    const completedId = await createJob({
+      status: "completed",
+      updatedAt: 1000,
+    });
+    await createJob({
+      status: "pending",
+      updatedAt: 3000,
+    });
+    await createJob({
+      status: "in_progress",
+      updatedAt: 2000,
+    });
+
+    const jobs = await asSeeker.query(api.jobs.listJobs, {
+      status: "completed",
+      statusGroup: "active",
+      limit: 10,
+    });
+
+    expect(jobs.map((job) => job._id)).toEqual([completedId]);
+    expect(jobs.every((job) => job.status === "completed")).toBe(true);
+  });
+
+  test("listJobs deduplicates seeker/tasker matches before applying limit", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, seekerId, createJob } = await createListJobsFixture(t);
+
+    const newestSelfMatchedId = await createJob({
+      status: "in_progress",
+      updatedAt: 5000,
+      taskerId: seekerId,
+    });
+    const secondNewestId = await createJob({
+      status: "pending",
+      updatedAt: 4000,
+    });
+    await createJob({
+      status: "completed",
+      updatedAt: 3000,
+    });
+
+    const jobs = await asSeeker.query(api.jobs.listJobs, { limit: 2 });
+
+    expect(jobs).toHaveLength(2);
+    expect(new Set(jobs.map((job) => job._id)).size).toBe(2);
+    expect(jobs.map((job) => job._id)).toEqual([
+      newestSelfMatchedId,
+      secondNewestId,
+    ]);
   });
 
   test("seeker can complete in_progress job", async () => {

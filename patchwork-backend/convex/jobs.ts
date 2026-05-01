@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
 import { jobValidator, listedJobValidator } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 import {
@@ -8,6 +9,31 @@ import {
 } from "./imageAssetHelpers";
 
 type JobStatus = "pending" | "in_progress" | "completed" | "cancelled" | "disputed";
+type JobRole = "seeker" | "tasker";
+
+const normalizeLimit = (limit?: number) => Math.max(1, Math.min(limit ?? 50, 100));
+
+const statusesForArgs = (args: { status?: JobStatus; statusGroup?: "active" | "completed" }) => {
+  if (args.status) return [args.status];
+  if (args.statusGroup === "active") return ["pending", "in_progress"] satisfies JobStatus[];
+  if (args.statusGroup === "completed") return ["completed"] satisfies JobStatus[];
+  return null;
+};
+
+const compareJobsByRecency = (a: Doc<"jobs">, b: Doc<"jobs">) => {
+  if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+  if (b._creationTime !== a._creationTime) return b._creationTime - a._creationTime;
+  return String(b._id).localeCompare(String(a._id));
+};
+
+const dedupeSortAndLimitJobs = (jobs: Doc<"jobs">[], limit: number) => {
+  const jobMap = new Map<string, Doc<"jobs">>();
+  for (const job of jobs) {
+    jobMap.set(job._id, job);
+  }
+
+  return Array.from(jobMap.values()).sort(compareJobsByRecency).slice(0, limit);
+};
 
 export const createJob = internalMutation({
   args: { proposalId: v.id("proposals") },
@@ -100,31 +126,42 @@ export const listJobs = query({
     if (!session) return [];
     const { user } = session;
 
-    const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
+    const limit = normalizeLimit(args.limit);
+    const statuses = statusesForArgs(args);
 
-    const statuses: JobStatus[] | null = args.status
-      ? [args.status]
-      : args.statusGroup === "active"
-        ? ["pending", "in_progress"]
-        : args.statusGroup === "completed"
-          ? ["completed"]
-          : null;
-
-    const getSeekerJobs = async () => {
+    const listJobsForRole = async (role: JobRole) => {
       if (!statuses) {
+        if (role === "seeker") {
+          return await ctx.db
+            .query("jobs")
+            .withIndex("by_seeker_updated", (q) => q.eq("seekerId", user._id))
+            .order("desc")
+            .take(limit);
+        }
+
         return await ctx.db
           .query("jobs")
-          .withIndex("by_seeker_status", (q) => q.eq("seekerId", user._id))
+          .withIndex("by_tasker_updated", (q) => q.eq("taskerId", user._id))
           .order("desc")
           .take(limit);
       }
 
       const results = await Promise.all(
         statuses.map(async (status) => {
+          if (role === "seeker") {
+            return await ctx.db
+              .query("jobs")
+              .withIndex("by_seeker_status_updated", (q) =>
+                q.eq("seekerId", user._id).eq("status", status)
+              )
+              .order("desc")
+              .take(limit);
+          }
+
           return await ctx.db
             .query("jobs")
-            .withIndex("by_seeker_status", (q) =>
-              q.eq("seekerId", user._id).eq("status", status as JobStatus)
+            .withIndex("by_tasker_status_updated", (q) =>
+              q.eq("taskerId", user._id).eq("status", status)
             )
             .order("desc")
             .take(limit);
@@ -134,47 +171,14 @@ export const listJobs = query({
       return results.flat();
     };
 
-    const getTaskerJobs = async () => {
-      if (!statuses) {
-        return await ctx.db
-          .query("jobs")
-          .withIndex("by_tasker_status", (q) => q.eq("taskerId", user._id))
-          .order("desc")
-          .take(limit);
-      }
-
-      const results = await Promise.all(
-        statuses.map(async (status) => {
-          return await ctx.db
-            .query("jobs")
-            .withIndex("by_tasker_status", (q) =>
-              q.eq("taskerId", user._id).eq("status", status as JobStatus)
-            )
-            .order("desc")
-            .take(limit);
-        })
-      );
-
-      return results.flat();
-    };
-
-    // Get jobs where user is seeker or tasker
-    const seekerJobs = await getSeekerJobs();
-    const taskerJobs = await getTaskerJobs();
-
-    // Combine and deduplicate
-    const jobMap = new Map();
-    for (const job of seekerJobs) {
-      jobMap.set(job._id, job);
-    }
-    for (const job of taskerJobs) {
-      jobMap.set(job._id, job);
-    }
-
-    const sortedJobs = Array.from(jobMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+    const [seekerJobs, taskerJobs] = await Promise.all([
+      listJobsForRole("seeker"),
+      listJobsForRole("tasker"),
+    ]);
+    const page = dedupeSortAndLimitJobs([...seekerJobs, ...taskerJobs], limit);
 
     return await Promise.all(
-      sortedJobs.map(async (job) => {
+      page.map(async (job) => {
         const counterpartyId = job.seekerId === user._id ? job.taskerId : job.seekerId;
         const counterparty = await ctx.db.get(counterpartyId);
         const counterpartyPhotoUrl = counterparty?.photo
