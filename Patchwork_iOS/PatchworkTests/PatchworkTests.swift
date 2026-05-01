@@ -944,6 +944,104 @@ final class PatchworkTests: XCTestCase {
         XCTAssertNil(appState.lastError)
     }
 
+    @MainActor
+    func testRefreshCurrentUserOnlyFetchesCurrentUser() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let fetchedUserJSON = """
+        {
+          "_id": "user_narrow",
+          "email": "narrow@example.com",
+          "name": "Narrow User",
+          "roles": { "isSeeker": true, "isTasker": false },
+          "settings": { "notificationsEnabled": true, "locationEnabled": true }
+        }
+        """
+        var queryPaths: [String] = []
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let queryPath = try XCTUnwrap(object["path"] as? String)
+            queryPaths.append(queryPath)
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+
+            XCTAssertEqual(queryPath, "users:getCurrentUser")
+            return (response, Data("{\"status\":\"success\",\"value\":\(fetchedUserJSON)}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+
+        await appState.refreshCurrentUser(client: client)
+
+        XCTAssertEqual(queryPaths, ["users:getCurrentUser"])
+        XCTAssertEqual(appState.currentUser?.id, "user_narrow")
+        XCTAssertEqual(appState.conversations, [])
+        XCTAssertEqual(appState.jobs, [])
+        XCTAssertNil(appState.taskerProfile)
+    }
+
+    @MainActor
+    func testRefreshTaskerProfilePreservesPreviousProfileOnFailure() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+        let previousProfile = TaskerProfileSelf(
+            id: "tasker_previous",
+            displayName: "Previous Tasker",
+            bio: "Existing profile",
+            subscriptionPlan: "free",
+            subscriptionAccessType: nil,
+            subscriptionActiveAccessTypes: nil,
+            subscriptionStatus: nil,
+            subscriptionEndsAt: nil,
+            hasActiveSubscription: false,
+            ghostMode: false,
+            rating: nil,
+            reviewCount: nil,
+            completedJobs: 3,
+            verified: false,
+            responseTime: nil,
+            createdAt: nil,
+            photoSource: nil,
+            photoImage: nil,
+            categories: []
+        )
+        var queryPaths: [String] = []
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let queryPath = try XCTUnwrap(object["path"] as? String)
+            queryPaths.append(queryPath)
+            XCTAssertEqual(queryPath, "taskers:getTaskerProfile")
+            throw PatchworkError.invalidResponse
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+        appState.taskerProfile = previousProfile
+
+        await appState.refreshTaskerProfile(client: client, surfaceErrors: false)
+
+        XCTAssertEqual(queryPaths, ["taskers:getTaskerProfile"])
+        XCTAssertEqual(appState.taskerProfile, previousProfile)
+        XCTAssertNil(appState.lastError)
+    }
+
     private func makeMockSession(withStoredCookie: Bool = false) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TestURLProtocol.self]

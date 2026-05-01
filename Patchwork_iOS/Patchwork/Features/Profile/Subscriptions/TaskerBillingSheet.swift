@@ -616,7 +616,7 @@ struct TaskerBillingSheet: View {
 
         for _ in 0 ..< 6 {
             await reconcileRevenueCatWithBackend()
-            await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+            await appState.refreshTaskerProfile(client: sessionStore.client, surfaceErrors: false)
 
             if appState.taskerProfile?.hasActiveSubscription == true {
                 log("Backend sync confirmed active tasker subscription")

@@ -43,6 +43,13 @@ final class AppState {
 
     var lastError: String?
 
+    private enum CurrentUserRefreshResult {
+        case user(CurrentUser)
+        case preservedPrevious(CurrentUser)
+        case missingWithoutPrevious
+        case failedWithoutPrevious
+    }
+
     func isCancellationError(_ error: Error) -> Bool {
         if error is CancellationError {
             return true
@@ -103,68 +110,88 @@ final class AppState {
             await refreshCategories(client: client)
         }
 
-        let previousCurrentUser = currentUser
         let previousConversations = conversations
         let previousJobs = jobs
         let previousTaskerProfile = taskerProfile
-        let api = PatchworkAPI(client: client)
-        do {
-            let fetchedCurrentUser = try await api.users.current()
-            guard let fetchedCurrentUser else {
-                if let previousCurrentUser {
-                    currentUser = previousCurrentUser
-                    conversations = previousConversations
-                    jobs = previousJobs
-                    taskerProfile = previousTaskerProfile
-                    return
-                }
 
-                currentUser = nil
-                conversations = []
-                jobs = []
-                taskerProfile = nil
-                return
-            }
-
-            currentUser = fetchedCurrentUser
-
-            do {
-                conversations = try await api.conversations.list(
-                    role: conversationRole,
-                    limit: Self.defaultListLimit
-                )
-                prefetchConversationImages(conversations)
-            } catch {
-                conversations = previousConversations
-            }
-
-            do {
-                jobs = try await api.jobs.list(
-                    statusGroup: jobsStatusGroup,
-                    limit: Self.defaultListLimit
-                )
-                prefetchJobImages(jobs)
-            } catch {
-                jobs = previousJobs
-            }
-
-            do {
-                taskerProfile = try await api.taskers.currentProfile()
-            } catch {
-                taskerProfile = previousTaskerProfile
-            }
-        } catch {
-            currentUser = previousCurrentUser
+        switch await refreshCurrentUserResult(client: client, surfaceErrors: surfaceErrors) {
+        case .user, .preservedPrevious:
+            break
+        case .missingWithoutPrevious:
+            conversations = []
+            jobs = []
+            taskerProfile = nil
+            return
+        case .failedWithoutPrevious:
             conversations = previousConversations
             jobs = previousJobs
             taskerProfile = previousTaskerProfile
+            return
+        }
+
+        await refreshDashboardLists(client: client, surfaceErrors: false)
+        await refreshTaskerProfile(client: client, surfaceErrors: false)
+    }
+
+    @discardableResult
+    func refreshCurrentUser(client: ConvexHTTPClient, surfaceErrors: Bool = true) async -> CurrentUser? {
+        switch await refreshCurrentUserResult(client: client, surfaceErrors: surfaceErrors) {
+        case let .user(currentUser), let .preservedPrevious(currentUser):
+            return currentUser
+        case .missingWithoutPrevious, .failedWithoutPrevious:
+            return nil
+        }
+    }
+
+    private func refreshCurrentUserResult(
+        client: ConvexHTTPClient,
+        surfaceErrors: Bool
+    ) async -> CurrentUserRefreshResult {
+        let previousCurrentUser = currentUser
+        do {
+            let fetchedCurrentUser = try await PatchworkAPI(client: client).users.current()
+            guard let fetchedCurrentUser else {
+                if let previousCurrentUser {
+                    currentUser = previousCurrentUser
+                    return .preservedPrevious(previousCurrentUser)
+                }
+
+                currentUser = nil
+                return .missingWithoutPrevious
+            }
+
+            currentUser = fetchedCurrentUser
+            return .user(fetchedCurrentUser)
+        } catch {
+            currentUser = previousCurrentUser
             if surfaceErrors && previousCurrentUser == nil {
                 presentError(error, prefix: "Failed to refresh signed-in data")
+            }
+            if let previousCurrentUser {
+                return .preservedPrevious(previousCurrentUser)
+            }
+            return .failedWithoutPrevious
+        }
+    }
+
+    func refreshTaskerProfile(client: ConvexHTTPClient, surfaceErrors: Bool = true) async {
+        let previousTaskerProfile = taskerProfile
+        do {
+            taskerProfile = try await PatchworkAPI(client: client).taskers.currentProfile()
+        } catch {
+            taskerProfile = previousTaskerProfile
+            if surfaceErrors {
+                presentError(error, prefix: "Failed to refresh tasker profile")
             }
         }
     }
 
-    func refreshConversations(client: ConvexHTTPClient, role: String) async {
+    func refreshDashboardLists(client: ConvexHTTPClient, surfaceErrors: Bool = true) async {
+        await refreshConversations(client: client, role: conversationRole, surfaceErrors: surfaceErrors)
+        await refreshJobs(client: client, statusGroup: jobsStatusGroup, surfaceErrors: surfaceErrors)
+    }
+
+    func refreshConversations(client: ConvexHTTPClient, role: String, surfaceErrors: Bool = true) async {
         conversationRole = role
         do {
             conversations = try await PatchworkAPI(client: client).conversations.list(
@@ -173,11 +200,13 @@ final class AppState {
             )
             prefetchConversationImages(conversations)
         } catch {
-            presentError(error, prefix: "Failed to refresh conversations")
+            if surfaceErrors {
+                presentError(error, prefix: "Failed to refresh conversations")
+            }
         }
     }
 
-    func refreshJobs(client: ConvexHTTPClient, statusGroup: String) async {
+    func refreshJobs(client: ConvexHTTPClient, statusGroup: String, surfaceErrors: Bool = true) async {
         jobsStatusGroup = statusGroup
         do {
             jobs = try await PatchworkAPI(client: client).jobs.list(
@@ -186,7 +215,9 @@ final class AppState {
             )
             prefetchJobImages(jobs)
         } catch {
-            presentError(error, prefix: "Failed to refresh jobs")
+            if surfaceErrors {
+                presentError(error, prefix: "Failed to refresh jobs")
+            }
         }
     }
 

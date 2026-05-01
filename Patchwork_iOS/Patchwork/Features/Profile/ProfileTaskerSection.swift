@@ -394,7 +394,7 @@ struct ProfileTaskerSection: View {
             let updatedProfile = try await sessionStore.client.mutation("taskers:setGhostMode", args: ["ghostMode": enabled]) as TaskerProfileSelf
             appState.taskerProfile = updatedProfile
             ghostModeValue = effectiveGhostMode(for: updatedProfile)
-            await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+            await appState.refreshTaskerProfile(client: sessionStore.client, surfaceErrors: false)
             feedbackMessage = nil
         } catch {
             ghostModeValue = effectiveGhostMode(for: appState.taskerProfile)
