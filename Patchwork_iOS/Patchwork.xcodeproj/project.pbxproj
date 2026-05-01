@@ -10,7 +10,9 @@
 		081259B88E7B10011383049D /* PatchworkImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */; };
 		12D355FBBE67FA10EADF80CC /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8CE0A5718D2AC6132157B5B /* AppConfig.swift */; };
 		14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */; };
+		26C0996646021CA4D7C2EACA /* ProfileSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A66478F5B38BB6151ADD41C /* ProfileSupportViews.swift */; };
 		2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */; };
+		312F9173C4F6CC21416796BE /* ProfileAccountSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC10889102120ED488E30D8 /* ProfileAccountSection.swift */; };
 		31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */; };
 		3F3BF22D0E9B935CD4FE040F /* TaskerPaywallArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */; };
 		451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */; };
@@ -28,8 +30,10 @@
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
 		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
 		8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */; };
+		8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */; };
 		904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */; };
 		9159CA9BA57F8DDBC1796AFB /* PatchworkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */; };
+		93A59CCD06D37288237907D6 /* ProfilePanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BAC9730550B4849CDAE391 /* ProfilePanels.swift */; };
 		9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */; };
 		A087AA9759E50A7CDF5F14C3 /* JobDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2645A99676B08C632ABA998 /* JobDetailView.swift */; };
 		A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF295505C244A4858E39A5D /* RevenueCatManager.swift */; };
@@ -39,6 +43,7 @@
 		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
 		BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */; };
 		BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */; };
+		CBDF12E8E71F8CE4E39E3F0F /* ProfileTaskerSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0CE7572C7A892BA52FE850 /* ProfileTaskerSection.swift */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
@@ -79,6 +84,8 @@
 		1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSurfaceCard.swift; sourceTree = "<group>"; };
 		2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTests.swift; sourceTree = "<group>"; };
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSharedRows.swift; sourceTree = "<group>"; };
+		2A66478F5B38BB6151ADD41C /* ProfileSupportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSupportViews.swift; sourceTree = "<group>"; };
 		2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionFeedbackMessage.swift; sourceTree = "<group>"; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
@@ -86,6 +93,7 @@
 		462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkImageCache.swift; sourceTree = "<group>"; };
 		4858D666E2FE8B480005EB38 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		506758267AC6069C7C563862 /* PatchworkPhotoFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkPhotoFlow.swift; sourceTree = "<group>"; };
+		5C0CE7572C7A892BA52FE850 /* ProfileTaskerSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileTaskerSection.swift; sourceTree = "<group>"; };
 		5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		68BA4F09EB1C8E4E34CCC252 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		68D08930C048430E82A75FF1 /* UITheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITheme.swift; sourceTree = "<group>"; };
@@ -115,8 +123,10 @@
 		D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
 		D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliation.swift; sourceTree = "<group>"; };
 		DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaveReviewView.swift; sourceTree = "<group>"; };
+		E2BAC9730550B4849CDAE391 /* ProfilePanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePanels.swift; sourceTree = "<group>"; };
 		E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkStateViews.swift; sourceTree = "<group>"; };
 		E8CE0A5718D2AC6132157B5B /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		EDC10889102120ED488E30D8 /* ProfileAccountSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAccountSection.swift; sourceTree = "<group>"; };
 		EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerBillingSheet.swift; sourceTree = "<group>"; };
 		F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		FA14B5338C5C33F540967A21 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
@@ -157,6 +167,11 @@
 		64A7478B27F5090FB678ADA8 /* Profile */ = {
 			isa = PBXGroup;
 			children = (
+				EDC10889102120ED488E30D8 /* ProfileAccountSection.swift */,
+				E2BAC9730550B4849CDAE391 /* ProfilePanels.swift */,
+				2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */,
+				2A66478F5B38BB6151ADD41C /* ProfileSupportViews.swift */,
+				5C0CE7572C7A892BA52FE850 /* ProfileTaskerSection.swift */,
 				B810AFA2F7D8E281A10001B8 /* ProfileView.swift */,
 				BC9A4328C62186CAD5437E18 /* Subscriptions */,
 			);
@@ -451,6 +466,11 @@
 				F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */,
 				904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */,
 				D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */,
+				312F9173C4F6CC21416796BE /* ProfileAccountSection.swift in Sources */,
+				93A59CCD06D37288237907D6 /* ProfilePanels.swift in Sources */,
+				8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */,
+				26C0996646021CA4D7C2EACA /* ProfileSupportViews.swift in Sources */,
+				CBDF12E8E71F8CE4E39E3F0F /* ProfileTaskerSection.swift in Sources */,
 				62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */,
 				686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */,
 				A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */,
