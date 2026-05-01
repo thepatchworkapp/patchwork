@@ -27,6 +27,7 @@
 		73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA14B5338C5C33F540967A21 /* LocationManager.swift */; };
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
 		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
+		8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */; };
 		904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */; };
 		9159CA9BA57F8DDBC1796AFB /* PatchworkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */; };
 		9D5907AF001B9DBD1C689BAA /* PatchworkStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */; };
@@ -88,6 +89,7 @@
 		5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		68BA4F09EB1C8E4E34CCC252 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		68D08930C048430E82A75FF1 /* UITheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITheme.swift; sourceTree = "<group>"; };
+		6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkAPI.swift; sourceTree = "<group>"; };
 		6FF295505C244A4858E39A5D /* RevenueCatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevenueCatManager.swift; sourceTree = "<group>"; };
 		729E33D4E7B681C1ABDBD69A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkWordmark.swift; sourceTree = "<group>"; };
@@ -227,6 +229,7 @@
 				8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */,
 				FA14B5338C5C33F540967A21 /* LocationManager.swift */,
 				CF104625A9E3F2BC20B0518E /* Models.swift */,
+				6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */,
 				7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */,
 				B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */,
 				462A06CD10C97D0CA4452384 /* PatchworkImageCache.swift */,
@@ -434,6 +437,7 @@
 				73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */,
 				4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */,
 				F8897AC3264797291BAD224B /* Models.swift in Sources */,
+				8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */,
 				2EA42A49AC32E9357C962B2B /* PatchworkApp.swift in Sources */,
 				EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */,
 				DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */,

@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AppState {
     private static let imagePrefetchCount = 12
+    private static let defaultListLimit = 50
 
     enum Tab: Hashable {
         case home
@@ -85,7 +86,7 @@ final class AppState {
         defer { isLoadingCategories = false }
 
         do {
-            categories = try await client.query("categories:listCategories", args: [:])
+            categories = try await PatchworkAPI(client: client).categories.list()
             categoriesErrorMessage = nil
         } catch {
             categories = []
@@ -106,8 +107,9 @@ final class AppState {
         let previousConversations = conversations
         let previousJobs = jobs
         let previousTaskerProfile = taskerProfile
+        let api = PatchworkAPI(client: client)
         do {
-            let fetchedCurrentUser: CurrentUser? = try await client.query("users:getCurrentUser", args: [:])
+            let fetchedCurrentUser = try await api.users.current()
             guard let fetchedCurrentUser else {
                 if let previousCurrentUser {
                     currentUser = previousCurrentUser
@@ -127,9 +129,9 @@ final class AppState {
             currentUser = fetchedCurrentUser
 
             do {
-                conversations = try await client.query(
-                    "conversations:listConversations",
-                    args: ["role": conversationRole, "limit": 50]
+                conversations = try await api.conversations.list(
+                    role: conversationRole,
+                    limit: Self.defaultListLimit
                 )
                 prefetchConversationImages(conversations)
             } catch {
@@ -137,9 +139,9 @@ final class AppState {
             }
 
             do {
-                jobs = try await client.query(
-                    "jobs:listJobs",
-                    args: ["statusGroup": jobsStatusGroup, "limit": 50]
+                jobs = try await api.jobs.list(
+                    statusGroup: jobsStatusGroup,
+                    limit: Self.defaultListLimit
                 )
                 prefetchJobImages(jobs)
             } catch {
@@ -147,7 +149,7 @@ final class AppState {
             }
 
             do {
-                taskerProfile = try await client.query("taskers:getTaskerProfile", args: [:])
+                taskerProfile = try await api.taskers.currentProfile()
             } catch {
                 taskerProfile = previousTaskerProfile
             }
@@ -165,9 +167,9 @@ final class AppState {
     func refreshConversations(client: ConvexHTTPClient, role: String) async {
         conversationRole = role
         do {
-            conversations = try await client.query(
-                "conversations:listConversations",
-                args: ["role": role, "limit": 50]
+            conversations = try await PatchworkAPI(client: client).conversations.list(
+                role: role,
+                limit: Self.defaultListLimit
             )
             prefetchConversationImages(conversations)
         } catch {
@@ -178,9 +180,9 @@ final class AppState {
     func refreshJobs(client: ConvexHTTPClient, statusGroup: String) async {
         jobsStatusGroup = statusGroup
         do {
-            jobs = try await client.query(
-                "jobs:listJobs",
-                args: ["statusGroup": statusGroup, "limit": 50]
+            jobs = try await PatchworkAPI(client: client).jobs.list(
+                statusGroup: statusGroup,
+                limit: Self.defaultListLimit
             )
             prefetchJobImages(jobs)
         } catch {
@@ -191,10 +193,7 @@ final class AppState {
     @discardableResult
     func syncLocation(client: ConvexHTTPClient, lat: Double, lng: Double, source: String = "manual") async -> Bool {
         do {
-            _ = try await client.mutation(
-                "users:updateLocation",
-                args: ["lat": lat, "lng": lng, "source": source]
-            ) as ConvexID
+            try await PatchworkAPI(client: client).users.updateLocation(lat: lat, lng: lng, source: source)
             return true
         } catch {
             presentError(error, prefix: "Failed to sync location")
@@ -204,7 +203,7 @@ final class AppState {
 
     func loadTaskerDetail(client: ConvexHTTPClient, taskerId: ConvexID) async {
         do {
-            selectedTasker = try await client.query("taskers:getTaskerById", args: ["taskerId": taskerId])
+            selectedTasker = try await PatchworkAPI(client: client).taskers.get(taskerId: taskerId)
         } catch {
             presentError(error, prefix: "Failed to load tasker details")
         }
@@ -212,9 +211,8 @@ final class AppState {
 
     func loadConversation(client: ConvexHTTPClient, conversationId: ConvexID) async {
         do {
-            selectedConversation = try await client.query(
-                "conversations:getConversation",
-                args: ["conversationId": conversationId]
+            selectedConversation = try await PatchworkAPI(client: client).conversations.get(
+                conversationId: conversationId
             )
         } catch {
             presentError(error, prefix: "Failed to load conversation")
@@ -240,22 +238,23 @@ final class AppState {
                 taskers = []
                 return
             }
-            var args: [String: Any] = [
-                "lat": currentCoordinates.lat,
-                "lng": currentCoordinates.lng,
-                "radiusKm": radiusKm,
-                "limit": 50,
-            ]
-            if let categorySlug {
-                args["categorySlug"] = categorySlug
-            }
+            let excludeUserId: ConvexID?
             if excludeCurrentUserWhenTasker,
                currentUser?.roles?.isTasker == true,
                let currentUserId = currentUser?.id {
-                args["excludeUserId"] = currentUserId
+                excludeUserId = currentUserId
+            } else {
+                excludeUserId = nil
             }
 
-            taskers = try await client.query("search:searchTaskers", args: args)
+            taskers = try await PatchworkAPI(client: client).search.taskers(
+                lat: currentCoordinates.lat,
+                lng: currentCoordinates.lng,
+                radiusKm: radiusKm,
+                limit: Self.defaultListLimit,
+                categorySlug: categorySlug,
+                excludeUserId: excludeUserId
+            )
             prefetchTaskerImages(taskers)
         } catch {
             if isCancellationError(error) {
@@ -281,9 +280,8 @@ final class AppState {
 
     func refreshFavouriteTaskers(client: ConvexHTTPClient) async {
         do {
-            favouriteTaskers = try await client.query(
-                "taskers:listFavouriteTaskers",
-                args: ["limit": 50]
+            favouriteTaskers = try await PatchworkAPI(client: client).taskers.listFavourites(
+                limit: Self.defaultListLimit
             )
         } catch {
             if isCancellationError(error) {
@@ -295,9 +293,8 @@ final class AppState {
 
     func refreshBlockedUsers(client: ConvexHTTPClient) async {
         do {
-            blockedUsers = try await client.query(
-                "moderation:listBlockedUsers",
-                args: ["limit": 50]
+            blockedUsers = try await PatchworkAPI(client: client).moderation.listBlockedUsers(
+                limit: Self.defaultListLimit
             )
             prefetchBlockedUserImages(blockedUsers)
         } catch {
