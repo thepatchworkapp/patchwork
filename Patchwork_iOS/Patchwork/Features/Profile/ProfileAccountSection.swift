@@ -2,23 +2,6 @@ import SwiftUI
 import UIKit
 
 struct ProfileAccountSection: View {
-    private enum PhotoSheet: Identifiable {
-        case camera
-        case gallery
-        case crop(PhotoCropInput)
-
-        var id: String {
-            switch self {
-            case .camera:
-                return "camera"
-            case .gallery:
-                return "gallery"
-            case .crop(let input):
-                return "crop-\(input.id)"
-            }
-        }
-    }
-
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
 
@@ -26,8 +9,7 @@ struct ProfileAccountSection: View {
     let taskerProfile: TaskerProfileSelf?
     let onOpenMenu: () -> Void
 
-    @State private var showsPhotoOptions = false
-    @State private var photoSheet: PhotoSheet?
+    @StateObject private var photoFlow = SingleImagePhotoFlowCoordinator(purpose: .userPhoto)
     @State private var pendingPreviewImage: UIImage?
     @State private var pendingPhotoAsset: RemoteImageAsset?
     @State private var isUploadingPhoto = false
@@ -74,14 +56,14 @@ struct ProfileAccountSection: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .confirmationDialog("Profile photo", isPresented: $showsPhotoOptions, titleVisibility: .visible) {
+        .confirmationDialog("Profile photo", isPresented: $photoFlow.showsPhotoOptions, titleVisibility: .visible) {
             if CameraCaptureView.isCameraAvailable {
                 Button("Take Photo") {
-                    photoSheet = .camera
+                    photoFlow.selectCamera()
                 }
             }
             Button("Choose from Gallery") {
-                photoSheet = .gallery
+                photoFlow.selectGallery()
             }
             if hasProfilePhoto {
                 Button("Remove Photo", role: .destructive) {
@@ -90,20 +72,21 @@ struct ProfileAccountSection: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .sheet(item: $photoSheet) { sheet in
+        .sheet(item: $photoFlow.activeSheet) { sheet in
             switch sheet {
             case .camera:
                 CameraCaptureView { image in
-                    presentCropIfNeeded(image)
+                    photoFlow.presentCrop(for: image)
                 }
             case .gallery:
-                GalleryPickerView(selectionLimit: 1) { images in
-                    presentCropIfNeeded(images.first)
+                GalleryPickerView(selectionLimit: photoFlow.selectionLimit) { images in
+                    photoFlow.presentCrop(for: images.first)
                 }
             case .crop(let input):
                 PhotoCropEditor(input: input) {
-                    photoSheet = nil
+                    photoFlow.cancelCrop()
                 } onConfirm: { draft in
+                    photoFlow.confirmCrop(draft)
                     Task { await uploadProfilePhoto(draft) }
                 }
             }
@@ -118,7 +101,7 @@ struct ProfileAccountSection: View {
                 size: 108,
                 isBusy: isUploadingPhoto,
                 accessibilityIdentifier: "Profile.photoPicker",
-                action: { showsPhotoOptions = true }
+                action: { photoFlow.showOptions() }
             ) {
                 avatarFallback
             }
@@ -190,7 +173,7 @@ struct ProfileAccountSection: View {
         isUploadingPhoto = true
         photoStatusMessage = nil
         pendingPreviewImage = draft.previewImage
-        photoSheet = nil
+        _ = photoFlow.takePendingDraft()
         defer {
             isUploadingPhoto = false
         }
@@ -233,14 +216,6 @@ struct ProfileAccountSection: View {
     private func uploadPhotoDraft(_ draft: PhotoDraft, purpose: PhotoPurpose) async throws -> RemoteImageAsset {
         let uploadService = ImageAssetUploadService(client: sessionStore.client)
         return try await uploadService.uploadImage(data: draft.data, purpose: purpose.convexPurpose)
-    }
-
-    private func presentCropIfNeeded(_ image: UIImage?) {
-        guard let image else {
-            photoSheet = nil
-            return
-        }
-        photoSheet = .crop(PhotoCropInput(image: image, purpose: .userPhoto))
     }
 
     private func roleBadge(

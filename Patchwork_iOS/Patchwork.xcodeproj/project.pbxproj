@@ -28,6 +28,7 @@
 		686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */; };
 		73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA14B5338C5C33F540967A21 /* LocationManager.swift */; };
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
+		7E2DF4F80C2A23B6773AB1D4 /* PhotoFlowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */; };
 		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
 		8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */; };
 		8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */; };
@@ -51,6 +52,7 @@
 		D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */; };
 		DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */; };
 		DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */; };
+		E558EA47096F359FFC164656 /* PhotoFlowCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */; };
 		EE828ACC0C32E93217216297 /* ImageAssetUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */; };
 		EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */; };
 		F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */; };
@@ -86,6 +88,7 @@
 		2A05965A09AF7E5653F37B64 /* PatchworkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSharedRows.swift; sourceTree = "<group>"; };
 		2A66478F5B38BB6151ADD41C /* ProfileSupportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSupportViews.swift; sourceTree = "<group>"; };
+		2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFlowCoordinatorTests.swift; sourceTree = "<group>"; };
 		2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionFeedbackMessage.swift; sourceTree = "<group>"; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
@@ -106,6 +109,7 @@
 		8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAssetInfrastructureTests.swift; sourceTree = "<group>"; };
 		88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSheetChrome.swift; sourceTree = "<group>"; };
 		8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSectionIntro.swift; sourceTree = "<group>"; };
+		9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFlowCoordinator.swift; sourceTree = "<group>"; };
 		A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDetailView.swift; sourceTree = "<group>"; };
 		B2645A99676B08C632ABA998 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
 		B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkButtonStyles.swift; sourceTree = "<group>"; };
@@ -210,6 +214,7 @@
 			isa = PBXGroup;
 			children = (
 				506758267AC6069C7C563862 /* PatchworkPhotoFlow.swift */,
+				9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */,
 			);
 			path = Photos;
 			sourceTree = "<group>";
@@ -230,6 +235,7 @@
 				8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */,
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
 				BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */,
+				2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */,
 				B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */,
 			);
 			path = PatchworkTests;
@@ -466,6 +472,7 @@
 				F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */,
 				904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */,
 				D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */,
+				7E2DF4F80C2A23B6773AB1D4 /* PhotoFlowCoordinator.swift in Sources */,
 				312F9173C4F6CC21416796BE /* ProfileAccountSection.swift in Sources */,
 				93A59CCD06D37288237907D6 /* ProfilePanels.swift in Sources */,
 				8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */,
@@ -492,6 +499,7 @@
 				BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */,
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
 				AED712E0EB69F15230E4CAAF /* PhotoCropJPEGHelperTests.swift in Sources */,
+				E558EA47096F359FFC164656 /* PhotoFlowCoordinatorTests.swift in Sources */,
 				31B520AE9D72581733D959B1 /* SubscriptionReconciliationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
