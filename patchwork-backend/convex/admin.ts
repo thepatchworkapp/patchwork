@@ -140,6 +140,35 @@ const userReportAdminValidator = v.object({
   createdAt: v.number(),
   updatedAt: v.number(),
 });
+const userBlockAdminValidator = v.object({
+  _id: v.id("userBlocks"),
+  _creationTime: v.number(),
+  blockerId: v.id("users"),
+  blockedId: v.id("users"),
+  conversationId: v.union(v.id("conversations"), v.null()),
+  blockerName: v.string(),
+  blockerEmail: v.union(v.string(), v.null()),
+  blockedUserName: v.string(),
+  blockedUserEmail: v.union(v.string(), v.null()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+});
+const adminUserDetailValidator = v.object({
+  user: v.any(),
+  userPhotoUrl: v.union(v.string(), v.null()),
+  userPhotoImage: v.union(imageAssetValidator, v.null()),
+  seekerProfile: v.any(),
+  taskerProfile: v.any(),
+  jobsAsSeeker: v.array(v.any()),
+  jobsAsTasker: v.array(v.any()),
+  reviewsGiven: v.array(v.any()),
+  reviewsReceived: v.array(v.any()),
+  feedbackSubmissions: v.array(feedbackSubmissionAdminValidator),
+  blocksCreated: v.array(userBlockAdminValidator),
+  blocksReceived: v.array(userBlockAdminValidator),
+  reportsSubmitted: v.array(userReportAdminValidator),
+  reportsReceived: v.array(userReportAdminValidator),
+});
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
@@ -314,6 +343,39 @@ type RevenueCatCleanupCandidate = {
   appUserId: string;
   email: string;
 };
+
+const resetDatabaseResultValidator = v.object({
+  resetAt: v.number(),
+  deletedMessages: v.number(),
+  deletedReviews: v.number(),
+  deletedJobs: v.number(),
+  deletedProposals: v.number(),
+  deletedConversations: v.number(),
+  deletedJobRequests: v.number(),
+  deletedTaskerCategories: v.number(),
+  deletedTaskerProfiles: v.number(),
+  deletedSeekerProfiles: v.number(),
+  deletedImageAssets: v.number(),
+  deletedFeedbackSubmissions: v.number(),
+  deletedUserBlocks: v.number(),
+  deletedUserReports: v.number(),
+  deletedReviewAccess: v.number(),
+  deletedOtps: v.number(),
+  deletedAdminOtps: v.number(),
+  deletedUsers: v.number(),
+  deletedStorageFiles: v.number(),
+  failedStorageFiles: v.number(),
+  preservedAdminEmails: v.array(v.string()),
+});
+
+const revenueCatCleanupSummaryValidator = v.object({
+  status: v.union(v.literal("completed"), v.literal("partial"), v.literal("skipped")),
+  attemptedCustomers: v.number(),
+  deletedCustomers: v.number(),
+  missingCustomers: v.number(),
+  failedCustomers: v.number(),
+  message: v.string(),
+});
 
 async function deleteRevenueCatCustomer(appUserId: string, secretApiKey: string) {
   const response = await fetch(
@@ -637,6 +699,7 @@ export const setReviewAccess = mutation({
 
 export const reseedReviewerAccounts = mutation({
   args: {},
+  returns: reviewAccessStatusValidator,
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
     return await setReviewAccessEnabled(ctx, true);
@@ -645,6 +708,7 @@ export const reseedReviewerAccounts = mutation({
 
 export const reseedReviewerAccountsInternal = internalMutation({
   args: {},
+  returns: reviewAccessStatusValidator,
   handler: async (ctx) => {
     return await setReviewAccessEnabled(ctx, true);
   },
@@ -739,6 +803,10 @@ export const deleteStorageIdsChunkCore = internalMutation({
 
 export const resetDatabaseCore = internalAction({
   args: {},
+  returns: v.object({
+    ...resetDatabaseResultValidator.fields,
+    deletedUserAppUserIds: v.array(v.string()),
+  }),
   handler: async (ctx) => {
     return await performDatabaseResetInChunks(ctx);
   },
@@ -746,6 +814,7 @@ export const resetDatabaseCore = internalAction({
 
 export const resetDatabase = action({
   args: {},
+  returns: resetDatabaseResultValidator,
   handler: async (ctx) => {
     await requireAdminOrThrow(ctx);
     const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runAction(internal.admin.resetDatabaseCore, {});
@@ -755,6 +824,11 @@ export const resetDatabase = action({
 
 export const resetDatabaseAndRevenueCat = action({
   args: {},
+  returns: v.object({
+    ...resetDatabaseResultValidator.fields,
+    revenueCatCleanup: revenueCatCleanupSummaryValidator,
+    reviewAccess: reviewAccessStatusValidator,
+  }),
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity || !ADMIN_EMAILS.has((identity.email || "").toLowerCase())) {
@@ -791,6 +865,7 @@ export const getUserDetail = query({
   args: {
     userId: v.id("users"),
   },
+  returns: v.union(adminUserDetailValidator, v.null()),
   handler: async (ctx, args) => {
     if (!(await requireAdmin(ctx))) return null;
 

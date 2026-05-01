@@ -1,6 +1,6 @@
-import { action, mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   getEffectiveGhostMode,
@@ -812,21 +812,47 @@ export const cancelSubscription = mutation({
   },
 });
 
+export const getCurrentUserIdForRevenueCatReconciliation = internalQuery({
+  args: {},
+  returns: v.union(v.id("users"), v.null()),
+  handler: async (ctx) => {
+    const session = await getAppUserOrNull(ctx);
+    return session?.user._id ?? null;
+  },
+});
+
+export const getCurrentTaskerProfileForRevenueCatReconciliation = internalQuery({
+  args: {},
+  returns: v.union(taskerProfileResponseValidator, v.null()),
+  handler: async (ctx) => {
+    const session = await getAppUserOrNull(ctx);
+    if (!session) return null;
+
+    const profile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", session.user._id))
+      .unique();
+
+    if (!profile) return null;
+    return await buildTaskerProfileResponse(ctx, profile);
+  },
+});
+
 export const reconcileRevenueCatSubscription = action({
   args: {},
   returns: v.union(taskerProfileResponseValidator, v.null()),
   handler: async (ctx) => {
-    const currentUser = await ctx.runQuery(api.users.getCurrentUser, {});
-    if (!currentUser) {
+    const currentUserId = await ctx.runQuery(internal.taskers.getCurrentUserIdForRevenueCatReconciliation, {});
+    if (!currentUserId) {
       throw new ConvexError("Unauthorized");
     }
 
     await ctx.runAction(internal.taskersInternal.reconcileRevenueCatCustomer, {
-      candidateAppUserIds: [String(currentUser._id)],
+      candidateAppUserIds: [String(currentUserId)],
       source: "client_manual_reconciliation",
     });
 
-    return await ctx.runQuery(api.taskers.getTaskerProfile, {});
+    return await ctx.runQuery(internal.taskers.getCurrentTaskerProfileForRevenueCatReconciliation, {});
   },
 });
 

@@ -86,7 +86,10 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_owner", ["ownerUserId"])
-    .index("by_owner_purpose", ["ownerUserId", "purpose"]),
+    .index("by_owner_purpose", ["ownerUserId", "purpose"])
+    .index("by_thumb_storage", ["variants.thumb.storageId"])
+    .index("by_display_storage", ["variants.display.storageId"])
+    .index("by_large_storage", ["variants.large.storageId"]),
 
   seekerProfiles: defineTable({
     userId: v.id("users"),
@@ -252,6 +255,7 @@ export default defineSchema({
   })
     .index("by_taskerProfile_category", ["taskerProfileId", "categoryId"])
     .index("by_userId", ["userId"])
+    .index("by_user_coverAsset", ["userId", "coverAssetId"])
     .index("by_category", ["categoryId"]),
 
   /**

@@ -35,6 +35,7 @@ export type ImageAssetCommittedVariantInput = ImageAssetVariantInput & {
 
 type CtxWithStorageAndDb = Pick<QueryCtx, "db" | "storage"> | Pick<MutationCtx, "db" | "storage">;
 type MutationCtxWithStorageAndDb = Pick<MutationCtx, "db" | "storage">;
+const MAX_OWNER_TASKER_CATEGORIES_FOR_REFERENCE_SCAN = 1000;
 
 export const IMAGE_VARIANT_CONSTRAINTS: Record<
   ImageAssetVariantKind,
@@ -226,10 +227,22 @@ export async function imageAssetStorageIdIsReferenced(
   ctx: Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">,
   storageId: Id<"_storage">
 ) {
-  const imageAssets = await ctx.db.query("imageAssets").collect();
-  return imageAssets.some((imageAsset) =>
-    getImageAssetStorageIds(imageAsset).some((imageAssetStorageId) => imageAssetStorageId === storageId)
-  );
+  const [thumbAsset, displayAsset, largeAsset] = await Promise.all([
+    ctx.db
+      .query("imageAssets")
+      .withIndex("by_thumb_storage", (q) => q.eq("variants.thumb.storageId", storageId))
+      .first(),
+    ctx.db
+      .query("imageAssets")
+      .withIndex("by_display_storage", (q) => q.eq("variants.display.storageId", storageId))
+      .first(),
+    ctx.db
+      .query("imageAssets")
+      .withIndex("by_large_storage", (q) => q.eq("variants.large.storageId", storageId))
+      .first(),
+  ]);
+
+  return Boolean(thumbAsset || displayAsset || largeAsset);
 }
 
 export async function deleteImageAssetStorageFiles(
@@ -288,13 +301,26 @@ export async function imageAssetHasOwnerReferences(
     return true;
   }
 
+  const coverCategory = await ctx.db
+    .query("taskerCategories")
+    .withIndex("by_user_coverAsset", (q) =>
+      q.eq("userId", ownerUserId).eq("coverAssetId", imageAssetId)
+    )
+    .first();
+  if (coverCategory) {
+    return true;
+  }
+
   const taskerCategories = await ctx.db
     .query("taskerCategories")
     .withIndex("by_userId", (q) => q.eq("userId", ownerUserId))
-    .collect();
+    .take(MAX_OWNER_TASKER_CATEGORIES_FOR_REFERENCE_SCAN);
+
+  if (taskerCategories.length >= MAX_OWNER_TASKER_CATEGORIES_FOR_REFERENCE_SCAN) {
+    return true;
+  }
 
   return taskerCategories.some((category) =>
-    category.coverAssetId === imageAssetId ||
     (category.portfolioAssetIds ?? []).some((assetId) => assetId === imageAssetId)
   );
 }
