@@ -462,7 +462,7 @@ describe("feedback", () => {
     }
   });
 
-  test("admin resetDatabaseAndRevenueCat blocks real user reset when RevenueCat secret is missing", async () => {
+  test("admin resetDatabaseAndRevenueCat resets and reports skipped RevenueCat cleanup when secret is missing", async () => {
     const previousAdminEmails = process.env.ADMIN_EMAILS;
     const previousRevenueCatSecret = process.env.REVENUECAT_SECRET_API_KEY;
     process.env.ADMIN_EMAILS = "admin@example.com";
@@ -486,12 +486,17 @@ describe("feedback", () => {
         province: "ON",
       });
 
-      await expect(
-        asAdmin.action((api as any).admin.resetDatabaseAndRevenueCat, {})
-      ).rejects.toThrow("Database reset blocked before deleting users");
+      const result = await asAdmin.action((api as any).admin.resetDatabaseAndRevenueCat, {});
+
+      expect(result.revenueCatCleanup.status).toBe("skipped");
+      expect(result.revenueCatCleanup.attemptedCustomers).toBe(1);
+      expect(result.revenueCatCleanup.message).toContain("REVENUECAT_SECRET_API_KEY is not configured");
+      expect(result.deletedUsers).toBe(1);
+      expect(result.adminUser.email).toBe("admin@example.com");
+      expect(result.reviewAccess.enabled).toBe(true);
 
       const user = await t.run(async (ctx) => await ctx.db.get(userId));
-      expect(user?.email).toBe("feedback-reset-revenuecat-preflight@example.com");
+      expect(user).toBeNull();
     } finally {
       process.env.ADMIN_EMAILS = previousAdminEmails;
       if (previousRevenueCatSecret === undefined) {

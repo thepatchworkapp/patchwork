@@ -33,6 +33,8 @@ const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
 const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
 const REVIEW_ACCOUNT_EMAILS = new Set([APP_REVIEW_EMAIL, APP_REVIEW_SEEKER_EMAIL]);
+const REVENUECAT_MISSING_SECRET_RESET_MESSAGE =
+  "RevenueCat cleanup skipped because REVENUECAT_SECRET_API_KEY is not configured. Database reset continued; configure the secret before using this action to remove RevenueCat customers.";
 const resetTableNameValidator = v.union(
   v.literal("messages"),
   v.literal("reviews"),
@@ -458,7 +460,7 @@ async function clearRevenueCatCustomers(
       deletedCustomers: 0,
       missingCustomers: 0,
       failedCustomers: uniqueAppUserIds.length,
-      message: "RevenueCat cleanup skipped because REVENUECAT_SECRET_API_KEY is not configured.",
+      message: REVENUECAT_MISSING_SECRET_RESET_MESSAGE,
     };
   }
 
@@ -1012,7 +1014,7 @@ export const resetDatabaseAndRevenueCat = action({
       { allowMissingSecretSkip: hasOnlyReviewAccounts }
     );
 
-    if (revenueCatCleanup.status !== "completed" && !hasOnlyReviewAccounts) {
+    if (revenueCatCleanup.status === "partial" && !hasOnlyReviewAccounts) {
       throw new ConvexError(
         `Database reset blocked before deleting users because RevenueCat cleanup did not complete. ${revenueCatCleanup.message}`
       );
