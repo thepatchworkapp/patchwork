@@ -21,6 +21,16 @@ async function feedbackModules() {
 
 async function adminFeedbackModules() {
   vi.resetModules();
+  const reviewAccessStatus = () => ({
+    email: "review@apple.com",
+    allowedEmails: ["review@apple.com", "seeker@apple.com"],
+    enabled: true,
+    betterAuthUserId: null,
+    appUserId: null,
+    lastEnabledAt: Date.now(),
+    lastDisabledAt: null,
+    updatedAt: Date.now(),
+  });
   vi.doMock("../auth", () => ({
     authComponent: {
       adapter: () =>
@@ -39,8 +49,8 @@ async function adminFeedbackModules() {
   vi.doMock("../reviewAccess", () => ({
     APP_REVIEW_EMAIL: "review@apple.com",
     APP_REVIEW_SEEKER_EMAIL: "seeker@apple.com",
-    getReviewAccessStatus: vi.fn(),
-    setReviewAccessEnabled: vi.fn(),
+    getReviewAccessStatus: vi.fn(async () => reviewAccessStatus()),
+    setReviewAccessEnabled: vi.fn(async () => reviewAccessStatus()),
   }));
   vi.doMock("../geospatial", () => ({
     taskerGeo: {
@@ -201,6 +211,39 @@ describe("feedback", () => {
         city: "Toronto",
         province: "ON",
       });
+      const taskerUserId = await t.run(async (ctx) =>
+        await ctx.db.insert("users", {
+          authId: "google|feedback-reset-assets-tasker",
+          email: "feedback-reset-assets-tasker@example.com",
+          emailVerified: true,
+          name: "Feedback Reset Assets Tasker",
+          photoAssetId: undefined,
+          photo: undefined,
+          location: {
+            city: "Toronto",
+            province: "ON",
+          },
+          roles: {
+            isSeeker: true,
+            isTasker: true,
+          },
+          settings: {
+            notificationsEnabled: true,
+            locationEnabled: false,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+      );
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("favouriteTaskers", {
+          seekerId: userId,
+          taskerUserId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      });
 
       const [legacyPhotoStorageId, thumbStorageId, displayStorageId, largeStorageId] = await Promise.all([
         t.run(async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(1_200)], { type: "image/jpeg" }))),
@@ -253,11 +296,13 @@ describe("feedback", () => {
       });
 
       const firstReset = await asAdmin.action((api as any).admin.resetDatabase, {});
+      expect(firstReset.deletedFavouriteTaskers).toBe(1);
       expect(firstReset.deletedImageAssets).toBe(1);
       expect(firstReset.deletedStorageFiles).toBe(4);
       expect(firstReset.failedStorageFiles).toBe(0);
 
       const secondReset = await asAdmin.action((api as any).admin.resetDatabase, {});
+      expect(secondReset.deletedFavouriteTaskers).toBe(0);
       expect(secondReset.deletedImageAssets).toBe(0);
       expect(secondReset.deletedStorageFiles).toBe(0);
       expect(secondReset.failedStorageFiles).toBe(0);
@@ -272,6 +317,59 @@ describe("feedback", () => {
       expect(thumbUrl).toBeNull();
       expect(displayUrl).toBeNull();
       expect(largeUrl).toBeNull();
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
+  });
+
+  test("admin reseedAdminUser is idempotent and resetDatabaseAndReseed restores admin app user", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules());
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reseed",
+        email: "admin@example.com",
+      });
+      const asUser = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reseed-user",
+        email: "feedback-admin-reseed-user@example.com",
+      });
+
+      const firstReseed = await asAdmin.mutation((api as any).admin.reseedAdminUser, {});
+      expect(firstReseed.email).toBe("admin@example.com");
+      expect(firstReseed.created).toBe(true);
+
+      const secondReseed = await asAdmin.mutation((api as any).admin.reseedAdminUser, {});
+      expect(secondReseed.appUserId).toBe(firstReseed.appUserId);
+      expect(secondReseed.created).toBe(false);
+
+      await asUser.mutation(api.users.createProfile, {
+        name: "Admin Reseed Reset User",
+        city: "Toronto",
+        province: "ON",
+      });
+
+      const resetResult = await asAdmin.action((api as any).admin.resetDatabaseAndReseed, {});
+      expect(resetResult.deletedUsers).toBe(2);
+      expect(resetResult.adminUser.email).toBe("admin@example.com");
+      expect(resetResult.adminUser.created).toBe(true);
+      expect(resetResult.reviewAccess.enabled).toBe(true);
+
+      const users = await t.run(async (ctx) => await ctx.db.query("users").collect());
+      expect(users).toHaveLength(1);
+      expect(users[0]?.email).toBe("admin@example.com");
+
+      const seekerProfile = await t.run(async (ctx) =>
+        await ctx.db
+          .query("seekerProfiles")
+          .withIndex("by_userId", (q) => q.eq("userId", resetResult.adminUser.appUserId))
+          .unique()
+      );
+      expect(seekerProfile?.userId).toBe(resetResult.adminUser.appUserId);
     } finally {
       process.env.ADMIN_EMAILS = previousAdminEmails;
       vi.resetModules();

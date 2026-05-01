@@ -43,6 +43,7 @@ const resetTableNameValidator = v.union(
   v.literal("taskerCategories"),
   v.literal("taskerProfiles"),
   v.literal("seekerProfiles"),
+  v.literal("favouriteTaskers"),
   v.literal("imageAssets"),
   v.literal("feedbackSubmissions"),
   v.literal("userBlocks"),
@@ -62,6 +63,7 @@ const RESET_TABLES = [
   "taskerCategories",
   "taskerProfiles",
   "seekerProfiles",
+  "favouriteTaskers",
   "imageAssets",
   "feedbackSubmissions",
   "userBlocks",
@@ -87,6 +89,7 @@ type ResetCounts = {
   deletedTaskerCategories: number;
   deletedTaskerProfiles: number;
   deletedSeekerProfiles: number;
+  deletedFavouriteTaskers: number;
   deletedImageAssets: number;
   deletedFeedbackSubmissions: number;
   deletedUserBlocks: number;
@@ -108,6 +111,12 @@ const reviewAccessStatusValidator = v.object({
   lastEnabledAt: v.union(v.number(), v.null()),
   lastDisabledAt: v.union(v.number(), v.null()),
   updatedAt: v.union(v.number(), v.null()),
+});
+const adminUserReseedStatusValidator = v.object({
+  email: v.string(),
+  appUserId: v.id("users"),
+  created: v.boolean(),
+  updatedAt: v.number(),
 });
 const feedbackSubmissionAdminValidator = v.object({
   _id: v.id("feedbackSubmissions"),
@@ -220,6 +229,7 @@ function createEmptyResetCounts(): ResetCounts {
     deletedTaskerCategories: 0,
     deletedTaskerProfiles: 0,
     deletedSeekerProfiles: 0,
+    deletedFavouriteTaskers: 0,
     deletedImageAssets: 0,
     deletedFeedbackSubmissions: 0,
     deletedUserBlocks: 0,
@@ -262,6 +272,9 @@ function incrementResetCount(resetCounts: ResetCounts, tableName: ResetTableName
       return;
     case "seekerProfiles":
       resetCounts.deletedSeekerProfiles += count;
+      return;
+    case "favouriteTaskers":
+      resetCounts.deletedFavouriteTaskers += count;
       return;
     case "imageAssets":
       resetCounts.deletedImageAssets += count;
@@ -355,6 +368,7 @@ const resetDatabaseResultValidator = v.object({
   deletedTaskerCategories: v.number(),
   deletedTaskerProfiles: v.number(),
   deletedSeekerProfiles: v.number(),
+  deletedFavouriteTaskers: v.number(),
   deletedImageAssets: v.number(),
   deletedFeedbackSubmissions: v.number(),
   deletedUserBlocks: v.number(),
@@ -366,6 +380,12 @@ const resetDatabaseResultValidator = v.object({
   deletedStorageFiles: v.number(),
   failedStorageFiles: v.number(),
   preservedAdminEmails: v.array(v.string()),
+});
+
+const resetDatabaseAndReseedResultValidator = v.object({
+  ...resetDatabaseResultValidator.fields,
+  adminUser: adminUserReseedStatusValidator,
+  reviewAccess: reviewAccessStatusValidator,
 });
 
 const revenueCatCleanupSummaryValidator = v.object({
@@ -545,6 +565,108 @@ async function requireAdminOrThrow(ctx: any) {
   }
 }
 
+async function requireAdminIdentityOrThrow(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity || !ADMIN_EMAILS.has((identity.email || "").toLowerCase())) {
+    throw new ConvexError("Unauthorized");
+  }
+  return identity;
+}
+
+async function ensureAdminAppUser(ctx: any, email: string, authId: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !ADMIN_EMAILS.has(normalizedEmail)) {
+    throw new ConvexError("Unauthorized");
+  }
+  if (!authId) {
+    throw new ConvexError("Missing admin auth identity");
+  }
+
+  const now = Date.now();
+  const existing = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q: any) => q.eq("email", normalizedEmail))
+    .unique();
+
+  if (existing) {
+    const seekerProfile = await ctx.db
+      .query("seekerProfiles")
+      .withIndex("by_userId", (q: any) => q.eq("userId", existing._id))
+      .unique();
+
+    await ctx.db.patch(existing._id, {
+      authId,
+      email: normalizedEmail,
+      emailVerified: true,
+      name: existing.name || "Patchwork Admin",
+      roles: {
+        isSeeker: existing.roles?.isSeeker ?? true,
+        isTasker: existing.roles?.isTasker ?? false,
+      },
+      settings: {
+        notificationsEnabled: existing.settings?.notificationsEnabled ?? true,
+        locationEnabled: existing.settings?.locationEnabled ?? false,
+      },
+      updatedAt: now,
+    });
+    if (!seekerProfile) {
+      await ctx.db.insert("seekerProfiles", {
+        userId: existing._id,
+        jobsPosted: 0,
+        completedJobs: 0,
+        rating: 0,
+        ratingCount: 0,
+        updatedAt: now,
+      });
+    }
+    return {
+      email: normalizedEmail,
+      appUserId: existing._id,
+      created: false,
+      updatedAt: now,
+    };
+  }
+
+  const appUserId = await ctx.db.insert("users", {
+    authId,
+    email: normalizedEmail,
+    emailVerified: true,
+    name: "Patchwork Admin",
+    photoAssetId: undefined,
+    photo: undefined,
+    location: {
+      city: "Toronto",
+      province: "Ontario",
+    },
+    roles: {
+      isSeeker: true,
+      isTasker: false,
+    },
+    settings: {
+      notificationsEnabled: true,
+      locationEnabled: false,
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await ctx.db.insert("seekerProfiles", {
+    userId: appUserId,
+    jobsPosted: 0,
+    completedJobs: 0,
+    rating: 0,
+    ratingCount: 0,
+    updatedAt: now,
+  });
+
+  return {
+    email: normalizedEmail,
+    appUserId,
+    created: true,
+    updatedAt: now,
+  };
+}
+
 async function enrichFeedbackSubmission(ctx: any, submission: any) {
   const user = await ctx.db.get(submission.userId);
   return {
@@ -714,6 +836,29 @@ export const reseedReviewerAccountsInternal = internalMutation({
   },
 });
 
+export const reseedAdminUser = mutation({
+  args: {},
+  returns: adminUserReseedStatusValidator,
+  handler: async (ctx) => {
+    const identity = await requireAdminIdentityOrThrow(ctx);
+    if (!identity?.email) {
+      throw new ConvexError("Missing admin identity email");
+    }
+    return await ensureAdminAppUser(ctx, identity.email, identity.tokenIdentifier);
+  },
+});
+
+export const reseedAdminUserInternal = internalMutation({
+  args: {
+    email: v.string(),
+    authId: v.string(),
+  },
+  returns: adminUserReseedStatusValidator,
+  handler: async (ctx, args) => {
+    return await ensureAdminAppUser(ctx, args.email, args.authId);
+  },
+});
+
 export const getRevenueCatCleanupCandidates = internalQuery({
   args: {},
   handler: async (ctx): Promise<RevenueCatCleanupCandidate[]> => {
@@ -822,17 +967,40 @@ export const resetDatabase = action({
   },
 });
 
+export const resetDatabaseAndReseed = action({
+  args: {},
+  returns: resetDatabaseAndReseedResultValidator,
+  handler: async (ctx) => {
+    const identity = await requireAdminIdentityOrThrow(ctx);
+    if (!identity.email) {
+      throw new ConvexError("Missing admin identity email");
+    }
+
+    const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runAction(internal.admin.resetDatabaseCore, {});
+    const adminUser = await ctx.runMutation(internal.admin.reseedAdminUserInternal, {
+      email: identity.email,
+      authId: identity.tokenIdentifier,
+    });
+    const reviewAccess = await ctx.runMutation(internal.admin.reseedReviewerAccountsInternal, {});
+
+    return {
+      ...result,
+      adminUser,
+      reviewAccess,
+    };
+  },
+});
+
 export const resetDatabaseAndRevenueCat = action({
   args: {},
   returns: v.object({
-    ...resetDatabaseResultValidator.fields,
+    ...resetDatabaseAndReseedResultValidator.fields,
     revenueCatCleanup: revenueCatCleanupSummaryValidator,
-    reviewAccess: reviewAccessStatusValidator,
   }),
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity || !ADMIN_EMAILS.has((identity.email || "").toLowerCase())) {
-      throw new ConvexError("Unauthorized");
+    const identity = await requireAdminIdentityOrThrow(ctx);
+    if (!identity.email) {
+      throw new ConvexError("Missing admin identity email");
     }
 
     const revenueCatCandidates = await ctx.runQuery(internal.admin.getRevenueCatCleanupCandidates, {});
@@ -851,11 +1019,16 @@ export const resetDatabaseAndRevenueCat = action({
     }
 
     const { deletedUserAppUserIds: _deletedUserAppUserIds, ...result } = await ctx.runAction(internal.admin.resetDatabaseCore, {});
+    const adminUser = await ctx.runMutation(internal.admin.reseedAdminUserInternal, {
+      email: identity.email,
+      authId: identity.tokenIdentifier,
+    });
     const reviewAccess = await ctx.runMutation(internal.admin.reseedReviewerAccountsInternal, {});
 
     return {
       ...result,
       revenueCatCleanup,
+      adminUser,
       reviewAccess,
     };
   },

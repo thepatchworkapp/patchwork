@@ -17,7 +17,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Tabs } from "@cloudflare/kumo/components/tabs";
 import { CodeBlock } from "@cloudflare/kumo/components/code";
 
-import { ArrowRight, Briefcase, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
+import { AlertTriangle, ArrowRight, Briefcase, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
 
 const api = anyApi as any;
 
@@ -224,11 +224,13 @@ type ResetDatabaseResult = {
   deletedTaskerCategories: number;
   deletedTaskerProfiles: number;
   deletedSeekerProfiles: number;
+  deletedFavouriteTaskers?: number;
   deletedReviewAccess: number;
   deletedOtps: number;
   deletedAdminOtps: number;
   deletedUsers: number;
   deletedImageAssets: number;
+  deletedFeedbackSubmissions?: number;
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedStorageFiles: number;
@@ -242,30 +244,158 @@ type ResetDatabaseResult = {
     failedCustomers: number;
     message: string;
   };
+  adminUser?: AdminUserReseedStatus;
   reviewAccess?: ReviewAccessStatus;
 };
+
+type AdminUserReseedStatus = {
+  email?: string;
+  appUserId?: string;
+  created?: boolean;
+  updatedAt?: number;
+};
+
+const RESET_CONFIRM_TEXT = "RESET PATCHWORK";
+
+function ResetCountTile({ label, value }: { label: string; value: number | undefined }) {
+  return (
+    <div className="pw-microcard">
+      <div className="pw-mono text-lg text-kumo-strong">{(value ?? 0).toLocaleString()}</div>
+      <div className="mt-1 text-xs text-kumo-muted">{label}</div>
+    </div>
+  );
+}
+
+function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
+  const countTiles = [
+    ["Users", result.deletedUsers],
+    ["Jobs", result.deletedJobs],
+    ["Messages", result.deletedMessages],
+    ["Proposals", result.deletedProposals],
+    ["Conversations", result.deletedConversations],
+    ["Job requests", result.deletedJobRequests],
+    ["Tasker profiles", result.deletedTaskerProfiles],
+    ["Seeker profiles", result.deletedSeekerProfiles],
+    ["Favourite taskers", result.deletedFavouriteTaskers],
+    ["Reviews", result.deletedReviews],
+    ["Review access", result.deletedReviewAccess],
+    ["Tasker categories", result.deletedTaskerCategories],
+    ["Feedback", result.deletedFeedbackSubmissions],
+    ["User blocks", result.deletedUserBlocks],
+    ["User reports", result.deletedUserReports],
+    ["Image assets", result.deletedImageAssets],
+    ["Storage files", result.deletedStorageFiles],
+    ["Failed storage files", result.failedStorageFiles],
+    ["User OTPs", result.deletedOtps],
+    ["Admin OTPs", result.deletedAdminOtps],
+  ] as const;
+
+  return (
+    <div className="mt-4 grid gap-4">
+      <div className="pw-subcard">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-kumo-strong">Reset result</div>
+            <div className="text-xs text-kumo-muted">{formatDate(result.resetAt)}</div>
+          </div>
+          <Badge variant="outline">production backend</Badge>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {countTiles.map(([label, value]) => (
+            <ResetCountTile key={label} label={label} value={value} />
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="pw-subcard">
+          <div className="text-xs font-semibold uppercase tracking-wide text-kumo-muted">Preserved</div>
+          <div className="mt-2 text-sm text-kumo-strong">Admin auth records and configured admin emails.</div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {result.preservedAdminEmails.length ? (
+              result.preservedAdminEmails.map((email) => (
+                <Badge key={email} variant="outline">
+                  {email}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-xs text-kumo-muted">No preserved admin emails reported.</span>
+            )}
+          </div>
+        </div>
+
+        <div className="pw-subcard">
+          <div className="text-xs font-semibold uppercase tracking-wide text-kumo-muted">Deleted</div>
+          <div className="mt-2 text-sm text-kumo-strong">
+            Non-admin users, marketplace records, conversations, reports, OTPs, image assets, and storage files.
+          </div>
+          {result.revenueCatCleanup && (
+            <div className="mt-2 text-xs text-kumo-muted">
+              RevenueCat: {result.revenueCatCleanup.deletedCustomers.toLocaleString()} deleted,{" "}
+              {result.revenueCatCleanup.missingCustomers.toLocaleString()} missing,{" "}
+              {result.revenueCatCleanup.failedCustomers.toLocaleString()} failed.
+            </div>
+          )}
+        </div>
+
+        <div className="pw-subcard">
+          <div className="text-xs font-semibold uppercase tracking-wide text-kumo-muted">Reseeded</div>
+          <div className="mt-2 grid gap-2 text-sm text-kumo-strong">
+            <div>
+              Admin user {result.adminUser ? `${result.adminUser.created ? "created" : "updated"}.` : "was not reported by the reset action."}
+            </div>
+            <div>
+              Apple reviewer access {result.reviewAccess ? "was reseeded by the reset action." : "was not reported by the reset action."}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-1 text-xs text-kumo-muted">
+            {result.adminUser && (
+              <div>
+                {result.adminUser.email ?? "Admin"} - {formatDate(result.adminUser.updatedAt)}
+              </div>
+            )}
+            {result.reviewAccess && (
+              <div>
+                {result.reviewAccess.email} - {result.reviewAccess.enabled ? "enabled" : "disabled"} -{" "}
+                {formatDate(result.reviewAccess.updatedAt)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AdminMaintenanceCard() {
   const resetDatabase = useAction(api.admin.resetDatabaseAndRevenueCat);
   const reseedReviewerAccounts = useMutation(api.admin.reseedReviewerAccounts);
+  const reseedAdminUser = useMutation(api.admin.reseedAdminUser);
   const [isResetting, setIsResetting] = useState(false);
   const [isReseeding, setIsReseeding] = useState(false);
+  const [isReseedingAdmin, setIsReseedingAdmin] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetResult, setResetResult] = useState<ResetDatabaseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const onReset = async () => {
-    const confirmed = window.confirm(
-      "Reset the production Patchwork database? This will delete user records, jobs, messages, uploads, subscriptions, and reviewer access records, then attempt to delete the matching RevenueCat customer records before reseeding the Apple reviewer accounts."
-    );
-    if (!confirmed) {
+    if (resetConfirmText.trim() !== RESET_CONFIRM_TEXT) {
+      setError(`Type ${RESET_CONFIRM_TEXT} to confirm the production reset.`);
       return;
     }
 
     setIsResetting(true);
     setError(null);
     setNotice(null);
+    setResetResult(null);
     try {
       const result = (await resetDatabase({})) as ResetDatabaseResult;
+      setResetResult(result);
+      setShowResetConfirm(false);
+      setResetConfirmText("");
       let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
       if (result.failedStorageFiles && result.failedStorageFiles > 0) {
         nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
@@ -326,6 +456,27 @@ function AdminMaintenanceCard() {
     }
   };
 
+  const onReseedAdmin = async () => {
+    setIsReseedingAdmin(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = (await reseedAdminUser({})) as AdminUserReseedStatus;
+      const email = result.email ? ` for ${result.email}` : "";
+      const mode = result.created ? "created" : "updated";
+      const when = result.updatedAt ? ` at ${formatDate(result.updatedAt)}` : "";
+      setNotice(`Admin user ${mode}${email}${when}.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Admin user reseed endpoint api.admin.reseedAdminUser is not available or failed: ${redactBackendUrls(err.message)}`
+          : "Admin user reseed endpoint api.admin.reseedAdminUser is not available or failed."
+      );
+    } finally {
+      setIsReseedingAdmin(false);
+    }
+  };
+
   return (
     <Surface className="pw-card pw-fade-up rounded-[var(--pw-radius)] border border-kumo-danger/25 bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
       <div className="flex flex-wrap items-start gap-3">
@@ -335,19 +486,74 @@ function AdminMaintenanceCard() {
             <Badge variant="outline">production</Badge>
           </div>
           <div className="mt-1 text-sm text-kumo-muted">
-            Database reset is destructive. A successful reset now attempts to delete matching RevenueCat customer data before reseeding the Apple reviewer accounts automatically, and you can still run reseed manually if needed.
+            Database reset is destructive and targets the production backend. Admin auth records are preserved, application data is deleted, RevenueCat customers are cleaned up when required, and Apple reviewer access is reseeded by the reset action.
           </div>
         </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="destructive" onClick={onReset} disabled={isResetting || isReseeding}>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            setShowResetConfirm(true);
+            setError(null);
+          }}
+          disabled={isResetting || isReseeding || isReseedingAdmin}
+        >
           {isResetting ? "Resetting..." : "Reset database"}
         </Button>
-        <Button variant="secondary" onClick={onReseed} disabled={isResetting || isReseeding}>
+        <Button variant="secondary" onClick={onReseed} disabled={isResetting || isReseeding || isReseedingAdmin}>
           {isReseeding ? "Reseeding..." : "Reseed Apple reviewer accounts"}
         </Button>
+        <Button variant="secondary" onClick={onReseedAdmin} disabled={isResetting || isReseeding || isReseedingAdmin}>
+          {isReseedingAdmin ? "Reseeding admin..." : "Reseed admin user"}
+        </Button>
       </div>
+
+      {showResetConfirm && (
+        <div className="mt-4 rounded-2xl border border-kumo-danger/35 bg-kumo-danger/5 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-kumo-danger" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-kumo-strong">Confirm production reset</div>
+              <div className="mt-1 text-sm text-kumo-muted">
+                This preserves configured admin auth records and deletes/reseeds production data: users, jobs, messages,
+                favourites, reports, uploads, storage files, RevenueCat customers, OTPs, and Apple reviewer access.
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <Input
+                  label={`Type ${RESET_CONFIRM_TEXT}`}
+                  value={resetConfirmText}
+                  onChange={(event) => setResetConfirmText(event.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <div className="flex items-end">
+                  <Button
+                    variant="destructive"
+                    onClick={onReset}
+                    disabled={isResetting || resetConfirmText.trim() !== RESET_CONFIRM_TEXT}
+                  >
+                    {isResetting ? "Resetting..." : "Confirm reset"}
+                  </Button>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setShowResetConfirm(false);
+                      setResetConfirmText("");
+                    }}
+                    disabled={isResetting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {notice && (
         <div className="mt-4">
@@ -360,6 +566,8 @@ function AdminMaintenanceCard() {
           <Banner variant="error" icon={<ShieldAlert className="size-4" />} text={error} />
         </div>
       )}
+
+      {resetResult && <ResetResultSummary result={resetResult} />}
     </Surface>
   );
 }
