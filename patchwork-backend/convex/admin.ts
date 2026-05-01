@@ -101,6 +101,7 @@ type ResetCounts = {
   deletedAdminOtps: number;
   deletedUsers: number;
   deletedStorageFiles: number;
+  missingStorageFiles: number;
   failedStorageFiles: number;
   deletedUserAppUserIds: string[];
 };
@@ -183,20 +184,28 @@ const adminUserDetailValidator = v.object({
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
+  let missing = 0;
   let failed = 0;
   for (const storageId of storageIds) {
     try {
       await ctx.storage.delete(storageId);
       deleted += 1;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("not found") || message.includes("non-existent")) {
+        missing += 1;
+        console.info("[AdminReset] Storage file already missing", { storageId });
+        continue;
+      }
+
       failed += 1;
       console.warn("[AdminReset] Storage delete failed", {
         storageId,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
     }
   }
-  return { deleted, failed };
+  return { deleted, missing, failed };
 }
 
 async function collectStorageIdsForRows(
@@ -241,6 +250,7 @@ function createEmptyResetCounts(): ResetCounts {
     deletedAdminOtps: 0,
     deletedUsers: 0,
     deletedStorageFiles: 0,
+    missingStorageFiles: 0,
     failedStorageFiles: 0,
     deletedUserAppUserIds: [],
   };
@@ -335,6 +345,7 @@ async function performDatabaseResetInChunks(ctx: any) {
       storageIds: storageIdList.slice(i, i + RESET_BATCH_SIZE),
     });
     resetCounts.deletedStorageFiles += storageDeleteResult.deleted;
+    resetCounts.missingStorageFiles += storageDeleteResult.missing;
     resetCounts.failedStorageFiles += storageDeleteResult.failed;
   }
 
@@ -380,6 +391,7 @@ const resetDatabaseResultValidator = v.object({
   deletedAdminOtps: v.number(),
   deletedUsers: v.number(),
   deletedStorageFiles: v.number(),
+  missingStorageFiles: v.number(),
   failedStorageFiles: v.number(),
   preservedAdminEmails: v.array(v.string()),
 });
@@ -942,6 +954,7 @@ export const deleteStorageIdsChunkCore = internalMutation({
   },
   returns: v.object({
     deleted: v.number(),
+    missing: v.number(),
     failed: v.number(),
   }),
   handler: async (ctx, args) => {

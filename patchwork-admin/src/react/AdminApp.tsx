@@ -234,6 +234,7 @@ type ResetDatabaseResult = {
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedStorageFiles: number;
+  missingStorageFiles?: number;
   failedStorageFiles?: number;
   preservedAdminEmails: string[];
   revenueCatCleanup?: {
@@ -285,6 +286,7 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
     ["User reports", result.deletedUserReports],
     ["Image assets", result.deletedImageAssets],
     ["Storage files", result.deletedStorageFiles],
+    ["Missing storage files", result.missingStorageFiles],
     ["Failed storage files", result.failedStorageFiles],
     ["User OTPs", result.deletedOtps],
     ["Admin OTPs", result.deletedAdminOtps],
@@ -399,6 +401,9 @@ function AdminMaintenanceCard() {
       let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
       if (result.failedStorageFiles && result.failedStorageFiles > 0) {
         nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
+      }
+      if (result.missingStorageFiles && result.missingStorageFiles > 0) {
+        nextNotice += ` ${result.missingStorageFiles} stale storage reference(s) were already gone.`;
       }
 
       if (result.revenueCatCleanup) {

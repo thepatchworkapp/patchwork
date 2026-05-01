@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 
 async function feedbackModules() {
@@ -299,12 +299,14 @@ describe("feedback", () => {
       expect(firstReset.deletedFavouriteTaskers).toBe(1);
       expect(firstReset.deletedImageAssets).toBe(1);
       expect(firstReset.deletedStorageFiles).toBe(4);
+      expect(firstReset.missingStorageFiles).toBe(0);
       expect(firstReset.failedStorageFiles).toBe(0);
 
       const secondReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(secondReset.deletedFavouriteTaskers).toBe(0);
       expect(secondReset.deletedImageAssets).toBe(0);
       expect(secondReset.deletedStorageFiles).toBe(0);
+      expect(secondReset.missingStorageFiles).toBe(0);
       expect(secondReset.failedStorageFiles).toBe(0);
 
       const [legacyUrl, thumbUrl, displayUrl, largeUrl] = await Promise.all([
@@ -321,6 +323,22 @@ describe("feedback", () => {
       process.env.ADMIN_EMAILS = previousAdminEmails;
       vi.resetModules();
     }
+  });
+
+  test("admin storage cleanup counts already-missing storage ids separately from failures", async () => {
+    const t = convexTest(schema, await adminFeedbackModules());
+    const storageId = await t.run(
+      async (ctx) => await ctx.storage.store(new Blob([new Uint8Array(1)], { type: "image/jpeg" }))
+    );
+    await t.run(async (ctx) => await ctx.storage.delete(storageId));
+
+    const result = await t.mutation((internal as any).admin.deleteStorageIdsChunkCore, {
+      storageIds: [storageId],
+    });
+
+    expect(result.deleted).toBe(0);
+    expect(result.missing).toBe(1);
+    expect(result.failed).toBe(0);
   });
 
   test("admin reseedAdminUser is idempotent and resetDatabaseAndReseed restores admin app user", async () => {
