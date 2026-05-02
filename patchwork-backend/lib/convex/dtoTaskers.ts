@@ -49,6 +49,8 @@ export async function buildTaskerSummaryDto(
     id: profile._id,
     userId: profile.userId,
     name: profile.displayName,
+    websiteLinks: profile.websiteLinks ?? [],
+    socialLinks: profile.socialLinks ?? [],
     category: category.name,
     rating: categoryData.rating,
     reviews: categoryData.reviewCount,

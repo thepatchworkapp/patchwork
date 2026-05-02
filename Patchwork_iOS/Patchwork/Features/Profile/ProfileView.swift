@@ -159,6 +159,8 @@ struct TaskerOnboardingView: View {
     @State private var step = 1
     @State private var displayName = ""
     @State private var selectedCategoryId: ConvexID?
+    @State private var websiteLinks = [""]
+    @State private var socialLinks = [""]
 
     @State private var categoryBio = ""
     @State private var rateType = "hourly"
@@ -173,45 +175,17 @@ struct TaskerOnboardingView: View {
     @State private var isCreatingProfile = false
 
     @State private var profileDisplayName = ""
+    @State private var profileWebsiteLinks: [String] = [""]
+    @State private var profileSocialLinks: [String] = [""]
     @State private var addCategorySheet = false
+    @AppStorage("Patchwork.taskerOnboardingDraft") private var onboardingDraftJSON = ""
 
     var body: some View {
         Group {
-            if let profile = appState.taskerProfile, step < 5 {
-                TaskerProfileManageView(
-                    profileDisplayName: $profileDisplayName,
-                    addCategorySheet: $addCategorySheet,
-                    categories: appState.categories,
-                    existingCategoryIDs: Set(profile.categories.map { $0.categoryId }),
-                    onSaveProfile: updateTaskerProfile,
-                    onRemoveCategory: removeCategory,
-                    onAddCategory: { draft in Task { await addCategory(draft: draft) } },
-                    onUpdateCategory: updateTaskerCategory
-                )
-                .onAppear {
-                    profileDisplayName = profile.displayName
-                }
+            if let profile = appState.taskerProfile, step < 6 {
+                manageProfileView(profile)
             } else {
-                TaskerCreateFlowView(
-                    step: $step,
-                    displayName: $displayName,
-                    selectedCategoryId: $selectedCategoryId,
-                    categories: appState.categories,
-                    taskerPhotoSource: $taskerPhotoSource,
-                    taskerCustomPhotoAssetId: $taskerCustomPhotoAssetId,
-                    accountPhotoImage: appState.currentUser?.photoImage,
-                    categoryBio: $categoryBio,
-                    rateType: $rateType,
-                    hourlyRate: $hourlyRate,
-                    fixedRate: $fixedRate,
-                    serviceRadius: $serviceRadius,
-                    portfolioPhotos: $onboardingPortfolioPhotos,
-                    coverPhotoId: $onboardingCoverPhotoId,
-                    isCreatingProfile: $isCreatingProfile,
-                    onSubmit: { Task { await createProfile() } },
-                    onSubscribe: { isShowingSubscriptions = true },
-                    onDone: { dismiss() }
-                )
+                createFlowView
             }
         }
         .navigationTitle("Tasker Setup")
@@ -220,8 +194,64 @@ struct TaskerOnboardingView: View {
                 .patchworkSheetChrome(detents: [.large])
         }
         .task {
+            restoreOnboardingDraft()
             await appState.refreshAuthedData(client: sessionStore.client)
         }
+        .onChange(of: step) { _, _ in saveOnboardingDraft() }
+        .onChange(of: displayName) { _, _ in saveOnboardingDraft() }
+        .onChange(of: selectedCategoryId) { _, _ in saveOnboardingDraft() }
+        .onChange(of: websiteLinks) { _, _ in saveOnboardingDraft() }
+        .onChange(of: socialLinks) { _, _ in saveOnboardingDraft() }
+        .onChange(of: categoryBio) { _, _ in saveOnboardingDraft() }
+        .onChange(of: rateType) { _, _ in saveOnboardingDraft() }
+        .onChange(of: hourlyRate) { _, _ in saveOnboardingDraft() }
+        .onChange(of: fixedRate) { _, _ in saveOnboardingDraft() }
+        .onChange(of: serviceRadius) { _, _ in saveOnboardingDraft() }
+    }
+
+    private func manageProfileView(_ profile: TaskerProfileSelf) -> some View {
+        TaskerProfileManageView(
+            profileDisplayName: $profileDisplayName,
+            profileWebsiteLinks: $profileWebsiteLinks,
+            profileSocialLinks: $profileSocialLinks,
+            addCategorySheet: $addCategorySheet,
+            categories: appState.categories,
+            existingCategoryIDs: Set(profile.categories.map { $0.categoryId }),
+            onSaveProfile: updateTaskerProfile,
+            onRemoveCategory: removeCategory,
+            onAddCategory: { draft in Task { await addCategory(draft: draft) } },
+            onUpdateCategory: updateTaskerCategory
+        )
+        .onAppear {
+            profileDisplayName = profile.displayName
+            profileWebsiteLinks = editableLinks(profile.websiteLinks)
+            profileSocialLinks = editableLinks(profile.socialLinks)
+        }
+    }
+
+    private var createFlowView: some View {
+        TaskerCreateFlowView(
+            step: $step,
+            displayName: $displayName,
+            selectedCategoryId: $selectedCategoryId,
+            websiteLinks: $websiteLinks,
+            socialLinks: $socialLinks,
+            categories: appState.categories,
+            taskerPhotoSource: $taskerPhotoSource,
+            taskerCustomPhotoAssetId: $taskerCustomPhotoAssetId,
+            accountPhotoImage: appState.currentUser?.photoImage,
+            categoryBio: $categoryBio,
+            rateType: $rateType,
+            hourlyRate: $hourlyRate,
+            fixedRate: $fixedRate,
+            serviceRadius: $serviceRadius,
+            portfolioPhotos: $onboardingPortfolioPhotos,
+            coverPhotoId: $onboardingCoverPhotoId,
+            isCreatingProfile: $isCreatingProfile,
+            onSubmit: { Task { await createProfile() } },
+            onSubscribe: { isShowingSubscriptions = true },
+            onDone: { dismiss() }
+        )
     }
 
     private func createProfile() async {
@@ -241,6 +271,8 @@ struct TaskerOnboardingView: View {
         }
         var args: [String: Any] = [
             "displayName": trimmedDisplayName,
+            "websiteLinks": normalizedLinks(websiteLinks),
+            "socialLinks": normalizedLinks(socialLinks),
             "categoryId": selectedCategoryId,
             "categoryBio": trimmedCategoryBio,
             "rateType": rateType,
@@ -275,7 +307,8 @@ struct TaskerOnboardingView: View {
                 throw error
             }
 
-            step = 5
+            step = 6
+            onboardingDraftJSON = ""
             Task {
                 await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
             }
@@ -284,14 +317,59 @@ struct TaskerOnboardingView: View {
         }
     }
 
-    private func updateTaskerProfile(displayName: String) async throws {
+    private func updateTaskerProfile(displayName: String, websiteLinks: [String], socialLinks: [String]) async throws {
         let updatedProfile = try await sessionStore.client.mutation(
             "taskers:updateTaskerProfile",
             args: [
                 "displayName": displayName,
+                "websiteLinks": normalizedLinks(websiteLinks),
+                "socialLinks": normalizedLinks(socialLinks),
             ]
         ) as TaskerProfileSelf
         appState.taskerProfile = updatedProfile
+    }
+
+    private func normalizedLinks(_ links: [String]) -> [String] {
+        links.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    private func editableLinks(_ links: [String]) -> [String] {
+        links.isEmpty ? [""] : links
+    }
+
+    private func saveOnboardingDraft() {
+        let draft = TaskerOnboardingDraft(
+            step: min(max(step, 1), 5),
+            displayName: displayName,
+            selectedCategoryId: selectedCategoryId,
+            websiteLinks: websiteLinks,
+            socialLinks: socialLinks,
+            categoryBio: categoryBio,
+            rateType: rateType,
+            hourlyRate: hourlyRate,
+            fixedRate: fixedRate,
+            serviceRadius: serviceRadius
+        )
+        guard let data = try? JSONEncoder().encode(draft),
+              let json = String(data: data, encoding: .utf8) else { return }
+        onboardingDraftJSON = json
+    }
+
+    private func restoreOnboardingDraft() {
+        guard appState.taskerProfile == nil,
+              !onboardingDraftJSON.isEmpty,
+              let data = onboardingDraftJSON.data(using: .utf8),
+              let draft = try? JSONDecoder().decode(TaskerOnboardingDraft.self, from: data) else { return }
+        step = min(max(draft.step, 1), 5)
+        displayName = draft.displayName
+        selectedCategoryId = draft.selectedCategoryId
+        websiteLinks = editableLinks(draft.websiteLinks)
+        socialLinks = editableLinks(draft.socialLinks)
+        categoryBio = draft.categoryBio
+        rateType = draft.rateType
+        hourlyRate = draft.hourlyRate
+        fixedRate = draft.fixedRate
+        serviceRadius = draft.serviceRadius
     }
 
     private func removeCategory(categoryId: ConvexID) async throws {
@@ -515,9 +593,116 @@ private struct TaskerCategoryDraft {
 
 private enum TaskerCreateFocusField: Hashable {
     case displayName
+    case website
+    case social
     case bio
     case hourlyRate
     case fixedRate
+}
+
+private struct TaskerOnboardingDraft: Codable {
+    let step: Int
+    let displayName: String
+    let selectedCategoryId: ConvexID?
+    let websiteLinks: [String]
+    let socialLinks: [String]
+    let categoryBio: String
+    let rateType: String
+    let hourlyRate: String
+    let fixedRate: String
+    let serviceRadius: Int
+}
+
+private struct TaskerLinksEditor: View {
+    let title: String
+    let placeholder: String
+    let systemImage: String
+    @Binding var links: [String]
+    let accessibilityPrefix: String
+
+    private let maxLinks = 10
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.brand)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+                Spacer()
+                Text("\(normalizedLinks.count)/\(maxLinks)")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+            }
+
+            ForEach(Array(links.indices), id: \.self) { index in
+                HStack(spacing: 8) {
+                    linkField(index)
+
+                    if links.count > 1 {
+                        Button {
+                            links.remove(at: index)
+                            ensureOneField()
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(PatchworkTheme.danger)
+                                .frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("\(accessibilityPrefix).remove.\(index)")
+                        .accessibilityLabel("Remove \(title.lowercased()) link")
+                    }
+                }
+            }
+
+            Button {
+                guard links.count < maxLinks else { return }
+                links.append("")
+            } label: {
+                Label("Add \(title.lowercased()) link", systemImage: "plus.circle.fill")
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.brand)
+            }
+            .buttonStyle(.plain)
+            .disabled(links.count >= maxLinks)
+            .accessibilityIdentifier("\(accessibilityPrefix).addButton")
+        }
+        .onAppear(perform: ensureOneField)
+    }
+
+    private var normalizedLinks: [String] {
+        links.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    private func linkField(_ index: Int) -> some View {
+        let binding = Binding<String>(
+            get: { links.indices.contains(index) ? links[index] : "" },
+            set: { newValue in
+                if links.indices.contains(index) {
+                    links[index] = newValue
+                }
+            }
+        )
+
+        return TextField(placeholder, text: binding)
+            .textInputAutocapitalization(.never)
+            .keyboardType(.URL)
+            .autocorrectionDisabled()
+            .patchworkInputFieldStyle()
+            .accessibilityIdentifier("\(accessibilityPrefix).field.\(index)")
+    }
+
+    private func ensureOneField() {
+        if links.isEmpty {
+            links = [""]
+        } else if links.count > maxLinks {
+            links = Array(links.prefix(maxLinks))
+        }
+    }
 }
 
 private enum PortfolioPhotoSheet: Identifiable {
@@ -569,6 +754,8 @@ private struct TaskerCreateFlowView: View {
     @Binding var step: Int
     @Binding var displayName: String
     @Binding var selectedCategoryId: ConvexID?
+    @Binding var websiteLinks: [String]
+    @Binding var socialLinks: [String]
     let categories: [Category]
     @Binding var taskerPhotoSource: String
     @Binding var taskerCustomPhotoAssetId: ConvexID?
@@ -702,7 +889,7 @@ private struct TaskerCreateFlowView: View {
     private var createFlowScroll: some View {
         ScrollView {
             VStack(spacing: 18) {
-                StepHeader(currentStep: min(step, 4), totalSteps: 4)
+                StepHeader(currentStep: min(step, 5), totalSteps: 5)
                     .padding(.top, 12)
                 createFlowContent
             }
@@ -716,7 +903,7 @@ private struct TaskerCreateFlowView: View {
 
     @ViewBuilder
     private var createFlowContent: some View {
-        if step >= 5 {
+        if step >= 6 {
             taskerCreatedCard
         } else {
             onboardingStepContent
@@ -821,6 +1008,45 @@ private struct TaskerCreateFlowView: View {
                 }
             }
         case 2:
+            PatchworkSurfaceCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    PatchworkSectionIntro(
+                        eyebrow: "Tasker setup",
+                        title: "Links",
+                        message: "Add the web and social places seekers can use to check your work. This is optional."
+                    )
+
+                    TaskerLinksEditor(
+                        title: "Websites",
+                        placeholder: "https://example.com",
+                        systemImage: "globe",
+                        links: $websiteLinks,
+                        accessibilityPrefix: "TaskerOnboarding2.websiteLinks"
+                    )
+
+                    TaskerLinksEditor(
+                        title: "Social",
+                        placeholder: "@yourhandle or profile link",
+                        systemImage: "at",
+                        links: $socialLinks,
+                        accessibilityPrefix: "TaskerOnboarding2.socialLinks"
+                    )
+
+                    HStack(spacing: 12) {
+                        Button("Back") { step = 1 }
+                            .buttonStyle(PatchworkSecondaryButtonStyle())
+                            .accessibilityIdentifier("TaskerOnboarding2.backButton")
+
+                        Button(normalizedLinks(websiteLinks).isEmpty && normalizedLinks(socialLinks).isEmpty ? "Skip" : "Continue") {
+                            step = 3
+                            focusedField = .bio
+                        }
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
+                        .accessibilityIdentifier("TaskerOnboarding2.continueButton")
+                    }
+                }
+            }
+        case 3:
             VStack(spacing: 18) {
                 CategoryServiceDetailsSection(
                     title: "Details",
@@ -832,21 +1058,21 @@ private struct TaskerCreateFlowView: View {
                     fixedRate: $fixedRate,
                     serviceRadius: $serviceRadius,
                     focusedField: $focusedField,
-                    accessibilityPrefix: "TaskerOnboarding2"
+                    accessibilityPrefix: "TaskerOnboarding3"
                 )
 
                 HStack(spacing: 12) {
-                    Button("Back") { step = 1 }
+                    Button("Back") { step = 2 }
                         .buttonStyle(PatchworkSecondaryButtonStyle())
-                        .accessibilityIdentifier("TaskerOnboarding2.backButton")
+                        .accessibilityIdentifier("TaskerOnboarding3.backButton")
 
-                    Button("Continue") { step = 3 }
+                    Button("Continue") { step = 4 }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
                         .disabled(categoryBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !hasValidRate)
-                        .accessibilityIdentifier("TaskerOnboarding2.continueButton")
+                        .accessibilityIdentifier("TaskerOnboarding3.continueButton")
                 }
             }
-        case 3:
+        case 4:
             VStack(spacing: 18) {
                 PatchworkSurfaceCard {
                     PatchworkSectionIntro(
@@ -861,19 +1087,19 @@ private struct TaskerCreateFlowView: View {
                     coverPhotoId: $coverPhotoId,
                     isUploading: isUploadingPortfolio,
                     statusMessage: portfolioStatusMessage,
-                    accessibilityPrefix: "TaskerOnboarding3.portfolio",
+                    accessibilityPrefix: "TaskerOnboarding4.portfolio",
                     onAddPhotos: { showsPortfolioPhotoOptions = true }
                 )
 
                 HStack(spacing: 12) {
-                    Button("Back") { step = 2 }
+                    Button("Back") { step = 3 }
                         .buttonStyle(PatchworkSecondaryButtonStyle())
-                        .accessibilityIdentifier("TaskerOnboarding3.backButton")
+                        .accessibilityIdentifier("TaskerOnboarding4.backButton")
 
-                    Button("Continue") { step = 4 }
+                    Button("Continue") { step = 5 }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
                         .disabled(isUploadingPortfolio)
-                        .accessibilityIdentifier("TaskerOnboarding3.continueButton")
+                        .accessibilityIdentifier("TaskerOnboarding4.continueButton")
                 }
             }
         default:
@@ -887,6 +1113,8 @@ private struct TaskerCreateFlowView: View {
 
                     discoverCardPreview
                     onboardingSummaryRow("Display name", value: displayName)
+                    onboardingSummaryRow("Primary website", value: normalizedLinks(websiteLinks).first ?? "None")
+                    onboardingSummaryRow("Primary social", value: normalizedLinks(socialLinks).first ?? "None")
                     onboardingSummaryRow("Rate", value: reviewRateSummary)
                     onboardingSummaryRow("Radius", value: "\(serviceRadius) km")
                     onboardingSummaryRow("Portfolio", value: "\(portfolioPhotos.count)/10")
@@ -917,17 +1145,17 @@ private struct TaskerCreateFlowView: View {
                     .accessibilityLabel("I agree to the Tasker terms and community guidelines")
                     .accessibilityValue(acceptedTerms ? "Selected" : "Not selected")
                     .accessibilityHint("Required to complete setup")
-                    .accessibilityIdentifier("TaskerOnboarding4.acceptTermsToggle")
+                    .accessibilityIdentifier("TaskerOnboarding5.acceptTermsToggle")
 
                     HStack(spacing: 12) {
-                        Button("Back") { step = 3 }
+                        Button("Back") { step = 4 }
                             .buttonStyle(PatchworkSecondaryButtonStyle())
-                            .accessibilityIdentifier("TaskerOnboarding4.backButton")
+                            .accessibilityIdentifier("TaskerOnboarding5.backButton")
 
                         Button(isCreatingProfile ? "Creating…" : "Complete Setup", action: onSubmit)
                             .buttonStyle(PatchworkPrimaryButtonStyle())
                             .disabled(!canCompleteSetup)
-                            .accessibilityIdentifier("TaskerOnboarding4.completeButton")
+                            .accessibilityIdentifier("TaskerOnboarding5.completeButton")
                     }
                 }
             }
@@ -945,6 +1173,10 @@ private struct TaskerCreateFlowView: View {
                 .foregroundStyle(PatchworkTheme.textPrimary)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func normalizedLinks(_ links: [String]) -> [String] {
+        links.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
     private var displayedTaskerPhotoAsset: RemoteImageAsset? {
@@ -1289,10 +1521,12 @@ private struct TaskerProfileManageView: View {
     @Environment(SessionStore.self) private var sessionStore
 
     @Binding var profileDisplayName: String
+    @Binding var profileWebsiteLinks: [String]
+    @Binding var profileSocialLinks: [String]
     @Binding var addCategorySheet: Bool
     let categories: [Category]
     let existingCategoryIDs: Set<ConvexID>
-    let onSaveProfile: (String) async throws -> Void
+    let onSaveProfile: (String, [String], [String]) async throws -> Void
     let onRemoveCategory: (ConvexID) async throws -> Void
     let onAddCategory: (TaskerCategoryDraft) -> Void
     let onUpdateCategory: (TaskerCategoryDraft) async throws -> Void
@@ -1323,6 +1557,22 @@ private struct TaskerProfileManageView: View {
                             TextField("Display name", text: $profileDisplayName)
                                 .patchworkInputFieldStyle()
                                 .accessibilityIdentifier("TaskerProfile.displayNameField")
+
+                            TaskerLinksEditor(
+                                title: "Websites",
+                                placeholder: "https://example.com",
+                                systemImage: "globe",
+                                links: $profileWebsiteLinks,
+                                accessibilityPrefix: "TaskerProfile.websiteLinks"
+                            )
+
+                            TaskerLinksEditor(
+                                title: "Social",
+                                placeholder: "@yourhandle or profile link",
+                                systemImage: "at",
+                                links: $profileSocialLinks,
+                                accessibilityPrefix: "TaskerProfile.socialLinks"
+                            )
 
                             taskerPublicProfilePreview
                             taskerPhotoSourceControls
@@ -1688,8 +1938,8 @@ private struct TaskerProfileManageView: View {
         defer { isSavingProfile = false }
 
         do {
-            try await onSaveProfile(trimmedDisplayName)
-            feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Display name updated.")
+            try await onSaveProfile(trimmedDisplayName, profileWebsiteLinks, profileSocialLinks)
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Tasker profile updated.")
         } catch {
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }

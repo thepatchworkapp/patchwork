@@ -47,6 +47,8 @@ export const forceCreateTaskerProfile = internalMutation({
       userId: user._id,
       displayName: args.displayName,
       bio: args.bio,
+      websiteLinks: [],
+      socialLinks: [],
       isOnboarded: true,
       rating: 0,
       reviewCount: 0,

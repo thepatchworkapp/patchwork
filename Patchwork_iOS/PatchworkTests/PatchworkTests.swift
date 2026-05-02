@@ -1002,6 +1002,8 @@ final class PatchworkTests: XCTestCase {
             id: "tasker_previous",
             displayName: "Previous Tasker",
             bio: "Existing profile",
+            websiteLinks: [],
+            socialLinks: [],
             subscriptionPlan: "free",
             subscriptionAccessType: nil,
             subscriptionActiveAccessTypes: nil,

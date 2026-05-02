@@ -264,6 +264,8 @@ describe("searchTaskers", () => {
       const profileId = await ctx.db.insert("taskerProfiles", {
         userId,
         displayName: "Tasker 3 Pro",
+        websiteLinks: [],
+        socialLinks: [],
         isOnboarded: false,
         rating: 0,
         reviewCount: 0,

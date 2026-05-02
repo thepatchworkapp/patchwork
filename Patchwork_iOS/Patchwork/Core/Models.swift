@@ -77,6 +77,8 @@ struct TaskerSummary: Identifiable, Codable, Hashable {
     let id: ConvexID
     let userId: ConvexID
     let displayName: String
+    let websiteLinks: [String]
+    let socialLinks: [String]
     let averageRating: Double?
     let reviewCount: Int?
     let distanceLabel: String?
@@ -94,6 +96,8 @@ struct TaskerSummary: Identifiable, Codable, Hashable {
         case id
         case userId
         case displayName = "name"
+        case websiteLinks
+        case socialLinks
         case averageRating = "rating"
         case reviewCount = "reviews"
         case distanceLabel = "distance"
@@ -113,6 +117,8 @@ struct TaskerDetail: Codable, Hashable {
     let id: ConvexID
     let userId: ConvexID
     let displayName: String
+    let websiteLinks: [String]
+    let socialLinks: [String]
     let averageRating: Double?
     let reviewCount: Int?
     let bio: String?
@@ -128,6 +134,8 @@ struct TaskerDetail: Codable, Hashable {
         case id
         case userId
         case displayName
+        case websiteLinks
+        case socialLinks
         case averageRating = "rating"
         case reviewCount
         case bio
@@ -421,6 +429,8 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let id: ConvexID
     let displayName: String
     let bio: String?
+    let websiteLinks: [String]
+    let socialLinks: [String]
     let subscriptionPlan: String
     let subscriptionAccessType: String?
     let subscriptionActiveAccessTypes: [String]?
@@ -442,6 +452,8 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case id = "_id"
         case displayName
         case bio
+        case websiteLinks
+        case socialLinks
         case subscriptionPlan
         case subscriptionAccessType
         case subscriptionActiveAccessTypes

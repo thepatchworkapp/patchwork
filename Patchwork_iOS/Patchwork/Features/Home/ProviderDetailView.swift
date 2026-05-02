@@ -24,6 +24,7 @@ struct ProviderDetailView: View {
                         categorySelector(tasker)
                         portfolioGallerySection
                         aboutSection(tasker)
+                        linksSection(tasker)
                         pricingSection(tasker)
                         reviewsSection(tasker)
                         bottomCTA(tasker)
@@ -279,6 +280,49 @@ struct ProviderDetailView: View {
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func linksSection(_ tasker: TaskerDetail) -> some View {
+        let primaryWebsite = tasker.websiteLinks.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primarySocial = tasker.socialLinks.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if primaryWebsite?.isEmpty == false || primarySocial?.isEmpty == false {
+            PatchworkSurfaceCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Links")
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                        .accessibilityAddTraits(.isHeader)
+
+                    if let primaryWebsite, !primaryWebsite.isEmpty {
+                        linkRow(title: "Website", value: primaryWebsite, systemImage: "globe")
+                    }
+                    if let primarySocial, !primarySocial.isEmpty {
+                        linkRow(title: "Social", value: primarySocial, systemImage: "at")
+                    }
+                }
+            }
+        }
+    }
+
+    private func linkRow(title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.patchworkBody)
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+                Text(value)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
     }

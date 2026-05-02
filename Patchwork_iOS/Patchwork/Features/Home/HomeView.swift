@@ -287,6 +287,8 @@ struct HomeView: View {
                     }
                 }
 
+                taskerPrimaryLinks(tasker)
+
                 if let bio = tasker.bio?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !bio.isEmpty {
                     Text(bio)
@@ -350,6 +352,26 @@ struct HomeView: View {
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
         .shadow(color: PatchworkTheme.brand.opacity(0.1), radius: 24, y: 14)
+    }
+
+    @ViewBuilder
+    private func taskerPrimaryLinks(_ tasker: TaskerSummary) -> some View {
+        let primaryWebsite = tasker.websiteLinks.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primarySocial = tasker.socialLinks.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if primaryWebsite?.isEmpty == false || primarySocial?.isEmpty == false {
+            HStack(spacing: 10) {
+                if let primaryWebsite, !primaryWebsite.isEmpty {
+                    Label(primaryWebsite, systemImage: "globe")
+                        .lineLimit(1)
+                }
+                if let primarySocial, !primarySocial.isEmpty {
+                    Label(primarySocial, systemImage: "at")
+                        .lineLimit(1)
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(PatchworkTheme.brand)
+        }
     }
 
     private var emptyState: some View {

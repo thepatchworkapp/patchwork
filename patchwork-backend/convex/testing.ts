@@ -410,6 +410,8 @@ export const ensureDiscoverableTasker = internalMutation({
         userId: user._id,
         displayName: args.displayName,
         bio: args.categoryBio,
+        websiteLinks: [],
+        socialLinks: [],
         isOnboarded: true,
         rating: 0,
         reviewCount: 0,

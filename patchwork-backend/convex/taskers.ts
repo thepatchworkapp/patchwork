@@ -27,6 +27,8 @@ import {
 
 const MAX_CATEGORY_BIO_LENGTH = 500;
 const MAX_CATEGORY_PORTFOLIO_ASSETS = 10;
+const MAX_TASKER_PROFILE_LINKS = 10;
+const MAX_TASKER_PROFILE_LINK_LENGTH = 300;
 const DEFAULT_FAVOURITE_LIMIT = 50;
 const MAX_FAVOURITE_LIMIT = 50;
 
@@ -83,6 +85,31 @@ function validatePortfolioAssetIds(portfolioAssetIds?: Id<"imageAssets">[]) {
   if (uniqueAssetIds.size !== normalizedIds.length) {
     throw new ConvexError("Portfolio image assets must be unique");
   }
+}
+
+function normalizeTaskerProfileLinks(label: string, links?: string[]) {
+  const normalized = (links ?? [])
+    .map((link) => link.trim())
+    .filter((link) => link.length > 0);
+  if (normalized.length > MAX_TASKER_PROFILE_LINKS) {
+    throw new ConvexError(`Maximum ${MAX_TASKER_PROFILE_LINKS} ${label} links allowed`);
+  }
+  for (const link of normalized) {
+    if (link.length > MAX_TASKER_PROFILE_LINK_LENGTH) {
+      throw new ConvexError(`${label} links must be ${MAX_TASKER_PROFILE_LINK_LENGTH} characters or less`);
+    }
+  }
+  return normalized;
+}
+
+function normalizeTaskerProfileLinkInput(args: {
+  websiteLinks?: string[];
+  socialLinks?: string[];
+}) {
+  return {
+    websiteLinks: normalizeTaskerProfileLinks("website", args.websiteLinks),
+    socialLinks: normalizeTaskerProfileLinks("social", args.socialLinks),
+  };
 }
 
 async function validateAndResolveCategoryPortfolio(
@@ -181,6 +208,8 @@ async function buildTaskerProfileResponse(
     userId: profile.userId,
     displayName: profile.displayName,
     bio: profile.bio,
+    websiteLinks: profile.websiteLinks ?? [],
+    socialLinks: profile.socialLinks ?? [],
     isOnboarded: profile.isOnboarded,
     rating: profile.rating,
     reviewCount: profile.reviewCount,
@@ -210,6 +239,8 @@ export const createTaskerProfile = mutation({
   args: {
     displayName: v.string(),
     bio: v.optional(v.string()),
+    websiteLinks: v.optional(v.array(v.string())),
+    socialLinks: v.optional(v.array(v.string())),
     photoSource: v.optional(v.union(v.literal("user"), v.literal("custom"))),
     photoAssetId: v.optional(v.id("imageAssets")),
     categoryId: v.id("categories"),
@@ -238,6 +269,7 @@ export const createTaskerProfile = mutation({
     // Input validation
     if (args.displayName.length > 100) throw new ConvexError("Display name must be 100 characters or less");
     if (args.bio && args.bio.length > 2000) throw new ConvexError("Bio must be 2000 characters or less");
+    const profileLinks = normalizeTaskerProfileLinkInput(args);
     if (args.categoryBio.length > MAX_CATEGORY_BIO_LENGTH) throw new ConvexError("Category bio must be 500 characters or less");
     if (args.serviceRadius < 1 || args.serviceRadius > 250) throw new ConvexError("Service radius must be between 1 and 250 km");
     if (args.hourlyRate !== undefined && (args.hourlyRate < 1 || args.hourlyRate > 100000000)) throw new ConvexError("Hourly rate must be between 1 and 1,000,000 (in cents)");
@@ -273,6 +305,8 @@ export const createTaskerProfile = mutation({
       userId: user._id,
       displayName: args.displayName,
       bio: args.bio,
+      websiteLinks: profileLinks.websiteLinks,
+      socialLinks: profileLinks.socialLinks,
       photoSource,
       photoAssetId: customPhotoAssetId,
       isOnboarded: true,
@@ -342,6 +376,8 @@ export const updateTaskerProfile = mutation({
   args: {
     displayName: v.optional(v.string()),
     bio: v.optional(v.string()),
+    websiteLinks: v.optional(v.array(v.string())),
+    socialLinks: v.optional(v.array(v.string())),
   },
   returns: taskerProfileResponseValidator,
   handler: async (ctx, args) => {
@@ -350,6 +386,7 @@ export const updateTaskerProfile = mutation({
     // Input validation
     if (args.displayName !== undefined && args.displayName.length > 100) throw new ConvexError("Display name must be 100 characters or less");
     if (args.bio !== undefined && args.bio.length > 2000) throw new ConvexError("Bio must be 2000 characters or less");
+    const profileLinks = normalizeTaskerProfileLinkInput(args);
 
     const updates: any = {
       updatedAt: Date.now(),
@@ -361,6 +398,12 @@ export const updateTaskerProfile = mutation({
 
     if (args.bio !== undefined) {
       updates.bio = args.bio;
+    }
+    if (args.websiteLinks !== undefined) {
+      updates.websiteLinks = profileLinks.websiteLinks;
+    }
+    if (args.socialLinks !== undefined) {
+      updates.socialLinks = profileLinks.socialLinks;
     }
 
     await ctx.db.patch(profile._id, updates);
@@ -693,6 +736,8 @@ export const getTaskerById = query({
       userId: profile.userId,
       displayName: profile.displayName,
       bio: profile.bio,
+      websiteLinks: profile.websiteLinks ?? [],
+      socialLinks: profile.socialLinks ?? [],
       rating: profile.rating,
       reviewCount: profile.reviewCount,
       completedJobs: profile.completedJobs,

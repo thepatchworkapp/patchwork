@@ -119,6 +119,8 @@ export default defineSchema({
     // Display
     displayName: v.string(),
     bio: v.optional(v.string()),
+    websiteLinks: v.array(v.string()),
+    socialLinks: v.array(v.string()),
     isOnboarded: v.boolean(),
 
     // Stats (aggregated across all categories)

@@ -17,7 +17,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Tabs } from "@cloudflare/kumo/components/tabs";
 import { CodeBlock } from "@cloudflare/kumo/components/code";
 
-import { AlertTriangle, ArrowRight, Briefcase, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
+import { AlertTriangle, ArrowRight, Briefcase, Globe, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
 
 const api = anyApi as any;
 
@@ -711,6 +711,53 @@ function EmptyHint({ title, body }: { title: string; body: string }) {
       <div className="mt-1 text-sm leading-relaxed text-kumo-muted">{body}</div>
     </div>
   );
+}
+
+function TaskerLinksAdminCard({ title, links }: { title: string; links?: string[] | null }) {
+  const normalizedLinks = (Array.isArray(links) ? links : []).filter((link) => typeof link === "string" && link.trim());
+
+  return (
+    <div className="pw-microcard">
+      <div className="mb-2 flex items-center gap-2">
+        <Globe className="size-3.5 text-kumo-muted" />
+        <div className="pw-mono text-xs text-kumo-muted">{title}</div>
+      </div>
+      {normalizedLinks.length > 0 ? (
+        <div className="space-y-1">
+          {normalizedLinks.map((link, index) => {
+            const href = externalLinkHref(link);
+            return href ? (
+              <a
+                key={`${title}-${index}-${link}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="block truncate text-sm text-kumo-strong underline decoration-kumo-muted/50 underline-offset-2"
+              >
+                {link}
+              </a>
+            ) : (
+              <div key={`${title}-${index}-${link}`} className="truncate text-sm text-kumo-strong">
+                {link}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-sm text-kumo-muted">—</div>
+      )}
+    </div>
+  );
+}
+
+function externalLinkHref(value: string): string | null {
+  const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
 }
 
 function avatarInitials(name?: string | null, email?: string | null): string {
@@ -1736,6 +1783,11 @@ function UserDetailView({
                 {detail.taskerProfile.premiumPin && (
                   <Badge variant="outline">pin: {detail.taskerProfile.premiumPin}</Badge>
                 )}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <TaskerLinksAdminCard title="Websites" links={detail.taskerProfile.websiteLinks} />
+                <TaskerLinksAdminCard title="Social" links={detail.taskerProfile.socialLinks} />
               </div>
             </div>
 

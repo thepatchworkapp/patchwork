@@ -95,6 +95,8 @@ describe("taskers", () => {
     expect(profile).not.toBeNull();
     expect(profile?.displayName).toBe("Bob the Plumber");
     expect(profile?.bio).toBe("Expert plumber with 10 years experience");
+    expect(profile?.websiteLinks).toEqual([]);
+    expect(profile?.socialLinks).toEqual([]);
     expect(profile?.isOnboarded).toBe(true);
     expect(profile?.rating).toBe(0);
     expect(profile?.reviewCount).toBe(0);
@@ -447,6 +449,104 @@ describe("taskers", () => {
     const profile = await asUser.query(api.taskers.getTaskerProfile);
     expect(profile?.displayName).toBe("New Name");
     expect(profile?.bio).toBe("New and improved bio");
+  });
+
+  test("createTaskerProfile and updateTaskerProfile preserve website and social link ordering", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|link-order",
+      email: "links@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Links Test",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "cleaning",
+    });
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Links Tasker",
+      bio: "Profile with links",
+      websiteLinks: [" https://first.example.com ", "", "https://second.example.com"],
+      socialLinks: ["https://instagram.com/links", "  ", "https://tiktok.com/@links"],
+      categoryId: category!._id,
+      categoryBio: "Cleaning services",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 20,
+    });
+
+    let profile = await asUser.query(api.taskers.getTaskerProfile);
+    expect(profile?.websiteLinks).toEqual(["https://first.example.com", "https://second.example.com"]);
+    expect(profile?.socialLinks).toEqual(["https://instagram.com/links", "https://tiktok.com/@links"]);
+
+    const updatedProfile = await asUser.mutation(api.taskers.updateTaskerProfile, {
+      websiteLinks: ["https://third.example.com", "https://first.example.com"],
+      socialLinks: ["https://youtube.com/@links", "https://instagram.com/links"],
+    });
+
+    expect(updatedProfile.websiteLinks).toEqual(["https://third.example.com", "https://first.example.com"]);
+    expect(updatedProfile.socialLinks).toEqual(["https://youtube.com/@links", "https://instagram.com/links"]);
+
+    profile = await asUser.query(api.taskers.getTaskerProfile);
+    expect(profile?.websiteLinks).toEqual(["https://third.example.com", "https://first.example.com"]);
+    expect(profile?.socialLinks).toEqual(["https://youtube.com/@links", "https://instagram.com/links"]);
+  });
+
+  test("tasker profile link inputs reject more than 10 website or social links", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|link-limit",
+      email: "link-limit@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Link Limit Test",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "cleaning",
+    });
+    const elevenLinks = Array.from({ length: 11 }, (_, index) => `https://example.com/${index}`);
+
+    await expect(
+      asUser.mutation(api.taskers.createTaskerProfile, {
+        displayName: "Too Many Links",
+        bio: "Profile with too many links",
+        websiteLinks: elevenLinks,
+        categoryId: category!._id,
+        categoryBio: "Cleaning services",
+        rateType: "hourly",
+        hourlyRate: 5000,
+        serviceRadius: 20,
+      })
+    ).rejects.toThrow("Maximum 10 website links allowed");
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Valid Links",
+      bio: "Profile with valid links",
+      categoryId: category!._id,
+      categoryBio: "Cleaning services",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 20,
+    });
+
+    await expect(
+      asUser.mutation(api.taskers.updateTaskerProfile, {
+        socialLinks: elevenLinks,
+      })
+    ).rejects.toThrow("Maximum 10 social links allowed");
   });
 
   test("updateTaskerCategory updates public service details and clears inactive price fields", async () => {

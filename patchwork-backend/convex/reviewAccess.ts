@@ -247,6 +247,8 @@ async function ensureTaskerProfile(ctx: any, userId: any, categoryId: any) {
     const taskerProfileId = await ctx.db.insert("taskerProfiles", {
       userId,
       ...taskerPatch,
+      websiteLinks: [],
+      socialLinks: [],
       createdAt: now,
     });
     taskerProfile = await ctx.db.get(taskerProfileId);
