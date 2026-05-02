@@ -5,6 +5,7 @@ import UIKit
 struct ProfileAccountSection: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.openURL) private var openURL
 
     let user: CurrentUser?
     let taskerProfile: TaskerProfileSelf?
@@ -18,6 +19,115 @@ struct ProfileAccountSection: View {
     @State private var isShowingProfileEditor = false
 
     var body: some View {
+        accountContent
+        .confirmationDialog("Profile photo", isPresented: $photoFlow.showsPhotoOptions, titleVisibility: .visible) {
+            if CameraCaptureView.isCameraAvailable {
+                Button("Take Photo") {
+                    photoFlow.selectCamera()
+                }
+            }
+            Button("Choose from Gallery") {
+                photoFlow.selectGallery()
+            }
+            if hasProfilePhoto {
+                Button("Remove Photo", role: .destructive) {
+                    Task { await removeProfilePhoto() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $photoFlow.activeSheet) { sheet in
+            switch sheet {
+            case .camera:
+                CameraCaptureView { image in
+                    photoFlow.presentCrop(for: image)
+                }
+            case .gallery:
+                GalleryPickerView(selectionLimit: photoFlow.selectionLimit) { images in
+                    photoFlow.presentCrop(for: images.first)
+                }
+            case .crop(let input):
+                PhotoCropEditor(input: input) {
+                    photoFlow.cancelCrop()
+                } onConfirm: { draft in
+                    photoFlow.confirmCrop(draft)
+                    Task { await uploadProfilePhoto(draft) }
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingProfileEditor) {
+            ProfileAccountEditSheet(user: user) { updatedUser in
+                appState.currentUser = updatedUser
+            }
+            .patchworkSheetChrome(detents: [.medium])
+        }
+    }
+
+    @ViewBuilder
+    private var accountContent: some View {
+        if taskerProfile == nil {
+            preTaskerAccountContent
+        } else {
+            taskerAccountContent
+        }
+    }
+
+    private var preTaskerAccountContent: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 18) {
+                avatar
+                    .padding(.top, 30)
+                profilePhotoControls
+
+                VStack(spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(user?.name ?? "Signed in")
+                            .font(.system(size: 29, weight: .bold, design: .rounded))
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+
+                        Button {
+                            isShowingProfileEditor = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit seeker profile")
+                        .accessibilityIdentifier("Profile.editProfileButton")
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Label(locationLabel, systemImage: "mappin.and.ellipse")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+
+                    roleBadge(
+                        "Seeker",
+                        foreground: PatchworkTheme.success,
+                        background: PatchworkTheme.success.opacity(0.14),
+                        stroke: PatchworkTheme.success.opacity(0.25),
+                        accessibilityIdentifier: "Profile.seekerPill"
+                    )
+                    .padding(.top, 6)
+                }
+
+                preTaskerSettingsCard
+            }
+            .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer(minLength: 0)
+                ProfileMenuButton(action: onOpenMenu)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var taskerAccountContent: some View {
         PatchworkSurfaceCard {
             VStack(spacing: 16) {
                 HStack {
@@ -67,46 +177,30 @@ struct ProfileAccountSection: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .confirmationDialog("Profile photo", isPresented: $photoFlow.showsPhotoOptions, titleVisibility: .visible) {
-            if CameraCaptureView.isCameraAvailable {
-                Button("Take Photo") {
-                    photoFlow.selectCamera()
+    }
+
+    private var preTaskerSettingsCard: some View {
+        PatchworkSurfaceCard {
+            VStack(spacing: 0) {
+                preTaskerSettingsRow(
+                    title: "Seeker profile",
+                    systemImage: "person.fill",
+                    accessibilityIdentifier: "Profile.seekerProfileRow"
+                ) {
+                    isShowingProfileEditor = true
+                }
+
+                Divider()
+                    .padding(.leading, 66)
+
+                preTaskerSettingsRow(
+                    title: "Notifications",
+                    systemImage: "bell.fill",
+                    accessibilityIdentifier: "Profile.notificationsRow"
+                ) {
+                    openNotificationSettings()
                 }
             }
-            Button("Choose from Gallery") {
-                photoFlow.selectGallery()
-            }
-            if hasProfilePhoto {
-                Button("Remove Photo", role: .destructive) {
-                    Task { await removeProfilePhoto() }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .sheet(item: $photoFlow.activeSheet) { sheet in
-            switch sheet {
-            case .camera:
-                CameraCaptureView { image in
-                    photoFlow.presentCrop(for: image)
-                }
-            case .gallery:
-                GalleryPickerView(selectionLimit: photoFlow.selectionLimit) { images in
-                    photoFlow.presentCrop(for: images.first)
-                }
-            case .crop(let input):
-                PhotoCropEditor(input: input) {
-                    photoFlow.cancelCrop()
-                } onConfirm: { draft in
-                    photoFlow.confirmCrop(draft)
-                    Task { await uploadProfilePhoto(draft) }
-                }
-            }
-        }
-        .sheet(isPresented: $isShowingProfileEditor) {
-            ProfileAccountEditSheet(user: user) { updatedUser in
-                appState.currentUser = updatedUser
-            }
-            .patchworkSheetChrome(detents: [.medium])
         }
     }
 
@@ -115,7 +209,7 @@ struct ProfileAccountSection: View {
             AvatarPhotoControl(
                 localImage: pendingPreviewImage,
                 remoteAsset: displayedPhotoAsset,
-                size: 108,
+                size: taskerProfile == nil ? 124 : 108,
                 isBusy: isUploadingPhoto,
                 accessibilityIdentifier: "Profile.photoPicker",
                 action: { photoFlow.showOptions() }
@@ -140,6 +234,46 @@ struct ProfileAccountSection: View {
                 .offset(x: 4, y: 4)
             }
         }
+    }
+
+    private func preTaskerSettingsRow(
+        title: String,
+        systemImage: String,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 18) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(PatchworkTheme.brand)
+                    .frame(width: 44, height: 44)
+                    .background(PatchworkTheme.brandSoft.opacity(0.86), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .accessibilityHidden(true)
+
+                Text(title)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                Spacer(minLength: 12)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(PatchworkTheme.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(height: 62)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private func openNotificationSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        openURL(settingsURL)
     }
 
     private var avatarFallback: some View {

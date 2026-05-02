@@ -16,12 +16,12 @@ struct ProfileTaskerSection: View {
 
     var body: some View {
         PatchworkSurfaceCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Tasker Workspace")
-                    .font(.patchworkCardTitle)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
+            if let taskerProfile {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Tasker Workspace")
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
 
-                if let taskerProfile {
                     if taskerProfile.displayName != userName {
                         Text("Listed as: \(taskerProfile.displayName)")
                             .font(.patchworkCaption)
@@ -30,20 +30,13 @@ struct ProfileTaskerSection: View {
 
                     accessSummaryCard(taskerProfile)
                     discoverabilityControls(for: taskerProfile)
-                } else {
-                    Text("Finish tasker onboarding to manage your profile, availability, and discoverability.")
-                        .font(.patchworkBody)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
 
-                NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
-                    ProfileLinkRowLabel(title: taskerProfile == nil ? "Complete Tasker Setup" : "Manage Tasker Profile")
-                }
-                .buttonStyle(.plain)
-                .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
+                    NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
+                        ProfileLinkRowLabel(title: "Manage Tasker Profile")
+                    }
+                    .buttonStyle(.plain)
+                    .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
 
-                if let taskerProfile {
                     let billingTitle = effectiveHasActiveAccess(for: taskerProfile)
                         ? "Billing & access"
                         : "Unlock tasker mode"
@@ -56,6 +49,8 @@ struct ProfileTaskerSection: View {
                     .buttonStyle(.plain)
                     .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.visibilitySubscriptionLink"))
                 }
+            } else {
+                preTaskerWorkspaceCard
             }
         }
         .task(id: taskerGhostModeRefreshKey) {
@@ -74,6 +69,70 @@ struct ProfileTaskerSection: View {
             TaskerBillingSheet()
                 .patchworkSheetChrome(detents: [.large])
         }
+    }
+
+    private var preTaskerWorkspaceCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tasker Workspace")
+                        .font(.patchworkCardTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                    Text("Not set up")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(PatchworkTheme.surfaceMuted, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                        )
+                }
+
+                Spacer(minLength: 12)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    PatchworkTheme.brandSoft,
+                                    PatchworkTheme.brandSoft.opacity(0.62)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 74, height: 62)
+
+                    Image(systemName: "briefcase.fill")
+                        .font(.system(size: 25, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: PatchworkTheme.brand.opacity(0.18), radius: 8, y: 4)
+                }
+                .accessibilityHidden(true)
+            }
+
+            NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
+                HStack(spacing: 10) {
+                    Text("Become a Tasker")
+                    Spacer(minLength: 12)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PatchworkPrimaryButtonStyle())
+            .accessibilityIdentifier("Profile.taskerOnboardingLink")
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private func discoverabilityControls(for profile: TaskerProfileSelf) -> some View {

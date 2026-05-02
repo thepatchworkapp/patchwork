@@ -200,7 +200,7 @@ struct AvatarPhotoControl<Placeholder: View>: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomTrailing) {
                 avatarImage
                     .frame(width: size, height: size)
                     .clipShape(Circle())
@@ -223,7 +223,7 @@ struct AvatarPhotoControl<Placeholder: View>: View {
                     Circle()
                         .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
                 )
-                .offset(x: 2, y: -2)
+                .offset(x: size >= 96 ? 10 : 8, y: size >= 96 ? 10 : 8)
 
                 if isBusy {
                     Circle()
