@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 import UIKit
 
@@ -14,6 +15,7 @@ struct ProfileAccountSection: View {
     @State private var pendingPhotoAsset: RemoteImageAsset?
     @State private var isUploadingPhoto = false
     @State private var photoStatusMessage: SubscriptionFeedbackMessage?
+    @State private var isShowingProfileEditor = false
 
     var body: some View {
         PatchworkSurfaceCard {
@@ -37,6 +39,15 @@ struct ProfileAccountSection: View {
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
+
+                Button {
+                    isShowingProfileEditor = true
+                } label: {
+                    Label("Edit profile", systemImage: "square.and.pencil")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PatchworkSecondaryButtonStyle())
+                .accessibilityIdentifier("Profile.editProfileButton")
 
                 HStack(spacing: 10) {
                     if user?.roles?.isSeeker == true {
@@ -90,6 +101,12 @@ struct ProfileAccountSection: View {
                     Task { await uploadProfilePhoto(draft) }
                 }
             }
+        }
+        .sheet(isPresented: $isShowingProfileEditor) {
+            ProfileAccountEditSheet(user: user) { updatedUser in
+                appState.currentUser = updatedUser
+            }
+            .patchworkSheetChrome(detents: [.medium])
         }
     }
 
@@ -405,5 +422,172 @@ struct ProfileAccountSection: View {
 
     private var initial: String {
         String((user?.name ?? "?").prefix(1)).uppercased()
+    }
+}
+
+private struct ProfileAccountEditSheet: View {
+    @Environment(AppState.self) private var appState
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(LocationManager.self) private var locationManager
+    @Environment(\.dismiss) private var dismiss
+
+    let user: CurrentUser?
+    let onSaved: (CurrentUser) -> Void
+
+    @State private var name: String
+    @State private var city: String
+    @State private var province: String
+    @State private var isSaving = false
+    @State private var statusMessage: SubscriptionFeedbackMessage?
+
+    init(user: CurrentUser?, onSaved: @escaping (CurrentUser) -> Void) {
+        self.user = user
+        self.onSaved = onSaved
+        _name = State(initialValue: user?.name ?? "")
+        _city = State(initialValue: user?.location?.city ?? "")
+        _province = State(initialValue: user?.location?.province ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                PatchworkSectionIntro(
+                    eyebrow: "Account",
+                    title: "Edit profile",
+                    message: "Update the hometown we use when live location is unavailable."
+                )
+
+                VStack(spacing: 12) {
+                    TextField("Full name", text: $name)
+                        .patchworkInputFieldStyle()
+                        .textContentType(.name)
+                        .accessibilityIdentifier("ProfileEdit.nameField")
+
+                    TextField("Hometown", text: $city)
+                        .patchworkInputFieldStyle()
+                        .textContentType(.addressCity)
+                        .accessibilityIdentifier("ProfileEdit.cityField")
+
+                    TextField("Province", text: $province)
+                        .patchworkInputFieldStyle()
+                        .textInputAutocapitalization(.characters)
+                        .accessibilityIdentifier("ProfileEdit.provinceField")
+                }
+
+                if let statusMessage {
+                    PatchworkInlineStatusBanner(tone: statusMessage.tone, text: statusMessage.text)
+                        .accessibilityIdentifier("ProfileEdit.statusBanner")
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .navigationTitle("Edit profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving..." : "Save") {
+                        Task { await save() }
+                    }
+                    .disabled(isSaving || !isValid)
+                    .accessibilityIdentifier("ProfileEdit.saveButton")
+                }
+            }
+        }
+    }
+
+    private var isValid: Bool {
+        !trimmedName.isEmpty && !trimmedCity.isEmpty && !trimmedProvince.isEmpty
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedCity: String {
+        city.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedProvince: String {
+        province.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func save() async {
+        guard isValid, !isSaving else { return }
+        isSaving = true
+        statusMessage = nil
+        defer { isSaving = false }
+
+        do {
+            let updatedUser = try await PatchworkAPI(client: sessionStore.client).users.updateProfile(
+                name: trimmedName,
+                city: trimmedCity,
+                province: trimmedProvince
+            )
+            onSaved(updatedUser)
+            appState.currentUser = updatedUser
+            await resyncPreferredLocation()
+            dismiss()
+        } catch {
+            statusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
+        }
+    }
+
+    private func resyncPreferredLocation() async {
+        if let coordinate = await currentDeviceCoordinateIfAllowed() {
+            await syncLocation(coordinate, source: "gps")
+            return
+        }
+
+        if let coordinate = await locationManager.geocode(city: trimmedCity, province: trimmedProvince) {
+            await syncLocation(coordinate, source: "manual")
+        }
+    }
+
+    private func currentDeviceCoordinateIfAllowed() async -> CLLocationCoordinate2D? {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            return await locationManager.requestCurrentCoordinate()
+#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
+        case .authorizedWhenInUse:
+            return await locationManager.requestCurrentCoordinate()
+#endif
+        default:
+            return nil
+        }
+    }
+
+    private func syncLocation(_ coordinate: CLLocationCoordinate2D, source: String) async {
+        let didSync = await appState.syncLocation(
+            client: sessionStore.client,
+            lat: coordinate.latitude,
+            lng: coordinate.longitude,
+            source: source
+        )
+        guard didSync, let currentUser = appState.currentUser else {
+            return
+        }
+
+        appState.currentUser = CurrentUser(
+            id: currentUser.id,
+            email: currentUser.email,
+            name: currentUser.name,
+            roles: currentUser.roles,
+            location: UserLocation(
+                city: currentUser.location?.city,
+                province: currentUser.location?.province,
+                coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
+            ),
+            settings: UserSettings(
+                notificationsEnabled: currentUser.settings?.notificationsEnabled,
+                locationEnabled: true
+            ),
+            createdAt: currentUser.createdAt,
+            photoImage: currentUser.photoImage
+        )
+        LocationSyncCache.store(coordinate, for: currentUser.id)
     }
 }

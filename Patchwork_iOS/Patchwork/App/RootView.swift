@@ -110,6 +110,7 @@ struct RootView: View {
                 defer { isForegroundRefreshPending = false }
                 await restoreSessionAndRefreshIfNeeded(forceRefresh: true)
                 await reconcileRevenueCatWithBackendIfNeeded()
+                await syncAuthorizedDeviceLocationIfAvailable()
             }
         }
         .onChange(of: sessionStore.isAuthenticated) { _, isAuthenticated in
@@ -132,6 +133,9 @@ struct RootView: View {
 
             attemptedLocationRecoveryKey = locationRecoveryKey
             await recoverLocationIfNeeded()
+        }
+        .task(id: periodicLocationSyncKey) {
+            await periodicallySyncAuthorizedLocation()
         }
     }
 
@@ -336,6 +340,16 @@ struct RootView: View {
         return "\(user.id)|\(city)|\(province)"
     }
 
+    private var periodicLocationSyncKey: String? {
+        guard sessionStore.isAuthenticated,
+              let userId = appState.currentUser?.id,
+              !needsLocationPrompt else {
+            return nil
+        }
+
+        return userId
+    }
+
     private func reconcileRevenueCatWithBackendIfNeeded() async {
         guard sessionStore.isAuthenticated,
               revenueCatManager.storeState.hasAccess,
@@ -386,6 +400,59 @@ struct RootView: View {
         }
 
         await appState.refreshAuthedData(client: sessionStore.client)
+        return didSync
+    }
+
+    private func periodicallySyncAuthorizedLocation() async {
+        guard periodicLocationSyncKey != nil else {
+            return
+        }
+
+        while !Task.isCancelled {
+            await syncAuthorizedDeviceLocationIfAvailable()
+            try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
+        }
+    }
+
+    @discardableResult
+    private func syncAuthorizedDeviceLocationIfAvailable() async -> Bool {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways:
+            break
+#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
+        case .authorizedWhenInUse:
+            break
+#endif
+        default:
+            return false
+        }
+
+        guard let coordinate = await requestCoordinateWithRetries() else {
+            return false
+        }
+
+        guard let userId = appState.currentUser?.id else {
+            return false
+        }
+
+        let cachedCoordinate = LocationSyncCache.cachedCoordinate(for: userId)
+            ?? appState.currentUser?.location?.coordinates.map {
+                CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
+            }
+        guard LocationSyncCache.shouldSyncBackend(
+            newCoordinate: coordinate,
+            cachedCoordinate: cachedCoordinate
+        ) else {
+            if cachedCoordinate == nil {
+                LocationSyncCache.store(coordinate, for: userId)
+            }
+            return false
+        }
+
+        let didSync = await syncLocation(coordinate, source: "gps")
+        if didSync {
+            await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+        }
         return didSync
     }
 
@@ -445,6 +512,9 @@ struct RootView: View {
         )
         if didSync {
             applyLocalLocationUpdate(coordinate)
+            if let userId = appState.currentUser?.id {
+                LocationSyncCache.store(coordinate, for: userId)
+            }
         }
         return didSync
     }
@@ -1020,6 +1090,9 @@ private struct ProfileSetupView: View {
         )
         if didSync {
             resolvedCoordinates = Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
+            if let createdUserId {
+                LocationSyncCache.store(coordinate, for: createdUserId)
+            }
         }
         return didSync
     }

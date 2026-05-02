@@ -157,6 +157,14 @@ struct PatchworkAPI {
         }
 
         @discardableResult
+        func updateProfile(name: String, city: String, province: String) async throws -> CurrentUser {
+            try await client.mutation(
+                "users:updateProfile",
+                args: ["name": name, "city": city, "province": province]
+            )
+        }
+
+        @discardableResult
         func updateLocation(lat: Double, lng: Double, source: String) async throws -> ConvexID {
             try await client.mutation(
                 "users:updateLocation",

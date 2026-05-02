@@ -229,6 +229,56 @@ export const getCurrentUser = query({
   },
 });
 
+export const updateProfile = mutation({
+  args: {
+    name: v.string(),
+    city: v.string(),
+    province: v.string(),
+  },
+  returns: currentUserValidator,
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+
+    if (args.name.length > 100) throw new ConvexError("Name must be 100 characters or less");
+    if (args.city.length > 100) throw new ConvexError("City must be 100 characters or less");
+    if (args.province.length > 100) throw new ConvexError("Province must be 100 characters or less");
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, {
+      name: args.name,
+      location: {
+        ...user.location,
+        city: args.city,
+        province: args.province,
+      },
+      updatedAt: now,
+    });
+
+    const updatedUser = await ctx.db.get(user._id);
+    if (!updatedUser) {
+      throw new ConvexError("User not found");
+    }
+
+    const photoImage = await getUserPhotoImageAssetDto(ctx, updatedUser, true);
+
+    return {
+      _id: updatedUser._id,
+      authId: updatedUser.authId,
+      email: updatedUser.email,
+      emailVerified: updatedUser.emailVerified,
+      name: updatedUser.name,
+      photo: updatedUser.photo,
+      photoAssetId: updatedUser.photoAssetId,
+      photoImage,
+      location: updatedUser.location,
+      roles: updatedUser.roles,
+      settings: updatedUser.settings,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+    };
+  },
+});
+
 export const deleteAccount = mutation({
   args: {},
   returns: v.object({

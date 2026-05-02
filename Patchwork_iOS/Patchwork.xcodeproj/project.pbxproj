@@ -49,6 +49,7 @@
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
 		D60729C5F813CE8E8D1D26FE /* UITheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D08930C048430E82A75FF1 /* UITheme.swift */; };
+		D7696C15EE5A69B6740EF839 /* LocationSyncCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBD6D5FE7B4FC563B6ED48C3 /* LocationSyncCache.swift */; };
 		D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */; };
 		DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */; };
 		DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */; };
@@ -126,6 +127,7 @@
 		D1BDCE50B380DDF4CDDCF5A3 /* PatchworkUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
 		D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliation.swift; sourceTree = "<group>"; };
+		DBD6D5FE7B4FC563B6ED48C3 /* LocationSyncCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationSyncCache.swift; sourceTree = "<group>"; };
 		DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaveReviewView.swift; sourceTree = "<group>"; };
 		E2BAC9730550B4849CDAE391 /* ProfilePanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePanels.swift; sourceTree = "<group>"; };
 		E4B84BEDCD3D7E1F3F2BC95C /* PatchworkStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkStateViews.swift; sourceTree = "<group>"; };
@@ -249,6 +251,7 @@
 				424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */,
 				8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */,
 				FA14B5338C5C33F540967A21 /* LocationManager.swift */,
+				DBD6D5FE7B4FC563B6ED48C3 /* LocationSyncCache.swift */,
 				CF104625A9E3F2BC20B0518E /* Models.swift */,
 				6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */,
 				7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */,
@@ -456,6 +459,7 @@
 				CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */,
 				451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */,
 				73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */,
+				D7696C15EE5A69B6740EF839 /* LocationSyncCache.swift in Sources */,
 				4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */,
 				F8897AC3264797291BAD224B /* Models.swift in Sources */,
 				8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */,

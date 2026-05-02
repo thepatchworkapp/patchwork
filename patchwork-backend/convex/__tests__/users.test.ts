@@ -165,6 +165,95 @@ describe("users", () => {
     expect(user?.location?.city).toBe("Ottawa");
   });
 
+  test("updateProfile updates basic fields and preserves coordinates and settings", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|update_profile",
+      email: "update_profile@example.com",
+    });
+
+    const userId = await asUser.mutation(api.users.createProfile, {
+      name: "Original User",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.run(async (ctx: any) => {
+      await ctx.db.patch(userId, {
+        location: {
+          city: "Toronto",
+          province: "ON",
+          coordinates: {
+            lat: 43.6532,
+            lng: -79.3832,
+          },
+        },
+        settings: {
+          notificationsEnabled: false,
+          locationEnabled: true,
+        },
+      });
+    });
+
+    const updated = await asUser.mutation((api.users as any).updateProfile, {
+      name: "Updated User",
+      city: "Ottawa",
+      province: "ON",
+    });
+
+    expect(updated.name).toBe("Updated User");
+    expect(updated.location.city).toBe("Ottawa");
+    expect(updated.location.province).toBe("ON");
+    expect(updated.location.coordinates).toEqual({
+      lat: 43.6532,
+      lng: -79.3832,
+    });
+    expect(updated.settings).toEqual({
+      notificationsEnabled: false,
+      locationEnabled: true,
+    });
+  });
+
+  test("updateProfile uses createProfile length validation", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|update_profile_validation",
+      email: "update_profile_validation@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Valid User",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await expect(
+      asUser.mutation((api.users as any).updateProfile, {
+        name: "A".repeat(101),
+        city: "Toronto",
+        province: "ON",
+      })
+    ).rejects.toThrow("Name must be 100 characters or less");
+
+    await expect(
+      asUser.mutation((api.users as any).updateProfile, {
+        name: "Valid User",
+        city: "A".repeat(101),
+        province: "ON",
+      })
+    ).rejects.toThrow("City must be 100 characters or less");
+
+    await expect(
+      asUser.mutation((api.users as any).updateProfile, {
+        name: "Valid User",
+        city: "Toronto",
+        province: "A".repeat(101),
+      })
+    ).rejects.toThrow("Province must be 100 characters or less");
+  });
+
   test("deleteAccount anonymizes account data, removes uploaded photos, and keeps completed job history", async () => {
     const t = convexTest(schema, modules);
 
