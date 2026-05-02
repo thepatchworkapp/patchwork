@@ -312,9 +312,9 @@ struct ProfileTaskerSection: View {
         case "active":
             switch backendConfirmedPlan(for: taskerProfile) {
             case .lifetime:
-                return "Founders Club"
+                return SubscriptionPlanChoice.lifetime.title
             case .subscription:
-                return "Patchwork Pro"
+                return SubscriptionPlanChoice.subscription.title
             default:
                 return "Active"
             }
