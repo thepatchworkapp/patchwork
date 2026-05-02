@@ -148,9 +148,6 @@ final class RevenueCatManager {
         if let entitlementPlan = entitlement.flatMap({ plan(for: $0.productIdentifier) }) {
             activePlans.insert(entitlementPlan)
         }
-        if managementURL != nil {
-            activePlans.insert(.subscription)
-        }
 
         let orderedActivePlans = SubscriptionPlanChoice.allCases.filter { activePlans.contains($0) }
         let effectivePlan: SubscriptionPlanChoice?

@@ -170,6 +170,7 @@ struct TaskerOnboardingView: View {
     @State private var onboardingPortfolioPhotos: [TaskerPortfolioPhoto] = []
     @State private var onboardingCoverPhotoId: String?
     @State private var isShowingSubscriptions = false
+    @State private var isCreatingProfile = false
 
     @State private var profileDisplayName = ""
     @State private var addCategorySheet = false
@@ -206,6 +207,7 @@ struct TaskerOnboardingView: View {
                     serviceRadius: $serviceRadius,
                     portfolioPhotos: $onboardingPortfolioPhotos,
                     coverPhotoId: $onboardingCoverPhotoId,
+                    isCreatingProfile: $isCreatingProfile,
                     onSubmit: { Task { await createProfile() } },
                     onSubscribe: { isShowingSubscriptions = true },
                     onDone: { dismiss() }
@@ -223,7 +225,10 @@ struct TaskerOnboardingView: View {
     }
 
     private func createProfile() async {
+        guard !isCreatingProfile else { return }
         guard let selectedCategoryId else { return }
+        isCreatingProfile = true
+        defer { isCreatingProfile = false }
 
         let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedCategoryBio = categoryBio.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -271,11 +276,6 @@ struct TaskerOnboardingView: View {
             }
 
             step = 5
-            Task { @MainActor in
-                await Task.yield()
-                guard step == 5 else { return }
-                isShowingSubscriptions = true
-            }
             Task {
                 await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
             }
@@ -580,6 +580,7 @@ private struct TaskerCreateFlowView: View {
     @Binding var serviceRadius: Int
     @Binding var portfolioPhotos: [TaskerPortfolioPhoto]
     @Binding var coverPhotoId: String?
+    @Binding var isCreatingProfile: Bool
     let onSubmit: () -> Void
     let onSubscribe: () -> Void
     let onDone: () -> Void
@@ -597,7 +598,7 @@ private struct TaskerCreateFlowView: View {
     @FocusState private var focusedField: TaskerCreateFocusField?
 
     private var canCompleteSetup: Bool {
-        acceptedTerms && hasValidRate && !isUploadingTaskerPhoto && !isUploadingPortfolio
+        acceptedTerms && hasValidRate && !isUploadingTaskerPhoto && !isUploadingPortfolio && !isCreatingProfile
     }
 
     private var hasValidRate: Bool {
@@ -923,7 +924,7 @@ private struct TaskerCreateFlowView: View {
                             .buttonStyle(PatchworkSecondaryButtonStyle())
                             .accessibilityIdentifier("TaskerOnboarding4.backButton")
 
-                        Button("Complete Setup", action: onSubmit)
+                        Button(isCreatingProfile ? "Creating…" : "Complete Setup", action: onSubmit)
                             .buttonStyle(PatchworkPrimaryButtonStyle())
                             .disabled(!canCompleteSetup)
                             .accessibilityIdentifier("TaskerOnboarding4.completeButton")

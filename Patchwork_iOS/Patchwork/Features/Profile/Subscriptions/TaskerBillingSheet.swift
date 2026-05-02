@@ -579,7 +579,7 @@ struct TaskerBillingSheet: View {
             await handleCompletedStoreAction(successText: "Purchase confirmed in the App Store.")
         } else if let lastError = revenueCatManager.lastError, !lastError.isEmpty {
             log("Store purchase failed for \(plan.rawValue): \(lastError)")
-            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: lastError)
+            feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: "Purchase could not be completed. Please try again.")
         }
     }
 
@@ -649,6 +649,10 @@ struct TaskerBillingSheet: View {
     }
 
     private func syncManagerFeedback(preferredMessage: String? = nil) {
+        guard shouldSurfaceManagerRefreshError else {
+            return
+        }
+
         if let preferredMessage, !preferredMessage.isEmpty {
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: preferredMessage)
             return
@@ -657,6 +661,12 @@ struct TaskerBillingSheet: View {
         if let error = revenueCatManager.lastError, !error.isEmpty {
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error)
         }
+    }
+
+    private var shouldSurfaceManagerRefreshError: Bool {
+        revenueCatManager.currentOffering == nil
+            && pendingPurchasePlan == nil
+            && !isSyncingBackend
     }
 
     private func formattedDate(_ timestamp: Int) -> String {
