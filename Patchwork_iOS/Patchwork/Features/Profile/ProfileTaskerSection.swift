@@ -8,7 +8,7 @@ struct ProfileTaskerSection: View {
     let userName: String?
     let taskerProfile: TaskerProfileSelf?
 
-    @State private var ghostModeValue = false
+    @State private var isDiscoverableValue = false
     @State private var isUpdating = false
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var isShowingSubscriptions = false
@@ -17,44 +17,13 @@ struct ProfileTaskerSection: View {
     var body: some View {
         PatchworkSurfaceCard {
             if let taskerProfile {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Tasker Workspace")
-                        .font(.patchworkCardTitle)
-                        .foregroundStyle(PatchworkTheme.textPrimary)
-
-                    if taskerProfile.displayName != userName {
-                        Text("Listed as: \(taskerProfile.displayName)")
-                            .font(.patchworkCaption)
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                    }
-
-                    accessSummaryCard(taskerProfile)
-                    discoverabilityControls(for: taskerProfile)
-
-                    NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
-                        ProfileLinkRowLabel(title: "Manage Tasker Profile")
-                    }
-                    .buttonStyle(.plain)
-                    .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.taskerOnboardingLink"))
-
-                    let billingTitle = effectiveHasActiveAccess(for: taskerProfile)
-                        ? "Billing & access"
-                        : "Unlock tasker mode"
-
-                    Button {
-                        isShowingSubscriptions = true
-                    } label: {
-                        ProfileLinkRowLabel(title: billingTitle)
-                    }
-                    .buttonStyle(.plain)
-                    .modifier(ProfileLinkRowStyle(accessibilityIdentifier: "Profile.visibilitySubscriptionLink"))
-                }
+                postTaskerWorkspaceCard(taskerProfile)
             } else {
                 preTaskerWorkspaceCard
             }
         }
         .task(id: taskerGhostModeRefreshKey) {
-            ghostModeValue = effectiveGhostMode(for: taskerProfile)
+            isDiscoverableValue = isDiscoverable(for: taskerProfile)
         }
         .task {
             guard ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_TASKER_BILLING_PREVIEW_UNPAID"),
@@ -135,88 +104,129 @@ struct ProfileTaskerSection: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func discoverabilityControls(for profile: TaskerProfileSelf) -> some View {
+    private func postTaskerWorkspaceCard(_ profile: TaskerProfileSelf) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Ghost Mode")
-                        .font(.patchworkBodyStrong)
-                        .foregroundStyle(PatchworkTheme.textPrimary)
+            Text("Tasker Workspace")
+                .font(.patchworkCardTitle)
+                .foregroundStyle(PatchworkTheme.textPrimary)
 
-                    Text(ghostModeDescription(for: profile))
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 0) {
+                planRow(for: profile)
+
+                Divider()
+                    .padding(.leading, 66)
+
+                discoverabilityRow(for: profile)
+
+                Divider()
+                    .padding(.leading, 66)
+
+                NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
+                    taskerWorkspaceRowContent(
+                        title: "Manage Profile",
+                        systemImage: "person",
+                        trailing: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.textTertiary)
+                                .accessibilityHidden(true)
+                        }
+                    )
                 }
-
-                Spacer()
-
-                Toggle("", isOn: ghostModeBinding(for: profile))
-                    .labelsHidden()
-                    .disabled(isUpdating || !canToggleGhostMode(for: profile))
-                    .tint(PatchworkTheme.brand)
-                    .accessibilityLabel("Ghost Mode")
-                    .accessibilityValue(ghostModeValue ? "On" : "Off")
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("Profile.taskerOnboardingLink")
             }
 
             if let feedbackMessage, feedbackMessage.tone == .error {
                 PatchworkInlineStatusBanner(tone: feedbackMessage.tone, text: feedbackMessage.text)
                     .accessibilityIdentifier("Profile.ghostModeBanner")
             }
-
-            if !canToggleGhostMode(for: profile) {
-                Text("Activate paid tasker access to change this setting.")
-                    .font(.patchworkCaption)
-                    .foregroundStyle(PatchworkTheme.textSecondary)
-            }
         }
-        .padding(14)
-        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(PatchworkTheme.stroke, lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
     }
 
-    private func accessSummaryCard(_ profile: TaskerProfileSelf) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(planTitle(for: profile))
-                    .font(.patchworkBodyStrong)
-                    .foregroundStyle(planTitleColor(for: profile))
-                Text(planDescription(for: profile))
-                    .font(.patchworkCaption)
-                    .foregroundStyle(PatchworkTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            if shouldShowStatusBadge(for: profile) {
-                statusBadge(for: profile)
-            }
+    private func planRow(for profile: TaskerProfileSelf) -> some View {
+        Button {
+            isShowingSubscriptions = true
+        } label: {
+            taskerWorkspaceRowContent(
+                title: "Plan",
+                systemImage: "briefcase",
+                trailing: {
+                    statusChip(
+                        title: planChipTitle(for: profile),
+                        foreground: planChipForeground(for: profile),
+                        background: planChipBackground(for: profile)
+                    )
+                }
+            )
         }
-        .padding(14)
-        .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(PatchworkTheme.stroke, lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("Profile.visibilitySubscriptionLink")
     }
 
-    private func ghostModeBinding(for profile: TaskerProfileSelf) -> Binding<Bool> {
+    private func discoverabilityRow(for profile: TaskerProfileSelf) -> some View {
+        taskerWorkspaceRowContent(
+            title: "Discoverability",
+            systemImage: "eye",
+            trailing: {
+                Toggle("", isOn: discoverabilityBinding(for: profile))
+                    .labelsHidden()
+                    .disabled(isUpdating || !canToggleGhostMode(for: profile))
+                    .tint(PatchworkTheme.brand)
+                    .accessibilityLabel("Discoverability")
+                    .accessibilityValue(isDiscoverableValue ? "On" : "Off")
+            }
+        )
+        .accessibilityIdentifier("Profile.discoverabilityRow")
+    }
+
+    private func taskerWorkspaceRowContent<Trailing: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 40, height: 40)
+                .background(PatchworkTheme.brandSoft.opacity(0.86), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .accessibilityHidden(true)
+
+            Text(title)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+
+            Spacer(minLength: 12)
+
+            trailing()
+        }
+        .frame(height: 56)
+        .contentShape(Rectangle())
+    }
+
+    private func statusChip(title: String, foreground: Color, background: Color) -> some View {
+        Text(title)
+            .font(.patchworkCaption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(background, in: Capsule())
+    }
+
+    private func discoverabilityBinding(for profile: TaskerProfileSelf) -> Binding<Bool> {
         Binding(
-            get: { effectiveGhostMode(for: profile) },
+            get: { isDiscoverableValue },
             set: { newValue in
                 guard canToggleGhostMode(for: profile), !isUpdating else {
-                    ghostModeValue = effectiveGhostMode(for: profile)
+                    isDiscoverableValue = isDiscoverable(for: profile)
                     return
                 }
 
-                ghostModeValue = newValue
-                Task { await setGhostMode(newValue) }
+                isDiscoverableValue = newValue
+                Task { await setGhostMode(!newValue) }
             }
         )
     }
@@ -232,6 +242,10 @@ struct ProfileTaskerSection: View {
         profile.hasActiveSubscription == true
     }
 
+    private func isDiscoverable(for profile: TaskerProfileSelf?) -> Bool {
+        !effectiveGhostMode(for: profile)
+    }
+
     private func effectiveGhostMode(for profile: TaskerProfileSelf?) -> Bool {
         guard let profile else {
             return true
@@ -242,16 +256,6 @@ struct ProfileTaskerSection: View {
         }
 
         return true
-    }
-
-    private func ghostModeDescription(for profile: TaskerProfileSelf) -> String {
-        if !canToggleGhostMode(for: profile) {
-            return "Your profile stays hidden from search until you activate paid tasker access."
-        }
-
-        return ghostModeValue
-            ? "Your profile is hidden from search."
-            : "Your profile will appear in search."
     }
 
     private func backendConfirmedPlans(for taskerProfile: TaskerProfileSelf) -> [SubscriptionPlanChoice] {
@@ -294,99 +298,36 @@ struct ProfileTaskerSection: View {
         }
     }
 
-    private func statusBadge(for taskerProfile: TaskerProfileSelf) -> some View {
+    private func planChipTitle(for taskerProfile: TaskerProfileSelf) -> String {
         if hasStoreAccessPendingBackend(for: taskerProfile) {
-            return Text("Confirming")
-                .font(.patchworkCaption)
-                .foregroundStyle(PatchworkTheme.brand)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(PatchworkTheme.brand.opacity(0.12), in: Capsule())
-        }
-
-        let status = taskerProfile.subscriptionStatus ?? "inactive"
-        let title: String
-        let foreground: Color
-        let background: Color
-
-        switch status {
-        case "active":
-            title = "Subscribed"
-            foreground = PatchworkTheme.brand
-            background = PatchworkTheme.brand.opacity(0.12)
-        case "cancel_at_period_end":
-            title = "Ending soon"
-            foreground = PatchworkTheme.warning
-            background = PatchworkTheme.warning.opacity(0.14)
-        case "expired":
-            title = "Expired"
-            foreground = PatchworkTheme.textSecondary
-            background = PatchworkTheme.stroke
-        default:
-            title = "Inactive"
-            foreground = PatchworkTheme.textSecondary
-            background = PatchworkTheme.stroke
-        }
-
-        return Text(title)
-            .font(.patchworkCaption)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(background, in: Capsule())
-    }
-
-    private func shouldShowStatusBadge(for taskerProfile: TaskerProfileSelf) -> Bool {
-        hasStoreAccessPendingBackend(for: taskerProfile) || taskerProfile.subscriptionStatus != "active"
-    }
-
-    private func planTitle(for taskerProfile: TaskerProfileSelf) -> String {
-        if hasStoreAccessPendingBackend(for: taskerProfile) {
-            return "Purchase detected"
+            return "Confirming"
         }
 
         let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
-        let confirmedPlan = backendConfirmedPlan(for: taskerProfile)
-
-        if taskerProfile.subscriptionStatus == "active" {
-            if confirmedPlans.count > 1 {
-                return "Tasker access active"
-            }
-
-            switch confirmedPlan {
-            case .lifetime:
-                return "Founders Club"
-            case .subscription:
-                return "Subscribed"
-            default:
-                return "Tasker access active"
-            }
+        if confirmedPlans.count > 1 {
+            return "Multiple"
         }
 
-        switch taskerProfile.subscriptionPlan {
-        case "tasker":
-            if confirmedPlans.count > 1 {
-                return "Tasker access"
-            }
-
-            switch confirmedPlan {
+        switch taskerProfile.subscriptionStatus ?? "inactive" {
+        case "active":
+            switch backendConfirmedPlan(for: taskerProfile) {
             case .lifetime:
                 return "Founders Club"
             case .subscription:
-                return "Subscribe"
+                return "Patchwork Pro"
             default:
-                return "Tasker access"
+                return "Active"
             }
+        case "cancel_at_period_end":
+            return "Ending soon"
+        case "expired":
+            return "Expired"
         default:
-            return taskerProfile.subscriptionStatus == "expired" ? "Subscription expired" : "No active plan"
+            return "None"
         }
     }
 
-    private func planTitleColor(for taskerProfile: TaskerProfileSelf) -> Color {
-        if hasStoreAccessPendingBackend(for: taskerProfile) {
-            return PatchworkTheme.brand
-        }
-
+    private func planChipForeground(for taskerProfile: TaskerProfileSelf) -> Color {
         switch taskerProfile.subscriptionStatus ?? "inactive" {
         case "active":
             return PatchworkTheme.brand
@@ -395,38 +336,20 @@ struct ProfileTaskerSection: View {
         case "expired":
             return PatchworkTheme.textSecondary
         default:
-            return PatchworkTheme.textPrimary
+            return hasStoreAccessPendingBackend(for: taskerProfile) ? PatchworkTheme.brand : PatchworkTheme.textSecondary
         }
     }
 
-    private func planDescription(for taskerProfile: TaskerProfileSelf) -> String {
-        if hasStoreAccessPendingBackend(for: taskerProfile) {
-            return "Your App Store purchase was detected. Patchwork is still finishing account sync."
-        }
-
-        let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
-        let confirmedPlan = backendConfirmedPlan(for: taskerProfile)
-        let status = taskerProfile.subscriptionStatus ?? "inactive"
-
-        switch status {
+    private func planChipBackground(for taskerProfile: TaskerProfileSelf) -> Color {
+        switch taskerProfile.subscriptionStatus ?? "inactive" {
         case "active":
-            if confirmedPlans.count > 1 {
-                return "Multiple App Store billing products are active on this account. Patchwork is using the broadest access level while keeping restores and renewals available."
-            }
-
-            if confirmedPlan == .lifetime {
-                return "Founders Club is active on this account."
-            }
-            return "Your subscription is active on this account."
+            return PatchworkTheme.brandSoft.opacity(0.88)
         case "cancel_at_period_end":
-            if let endsAt = taskerProfile.subscriptionEndsAt {
-                return "Access remains active until \(formattedMonthDayYear(endsAt))."
-            }
-            return "Cancellation is scheduled for the end of the current term."
+            return PatchworkTheme.warning.opacity(0.14)
         case "expired":
-            return "Your paid tasker access has ended."
+            return PatchworkTheme.surfaceMuted
         default:
-            return "Activate paid tasker access to be listed as a tasker."
+            return hasStoreAccessPendingBackend(for: taskerProfile) ? PatchworkTheme.brand.opacity(0.12) : PatchworkTheme.surfaceMuted
         }
     }
 
@@ -438,11 +361,6 @@ struct ProfileTaskerSection: View {
         revenueCatManager.storeState.hasAccess && profile.hasActiveSubscription != true
     }
 
-    private func formattedMonthDayYear(_ millis: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
-        return date.formatted(.dateTime.month(.wide).day().year())
-    }
-
     private func setGhostMode(_ enabled: Bool) async {
         isUpdating = true
         defer { isUpdating = false }
@@ -450,11 +368,11 @@ struct ProfileTaskerSection: View {
         do {
             let updatedProfile = try await sessionStore.client.mutation("taskers:setGhostMode", args: ["ghostMode": enabled]) as TaskerProfileSelf
             appState.taskerProfile = updatedProfile
-            ghostModeValue = effectiveGhostMode(for: updatedProfile)
+            isDiscoverableValue = isDiscoverable(for: updatedProfile)
             await appState.refreshTaskerProfile(client: sessionStore.client, surfaceErrors: false)
             feedbackMessage = nil
         } catch {
-            ghostModeValue = effectiveGhostMode(for: appState.taskerProfile)
+            isDiscoverableValue = isDiscoverable(for: appState.taskerProfile)
             feedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }

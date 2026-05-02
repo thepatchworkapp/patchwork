@@ -128,36 +128,38 @@ struct ProfileAccountSection: View {
     }
 
     private var taskerAccountContent: some View {
-        PatchworkSurfaceCard {
-            VStack(spacing: 16) {
-                HStack {
-                    Spacer()
-                    ProfileMenuButton(action: onOpenMenu)
-                }
-
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 12) {
                 avatar
+                    .padding(.top, 12)
                 profilePhotoControls
 
-                VStack(spacing: 8) {
-                    Text(user?.name ?? "Signed in")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundStyle(PatchworkTheme.textPrimary)
-                        .multilineTextAlignment(.center)
+                VStack(spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(user?.name ?? "Signed in")
+                            .font(.system(size: 29, weight: .bold, design: .rounded))
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+
+                        Button {
+                            isShowingProfileEditor = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(PatchworkTheme.brand)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit seeker profile")
+                        .accessibilityIdentifier("Profile.editProfileButton")
+                    }
+                    .frame(maxWidth: .infinity)
 
                     Label(locationLabel, systemImage: "mappin.and.ellipse")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .foregroundStyle(PatchworkTheme.textSecondary)
                 }
-                .frame(maxWidth: .infinity)
-
-                Button {
-                    isShowingProfileEditor = true
-                } label: {
-                    Label("Edit profile", systemImage: "square.and.pencil")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PatchworkSecondaryButtonStyle())
-                .accessibilityIdentifier("Profile.editProfileButton")
 
                 HStack(spacing: 10) {
                     if user?.roles?.isSeeker == true {
@@ -176,7 +178,13 @@ struct ProfileAccountSection: View {
                 profileStatsRow
             }
             .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer(minLength: 0)
+                ProfileMenuButton(action: onOpenMenu)
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var preTaskerSettingsCard: some View {
@@ -209,7 +217,7 @@ struct ProfileAccountSection: View {
             AvatarPhotoControl(
                 localImage: pendingPreviewImage,
                 remoteAsset: displayedPhotoAsset,
-                size: taskerProfile == nil ? 124 : 108,
+                size: 124,
                 isBusy: isUploadingPhoto,
                 accessibilityIdentifier: "Profile.photoPicker",
                 action: { photoFlow.showOptions() }
@@ -391,34 +399,18 @@ struct ProfileAccountSection: View {
 
     private var taskerRoleBadge: some View {
         let style: (foreground: Color, background: Color, stroke: Color) = {
-            guard let taskerProfile else {
+            guard taskerProfile != nil else {
                 return (
                     PatchworkTheme.textSecondary,
                     PatchworkTheme.surfaceMuted,
                     PatchworkTheme.stroke
-                )
-            }
-
-            guard taskerProfile.hasActiveSubscription == true else {
-                return (
-                    PatchworkTheme.textSecondary,
-                    PatchworkTheme.surfaceMuted,
-                    PatchworkTheme.stroke
-                )
-            }
-
-            if taskerProfile.ghostMode == true {
-                return (
-                    PatchworkTheme.brand,
-                    PatchworkTheme.brandSoft.opacity(0.95),
-                    PatchworkTheme.strokeStrong
                 )
             }
 
             return (
-                PatchworkTheme.success,
-                PatchworkTheme.success.opacity(0.14),
-                PatchworkTheme.success.opacity(0.4)
+                PatchworkTheme.brand,
+                PatchworkTheme.brandSoft.opacity(0.95),
+                PatchworkTheme.strokeStrong
             )
         }()
 
@@ -448,7 +440,7 @@ struct ProfileAccountSection: View {
                 .padding(.horizontal, 18)
 
             statColumn(
-                title: "Completed jobs",
+                title: "Jobs",
                 value: completedJobsValue,
                 icon: "checkmark.circle",
                 tint: PatchworkTheme.brand,
@@ -456,7 +448,7 @@ struct ProfileAccountSection: View {
             )
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 10)
         .background(
             LinearGradient(
                 colors: [
@@ -482,10 +474,10 @@ struct ProfileAccountSection: View {
         tint: Color,
         isUnlocked: Bool
     ) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(tint.opacity(0.12))
-                .frame(width: 40, height: 40)
+                .frame(width: 38, height: 38)
                 .overlay {
                     Image(systemName: icon)
                         .font(.system(size: 17, weight: .semibold))
