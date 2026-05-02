@@ -314,7 +314,7 @@ struct ProfileTaskerSection: View {
             case .lifetime:
                 return SubscriptionPlanChoice.lifetime.title
             case .subscription:
-                return SubscriptionPlanChoice.subscription.title
+                return "Subscribed"
             default:
                 return "Active"
             }
