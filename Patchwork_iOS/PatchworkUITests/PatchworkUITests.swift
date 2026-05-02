@@ -196,8 +196,8 @@ final class PatchworkUITests: XCTestCase {
         primaryAction.tap()
 
         let displayName = "Unsaved Tasker Draft"
-        let bio = "Careful local help that should survive an app resume."
-        let hourlyRate = "75"
+        let website = "https://draft-tasker.example"
+        let social = "@drafttasker"
 
         let displayNameField = app.textFields["TaskerOnboarding1.displayNameField"]
         XCTAssertTrue(displayNameField.waitForExistence(timeout: 10))
@@ -210,20 +210,20 @@ final class PatchworkUITests: XCTestCase {
 
         app.buttons["TaskerOnboarding1.continueButton"].tap()
 
-        let bioField = app.textViews["TaskerOnboarding2.bioField"]
-        XCTAssertTrue(bioField.waitForExistence(timeout: 10))
-        replaceText(in: bioField, with: bio)
+        let websiteField = app.textFields["TaskerOnboarding2.websiteLinks.field.0"]
+        XCTAssertTrue(websiteField.waitForExistence(timeout: 10))
+        replaceText(in: websiteField, with: website)
 
-        let hourlyRateField = app.textFields["TaskerOnboarding2.hourlyRateField"]
-        XCTAssertTrue(hourlyRateField.waitForExistence(timeout: 10))
-        replaceText(in: hourlyRateField, with: hourlyRate)
+        let socialField = app.textFields["TaskerOnboarding2.socialLinks.field.0"]
+        XCTAssertTrue(socialField.waitForExistence(timeout: 10))
+        replaceText(in: socialField, with: social)
         dismissKeyboardIfPresent()
 
         backgroundAndRestoreApp()
 
-        XCTAssertTrue(app.textViews["TaskerOnboarding2.bioField"].waitForExistence(timeout: 10))
-        XCTAssertEqual(app.textViews["TaskerOnboarding2.bioField"].value as? String, bio)
-        XCTAssertEqual(app.textFields["TaskerOnboarding2.hourlyRateField"].value as? String, hourlyRate)
+        XCTAssertTrue(app.textFields["TaskerOnboarding2.websiteLinks.field.0"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["TaskerOnboarding2.websiteLinks.field.0"].value as? String, website)
+        XCTAssertEqual(app.textFields["TaskerOnboarding2.socialLinks.field.0"].value as? String, social)
 
         app.buttons["TaskerOnboarding2.backButton"].tap()
         XCTAssertEqual(app.textFields["TaskerOnboarding1.displayNameField"].value as? String, displayName)

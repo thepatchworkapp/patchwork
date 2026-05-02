@@ -37,9 +37,7 @@ struct ProfileTaskerSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                NavigationLink {
-                    TaskerOnboardingView()
-                } label: {
+                NavigationLink(value: MainTabProfileRoute.taskerOnboarding) {
                     ProfileLinkRowLabel(title: taskerProfile == nil ? "Complete Tasker Setup" : "Manage Tasker Profile")
                 }
                 .buttonStyle(.plain)

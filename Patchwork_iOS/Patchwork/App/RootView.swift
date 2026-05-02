@@ -1127,9 +1127,16 @@ private struct OnboardingStageLayout<Content: View, Actions: View>: View {
     }
 }
 
+enum MainTabProfileRoute: Hashable {
+    case taskerOnboarding
+}
+
 private struct MainTabView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @State private var profilePath: [MainTabProfileRoute] = []
+    @AppStorage("Patchwork.taskerOnboardingDraft") private var taskerOnboardingDraftJSON = ""
+    @AppStorage("Patchwork.taskerOnboardingRouteActive") private var taskerOnboardingRouteActive = false
 
     init() {
         let appearance = UITabBarAppearance()
@@ -1173,15 +1180,25 @@ private struct MainTabView: View {
             .tabItem { Label("Messages", systemImage: "message") }
             .tag(AppState.Tab.messages)
 
-            NavigationStack {
+            NavigationStack(path: $profilePath) {
                 ProfileView(onSignOut: {
+                    taskerOnboardingRouteActive = false
+                    taskerOnboardingDraftJSON = ""
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
                 }, onDeleteAccount: {
                     let _: EmptyResponse = try await sessionStore.client.mutation("users:deleteAccount", args: [:])
+                    taskerOnboardingRouteActive = false
+                    taskerOnboardingDraftJSON = ""
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
                 })
+                .navigationDestination(for: MainTabProfileRoute.self) { route in
+                    switch route {
+                    case .taskerOnboarding:
+                        TaskerOnboardingView()
+                    }
+                }
             }
             .accessibilityIdentifier("Tab.profile")
             .tabItem { Label("Profile", systemImage: "person") }
@@ -1190,5 +1207,35 @@ private struct MainTabView: View {
         .tint(PatchworkTheme.brand)
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(PatchworkTheme.surface, for: .tabBar)
+        .onAppear {
+            restoreTaskerOnboardingRouteIfNeeded()
+        }
+        .onChange(of: appState.isBootstrapped) { _, _ in
+            restoreTaskerOnboardingRouteIfNeeded()
+        }
+        .onChange(of: appState.taskerProfile?.id) { _, taskerProfileId in
+            if taskerProfileId != nil {
+                taskerOnboardingRouteActive = false
+            } else {
+                restoreTaskerOnboardingRouteIfNeeded()
+            }
+        }
+        .onChange(of: profilePath) { _, newPath in
+            taskerOnboardingRouteActive = newPath.contains(.taskerOnboarding)
+        }
+    }
+
+    private func restoreTaskerOnboardingRouteIfNeeded() {
+        guard taskerOnboardingRouteActive,
+              !taskerOnboardingDraftJSON.isEmpty,
+              appState.isBootstrapped,
+              appState.currentUser != nil,
+              appState.taskerProfile == nil,
+              !profilePath.contains(.taskerOnboarding) else {
+            return
+        }
+
+        appState.selectedTab = .profile
+        profilePath = [.taskerOnboarding]
     }
 }
