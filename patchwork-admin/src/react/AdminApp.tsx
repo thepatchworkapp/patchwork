@@ -601,6 +601,23 @@ function formatDate(value: unknown): string {
   return "—";
 }
 
+function formatConfiguredLocation(location: {
+  city?: string | null;
+  province?: string | null;
+}): string {
+  const city = typeof location.city === "string" ? location.city.trim() : "";
+  const province = typeof location.province === "string" ? location.province.trim() : "";
+  const parts = [city, province].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "—";
+}
+
+function formatCoordinates(coordinates: unknown): string {
+  if (!coordinates || typeof coordinates !== "object") return "—";
+  const { lat, lng } = coordinates as { lat?: unknown; lng?: unknown };
+  if (typeof lat !== "number" || typeof lng !== "number") return "—";
+  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
 type AdminUserDetail = {
   user: any;
   userPhotoUrl?: string | null;
@@ -1260,7 +1277,11 @@ function UserDetailView({
   const userPhotoUrl = getUserDetailPhotoUrl(detail);
 
   const roles = (user.roles ?? {}) as { isSeeker?: boolean; isTasker?: boolean };
-  const location = (user.location ?? {}) as { city?: string; province?: string };
+  const location = (user.location ?? {}) as {
+    city?: string | null;
+    province?: string | null;
+    coordinates?: unknown;
+  };
   const settings = (user.settings ?? {}) as { notificationsEnabled?: boolean; locationEnabled?: boolean };
 
   type PhotoLightboxItem = { url: string; label: string; meta?: string };
@@ -1640,10 +1661,15 @@ function UserDetailView({
               <MapPin className="size-4 text-kumo-muted" />
               <div className="pw-display text-sm tracking-tight">Location</div>
             </div>
-            <div className="text-sm text-kumo-default">
-              {(location.city || location.province)
-                ? `${location.city ?? "—"}, ${location.province ?? "—"}`
-                : "—"}
+            <div className="grid gap-2 text-sm">
+              <div className="pw-microcard">
+                <div className="pw-mono text-xs text-kumo-muted">Configured location</div>
+                <div className="text-sm text-kumo-strong">{formatConfiguredLocation(location)}</div>
+              </div>
+              <div className="pw-microcard">
+                <div className="pw-mono text-xs text-kumo-muted">Geo coordinates</div>
+                <div className="pw-mono text-sm text-kumo-strong">{formatCoordinates(location.coordinates)}</div>
+              </div>
             </div>
           </div>
 
