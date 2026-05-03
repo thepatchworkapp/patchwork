@@ -89,6 +89,7 @@ final class SessionStore {
         _ betterAuthCookie: String?,
         _ betterAuthSessionToken: String?,
         _ onAuthTokenRefresh: (@Sendable (String) async -> Void)?,
+        _ onBetterAuthCookieRefresh: (@Sendable (String) async -> Void)?,
         _ onAuthSessionInvalidated: (@Sendable (String) async -> Void)?
     ) -> ConvexHTTPClient
 
@@ -108,13 +109,15 @@ final class SessionStore {
             _ betterAuthCookie: String?,
             _ betterAuthSessionToken: String?,
             _ onAuthTokenRefresh: (@Sendable (String) async -> Void)?,
+            _ onBetterAuthCookieRefresh: (@Sendable (String) async -> Void)?,
             _ onAuthSessionInvalidated: (@Sendable (String) async -> Void)?
-        ) -> ConvexHTTPClient = { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+        ) -> ConvexHTTPClient = { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
             ConvexHTTPClient(
                 authToken: authToken,
                 betterAuthCookie: betterAuthCookie,
                 betterAuthSessionToken: betterAuthSessionToken,
                 onAuthTokenRefresh: onAuthTokenRefresh,
+                onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                 onAuthSessionInvalidated: onAuthSessionInvalidated
             )
         }
@@ -146,6 +149,9 @@ final class SessionStore {
             { [weak self] refreshedToken in
                 await self?.storeRefreshedConvexToken(refreshedToken)
             },
+            { [weak self] refreshedCookie in
+                await self?.storeRefreshedBetterAuthCookie(refreshedCookie)
+            },
             { [weak self] message in
                 await self?.invalidateSession(message: message)
             }
@@ -167,11 +173,11 @@ final class SessionStore {
             if usesAppReviewShortcut {
                 let reviewClient = ConvexHTTPClient()
                 let sessionToken = try await reviewClient.signInForAppReview(email: emailForOTP)
-                let convexToken = try await reviewClient.fetchConvexJWT(sessionToken: sessionToken)
+                let refresh = try await reviewClient.fetchConvexAuthRefresh(sessionToken: sessionToken)
                 persistSession(
                     StoredSession(
-                        convexAuthToken: convexToken,
-                        betterAuthCookie: nil,
+                        convexAuthToken: refresh.token,
+                        betterAuthCookie: refresh.betterAuthCookie,
                         betterAuthSessionToken: sessionToken
                     )
                 )
@@ -189,11 +195,11 @@ final class SessionStore {
         await run {
             var unauthenticatedClient = ConvexHTTPClient()
             try await unauthenticatedClient.verifyEmailOTP(email: emailForOTP, otp: code)
-            let convexToken = try await unauthenticatedClient.fetchConvexJWT()
+            let refresh = try await unauthenticatedClient.fetchConvexAuthRefresh()
             persistSession(
                 StoredSession(
-                    convexAuthToken: convexToken,
-                    betterAuthCookie: unauthenticatedClient.currentBetterAuthCookie,
+                    convexAuthToken: refresh.token,
+                    betterAuthCookie: refresh.betterAuthCookie ?? unauthenticatedClient.currentBetterAuthCookie,
                     betterAuthSessionToken: nil
                 )
             )
@@ -213,29 +219,33 @@ final class SessionStore {
         defer { isRestoringSession = false }
 
         do {
-            let refreshedToken = try await clientBuilder(
+            let refresh = try await clientBuilder(
                 token,
                 betterAuthCookie,
                 betterAuthSessionToken,
                 nil,
-                { [weak self] message in
-                    await self?.invalidateSession(message: message)
-                }
-            ).fetchConvexJWT()
+                nil,
+                nil
+            ).fetchConvexAuthRefresh()
             persistSession(
                 StoredSession(
-                    convexAuthToken: refreshedToken,
-                    betterAuthCookie: betterAuthCookie,
+                    convexAuthToken: refresh.token,
+                    betterAuthCookie: refresh.betterAuthCookie ?? betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken
                 )
             )
             return true
         } catch {
+            if isAuthenticationFailure(error) {
+                clearSession(errorMessage: restoreFailureMessage(for: error))
+                return false
+            }
+
             if token != nil {
                 return true
             }
 
-            clearSession(errorMessage: restoreFailureMessage(for: error))
+            errorMessage = restoreFailureMessage(for: error)
             return false
         }
     }
@@ -258,6 +268,7 @@ final class SessionStore {
                 sessionToInvalidate.convexAuthToken,
                 sessionToInvalidate.betterAuthCookie,
                 sessionToInvalidate.betterAuthSessionToken,
+                nil,
                 nil,
                 nil
             ).signOut()
@@ -319,6 +330,20 @@ final class SessionStore {
         )
     }
 
+    private func storeRefreshedBetterAuthCookie(_ refreshedCookie: String) {
+        guard !refreshedCookie.isEmpty else {
+            return
+        }
+
+        persistSession(
+            StoredSession(
+                convexAuthToken: token,
+                betterAuthCookie: refreshedCookie,
+                betterAuthSessionToken: betterAuthSessionToken
+            )
+        )
+    }
+
     private func clearSession(errorMessage: String?) {
         self.errorMessage = errorMessage
         emailForOTP = ""
@@ -368,5 +393,16 @@ final class SessionStore {
             "jwt expired",
         ]
         return authFailurePhrases.contains(where: normalized.contains)
+    }
+
+    private func isAuthenticationFailure(_ error: Error) -> Bool {
+        if let patchworkError = error as? PatchworkError,
+           let description = patchworkError.errorDescription,
+           !description.isEmpty {
+            return isAuthenticationFailure(description)
+        }
+
+        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !description.isEmpty && isAuthenticationFailure(description)
     }
 }

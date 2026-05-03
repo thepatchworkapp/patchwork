@@ -26,6 +26,7 @@ final class AppState {
     var conversations: [ConversationSummary] = []
     var jobs: [JobSummary] = []
     var currentUser: CurrentUser?
+    private(set) var hasConfirmedMissingCurrentUser = false
     var taskerProfile: TaskerProfileSelf?
 
     var activeCategorySlug: String?
@@ -73,6 +74,7 @@ final class AppState {
 
     func loadBootstrapData(client: ConvexHTTPClient) async {
         isBootstrapped = false
+        hasConfirmedMissingCurrentUser = false
         await refreshCategories(client: client)
         await refreshAuthedData(client: client, surfaceErrors: false, shouldRefreshCategories: false)
         if currentUser != nil {
@@ -153,17 +155,21 @@ final class AppState {
             guard let fetchedCurrentUser else {
                 if let previousCurrentUser {
                     currentUser = previousCurrentUser
+                    hasConfirmedMissingCurrentUser = false
                     return .preservedPrevious(previousCurrentUser)
                 }
 
                 currentUser = nil
+                hasConfirmedMissingCurrentUser = true
                 return .missingWithoutPrevious
             }
 
             currentUser = fetchedCurrentUser
+            hasConfirmedMissingCurrentUser = false
             return .user(fetchedCurrentUser)
         } catch {
             currentUser = previousCurrentUser
+            hasConfirmedMissingCurrentUser = false
             if surfaceErrors && previousCurrentUser == nil {
                 presentError(error, prefix: "Failed to refresh signed-in data")
             }
@@ -348,6 +354,7 @@ final class AppState {
         conversations = []
         jobs = []
         currentUser = nil
+        hasConfirmedMissingCurrentUser = false
         taskerProfile = nil
         selectedTasker = nil
         selectedConversation = nil

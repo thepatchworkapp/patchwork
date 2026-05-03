@@ -209,6 +209,46 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(tokenRequestOrigins.prefix(2), ["https://aware-meerkat-572.convex.site", "https://admin.ddga.ltd"])
     }
 
+    func testFetchConvexJWTPublishesRefreshedBetterAuthCookie() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+        let refreshedCookie = LockedBox<String?>(nil)
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=old")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: [
+                        "Content-Type": "application/json",
+                        "Set-Better-Auth-Cookie": "session=new; Path=/; HttpOnly",
+                    ]
+                )
+            )
+            return (response, Data("{\"token\":\"fresh-jwt\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            betterAuthCookie: "session=old",
+            onBetterAuthCookieRefresh: { cookie in
+                refreshedCookie.set(cookie)
+            }
+        )
+
+        let token = try await client.fetchConvexJWT()
+
+        XCTAssertEqual(token, "fresh-jwt")
+        XCTAssertEqual(refreshedCookie.get(), "session=new")
+    }
+
     func testSignInForAppReviewPostsToReviewEndpoint() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -512,6 +552,64 @@ final class PatchworkTests: XCTestCase {
         }
     }
 
+    func testQueryDoesNotInvalidateSessionOnBackendEnvelopeUnauthorizedAfterRefresh() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let invalidationMessage = LockedBox<String?>(nil)
+        let requestAuthorizations = LockedArrayBox<String>()
+
+        TestURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/api/query":
+                requestAuthorizations.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, Data("{\"status\":\"error\",\"errorMessage\":\"Unauthorized\"}".utf8))
+            case "/api/auth/convex/token":
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, Data("{\"token\":\"fresh-token\"}".utf8))
+            default:
+                throw PatchworkError.invalidResponse
+            }
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            authToken: "expired-token",
+            betterAuthCookie: "session=abc",
+            onAuthSessionInvalidated: { message in
+                invalidationMessage.set(message)
+            }
+        )
+
+        do {
+            let _: [String] = try await client.query("jobs:listJobs", args: [:])
+            XCTFail("Expected query to fail")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Unauthorized")
+            XCTAssertNil(invalidationMessage.get())
+            XCTAssertEqual(requestAuthorizations.get(), ["Bearer expired-token", "Bearer fresh-token"])
+        }
+    }
+
     func testQueryDoesNotInvalidateSessionOnGenericBackendFailure() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -609,14 +707,17 @@ final class PatchworkTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: ["Content-Type": "application/json"]
+                headerFields: [
+                    "Content-Type": "application/json",
+                    "Set-Better-Auth-Cookie": "session=renewed; Path=/; HttpOnly",
+                ]
             )!
             return (response, Data("{\"token\":\"restored-jwt\"}".utf8))
         }
 
         let store = SessionStore(
             sessionPersistence: persistence,
-            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
                 ConvexHTTPClient(
                     cloudURL: cloudURL,
                     siteURL: siteURL,
@@ -625,6 +726,7 @@ final class PatchworkTests: XCTestCase {
                     betterAuthCookie: betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken,
                     onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                     onAuthSessionInvalidated: onAuthSessionInvalidated
                 )
             }
@@ -639,7 +741,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertFalse(store.needsSessionRestore)
         XCTAssertEqual(store.token, "restored-jwt")
         XCTAssertEqual(persistence.session?.convexAuthToken, "restored-jwt")
-        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=renewed")
     }
 
     @MainActor
@@ -669,7 +771,7 @@ final class PatchworkTests: XCTestCase {
 
         let store = SessionStore(
             sessionPersistence: persistence,
-            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
                 ConvexHTTPClient(
                     cloudURL: cloudURL,
                     siteURL: siteURL,
@@ -678,6 +780,7 @@ final class PatchworkTests: XCTestCase {
                     betterAuthCookie: betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken,
                     onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                     onAuthSessionInvalidated: onAuthSessionInvalidated
                 )
             }
@@ -691,7 +794,7 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoreFailsAndClearsSessionWhenRefreshFailsWithoutActiveToken() async throws {
+    func testRestoreKeepsSessionWhenTransientRefreshFailsWithoutActiveToken() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
                 convexAuthToken: nil,
@@ -717,7 +820,7 @@ final class PatchworkTests: XCTestCase {
 
         let store = SessionStore(
             sessionPersistence: persistence,
-            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
                 ConvexHTTPClient(
                     cloudURL: cloudURL,
                     siteURL: siteURL,
@@ -726,6 +829,7 @@ final class PatchworkTests: XCTestCase {
                     betterAuthCookie: betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken,
                     onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                     onAuthSessionInvalidated: onAuthSessionInvalidated
                 )
             }
@@ -734,9 +838,10 @@ final class PatchworkTests: XCTestCase {
         let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
 
         XCTAssertFalse(restored)
-        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertTrue(store.isAuthenticated)
         XCTAssertEqual(store.errorMessage, "Service temporarily unavailable.")
-        XCTAssertNil(persistence.session)
+        XCTAssertNil(store.token)
+        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
     }
 
     @MainActor
@@ -766,7 +871,7 @@ final class PatchworkTests: XCTestCase {
 
         let store = SessionStore(
             sessionPersistence: persistence,
-            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
                 ConvexHTTPClient(
                     cloudURL: cloudURL,
                     siteURL: siteURL,
@@ -775,6 +880,7 @@ final class PatchworkTests: XCTestCase {
                     betterAuthCookie: betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken,
                     onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                     onAuthSessionInvalidated: onAuthSessionInvalidated
                 )
             }
@@ -801,13 +907,14 @@ final class PatchworkTests: XCTestCase {
 
         let store = SessionStore(
             sessionPersistence: persistence,
-            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onAuthSessionInvalidated in
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
                 refreshCallback = onAuthTokenRefresh
                 return ConvexHTTPClient(
                     authToken: authToken,
                     betterAuthCookie: betterAuthCookie,
                     betterAuthSessionToken: betterAuthSessionToken,
                     onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
                     onAuthSessionInvalidated: onAuthSessionInvalidated
                 )
             }
@@ -873,6 +980,73 @@ final class PatchworkTests: XCTestCase {
 
         XCTAssertEqual(appState.currentUser, expectedUser)
         XCTAssertNil(appState.lastError)
+        XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
+    }
+
+    @MainActor
+    func testRefreshAuthedDataTracksConfirmedMissingCurrentUser() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":null}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+
+        await appState.refreshAuthedData(
+            client: client,
+            surfaceErrors: false,
+            shouldRefreshCategories: false
+        )
+
+        XCTAssertNil(appState.currentUser)
+        XCTAssertTrue(appState.hasConfirmedMissingCurrentUser)
+    }
+
+    @MainActor
+    func testRefreshAuthedDataDoesNotMarkMissingCurrentUserWhenQueryFails() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"error\":\"Service temporarily unavailable.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+
+        await appState.refreshAuthedData(
+            client: client,
+            surfaceErrors: false,
+            shouldRefreshCategories: false
+        )
+
+        XCTAssertNil(appState.currentUser)
+        XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
     }
 
     @MainActor

@@ -43,14 +43,10 @@ struct RootView: View {
                     PatchworkBrandLoadingCard()
                         .task {
                             await appState.loadBootstrapData(client: sessionStore.client)
-                            await invalidateStalePersistedSessionIfNeeded()
                         }
                 } else if appState.currentUser == nil {
-                    if sessionStore.launchedWithPersistedSession {
+                    if shouldWaitForPersistedCurrentUserResolution {
                         PatchworkBrandLoadingCard()
-                            .task {
-                                await invalidateStalePersistedSessionIfNeeded()
-                            }
                     } else {
                         ProfileSetupView()
                     }
@@ -557,19 +553,12 @@ struct RootView: View {
 
         if appState.isBootstrapped {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
-            await invalidateStalePersistedSessionIfNeeded()
         }
     }
 
-    private func invalidateStalePersistedSessionIfNeeded() async {
-        guard sessionStore.isAuthenticated,
-              sessionStore.launchedWithPersistedSession,
-              appState.currentUser == nil else {
-            return
-        }
-
-        await sessionStore.signOut()
-        appState.resetForSignedOutSession()
+    private var shouldWaitForPersistedCurrentUserResolution: Bool {
+        sessionStore.launchedWithPersistedSession
+            && !appState.hasConfirmedMissingCurrentUser
     }
 }
 
