@@ -782,6 +782,7 @@ private struct TaskerCreateFlowView: View {
     @State private var isUploadingPortfolio = false
     @State private var photoStatusMessage: SubscriptionFeedbackMessage?
     @State private var portfolioStatusMessage: SubscriptionFeedbackMessage?
+    @State private var isShowingPrimaryCategoryPicker = false
     @FocusState private var focusedField: TaskerCreateFocusField?
 
     private var canCompleteSetup: Bool {
@@ -801,7 +802,7 @@ private struct TaskerCreateFlowView: View {
             PatchworkBackdrop(tint: PatchworkTheme.brand)
             createFlowScroll
         }
-        .patchworkKeyboardDismissToolbar()
+        .patchworkKeyboardDismissToolbar(isPresented: focusedField != .displayName)
         .onAppear {
             if taskerPhotoSource == "custom", customPhotoAsset == nil, taskerCustomPhotoAssetId == nil {
                 taskerPhotoSource = "user"
@@ -955,15 +956,10 @@ private struct TaskerCreateFlowView: View {
                         .focused($focusedField, equals: .displayName)
                         .accessibilityIdentifier("TaskerOnboarding1.displayNameField")
 
-                    NavigationLink {
-                        CategoriesView(
-                            title: "Select Primary Category",
-                            selectedCategoryID: selectedCategoryId,
-                            dismissOnSelect: true,
-                            onSelect: { category in
-                                selectedCategoryId = category.id
-                            }
-                        )
+                    Button {
+                        focusedField = nil
+                        PatchworkKeyboard.dismiss()
+                        isShowingPrimaryCategoryPicker = true
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
@@ -990,6 +986,16 @@ private struct TaskerCreateFlowView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("TaskerOnboarding1.categoryPicker")
+                    .navigationDestination(isPresented: $isShowingPrimaryCategoryPicker) {
+                        CategoriesView(
+                            title: "Select Primary Category",
+                            selectedCategoryID: selectedCategoryId,
+                            dismissOnSelect: true,
+                            onSelect: { category in
+                                selectedCategoryId = category.id
+                            }
+                        )
+                    }
 
                     taskerPhotoSourceSection
 

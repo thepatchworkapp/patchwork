@@ -72,12 +72,14 @@ extension View {
         modifier(PatchworkInsetSurfaceModifier(fill: fill, stroke: stroke, cornerRadius: cornerRadius))
     }
 
-    func patchworkKeyboardDismissToolbar() -> some View {
+    func patchworkKeyboardDismissToolbar(isPresented: Bool = true) -> some View {
         toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    PatchworkKeyboard.dismiss()
+            if isPresented {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        PatchworkKeyboard.dismiss()
+                    }
                 }
             }
         }
