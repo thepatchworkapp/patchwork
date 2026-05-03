@@ -349,6 +349,14 @@ export const createTaskerProfile = mutation({
       updatedAt: now,
     });
 
+    if (user.location.coordinates) {
+      await ctx.runMutation(internal.location.syncTaskerGeo, {
+        userId: user._id,
+        lat: user.location.coordinates.lat,
+        lng: user.location.coordinates.lng,
+      });
+    }
+
     return profileId;
   },
 });

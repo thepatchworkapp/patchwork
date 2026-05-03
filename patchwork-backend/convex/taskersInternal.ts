@@ -88,6 +88,20 @@ async function scheduleTermEndExpiration(ctx: any, taskerProfileId: Id<"taskerPr
   );
 }
 
+async function syncTaskerGeoFromOwningUser(ctx: any, profile: any) {
+  const user = await ctx.db.get(profile.userId);
+  const coordinates = user?.location?.coordinates;
+  if (!user || !coordinates) {
+    return;
+  }
+
+  await ctx.runMutation(internal.location.syncTaskerGeo, {
+    userId: user._id,
+    lat: coordinates.lat,
+    lng: coordinates.lng,
+  });
+}
+
 async function fetchRevenueCatSubscriber(
   appUserId: string,
   secretApiKey: string,
@@ -320,6 +334,7 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
           : undefined;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
+      await syncTaskerGeoFromOwningUser(ctx, profile);
 
       if (args.effectiveStatus === "cancel_at_period_end" && typeof updates.subscriptionEndsAt === "number") {
         await scheduleTermEndExpiration(ctx, profile._id, updates.subscriptionEndsAt);
@@ -492,6 +507,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
           : undefined;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
+      await syncTaskerGeoFromOwningUser(ctx, profile);
       console.info("[RevenueCatWebhook] Activated tasker access", {
         profileId: profile._id,
         accessType: mappedProduct,
@@ -514,6 +530,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
       updates.subscriptionEndsAt = endsAt;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
+      await syncTaskerGeoFromOwningUser(ctx, profile);
       await scheduleTermEndExpiration(ctx, profile._id, endsAt);
       console.info("[RevenueCatWebhook] Scheduled subscription cancellation", {
         profileId: profile._id,

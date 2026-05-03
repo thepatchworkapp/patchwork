@@ -144,6 +144,131 @@ describe("searchTaskers", () => {
     expect(results[0].category).toBe("Cleaning");
   });
 
+  test("syncs tasker geo when an existing located seeker creates a tasker profile", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    expect(cleaningCategory).toBeDefined();
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker-existing-location",
+      email: "tasker-existing-location@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Located Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const taskerLat = 43.65107;
+    const taskerLng = -79.347015;
+    await asTasker.mutation(api.users.updateLocation, {
+      lat: taskerLat,
+      lng: taskerLng,
+      source: "gps",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Located Tasker Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    const profile = await asTasker.query(api.taskers.getTaskerProfile);
+    expect(profile?.location?.lat).toBe(taskerLat);
+    expect(profile?.location?.lng).toBe(taskerLng);
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlug: "cleaning",
+      lat: taskerLat,
+      lng: taskerLng,
+      radiusKm: 5,
+    });
+
+    expect(results.map((result) => result.name)).toContain("Located Tasker Pro");
+  });
+
+  test("syncs tasker geo when RevenueCat activates a profile after coordinates already exist", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    expect(cleaningCategory).toBeDefined();
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker-activation-location",
+      email: "tasker-activation-location@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Activation Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Activation Tasker Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+
+    const taskerLat = 43.65107;
+    const taskerLng = -79.347015;
+    await t.run(async (ctx) => {
+      const user = await ctx.db.get(taskerUser!._id);
+      expect(user).not.toBeNull();
+      await ctx.db.patch(taskerUser!._id, {
+        location: {
+          ...user!.location,
+          coordinates: {
+            lat: taskerLat,
+            lng: taskerLng,
+          },
+        },
+        settings: {
+          ...user!.settings,
+          locationEnabled: true,
+        },
+        updatedAt: Date.now(),
+      });
+    });
+
+    const profileBeforeActivation = await asTasker.query(api.taskers.getTaskerProfile);
+    expect(profileBeforeActivation?.location).toBeUndefined();
+
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+
+    const profileAfterActivation = await asTasker.query(api.taskers.getTaskerProfile);
+    expect(profileAfterActivation?.location?.lat).toBe(taskerLat);
+    expect(profileAfterActivation?.location?.lng).toBe(taskerLng);
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlug: "cleaning",
+      lat: taskerLat,
+      lng: taskerLng,
+      radiusKm: 5,
+    });
+
+    expect(results.map((result) => result.name)).toContain("Activation Tasker Pro");
+  });
+
   test("excludes ghostMode=true taskers", async () => {
     const t = createTest();
 
