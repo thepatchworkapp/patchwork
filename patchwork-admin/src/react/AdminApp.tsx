@@ -2019,13 +2019,12 @@ function UserDetailView({
 
       {tab === "raw" && (
         <div className="pw-subcard p-5">
-          <Collapsible
-            label="Response JSON"
-            open={rawOpen}
-            onOpenChange={setRawOpen}
-          >
-            <CodeBlock lang="jsonc" code={JSON.stringify(detail, null, 2)} />
-          </Collapsible>
+          <Collapsible.Root open={rawOpen} onOpenChange={setRawOpen}>
+            <Collapsible.DefaultTrigger>Response JSON</Collapsible.DefaultTrigger>
+            <Collapsible.DefaultPanel>
+              <CodeBlock lang="jsonc" code={JSON.stringify(detail, null, 2)} />
+            </Collapsible.DefaultPanel>
+          </Collapsible.Root>
         </div>
       )}
 
