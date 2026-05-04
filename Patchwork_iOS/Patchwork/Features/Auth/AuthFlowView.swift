@@ -89,6 +89,7 @@ struct AuthFlowView: View {
     @State private var otpDigits = Array(repeating: "", count: 6)
     @State private var onboardingIndex = 0
     @State private var localErrorMessage: String?
+    @State private var otpFailureFeedback: OTPFailureFeedback?
     @FocusState private var focusedOTPIndex: Int?
 
     private var otpCode: String {
@@ -123,6 +124,30 @@ struct AuthFlowView: View {
             iconSize: 28
         ),
     ]
+
+    private struct OTPFailureFeedback {
+        let title: String
+        let message: String
+        let systemImage: String
+
+        static let invalidCode = OTPFailureFeedback(
+            title: "That code didn't work",
+            message: "We cleared the boxes. Enter the newest six-digit code from your email, or resend it.",
+            systemImage: "xmark.shield.fill"
+        )
+
+        static let resendFailed = OTPFailureFeedback(
+            title: "Code not sent",
+            message: "We couldn't send a new code. Check your connection and try again.",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+
+        static let verificationFailed = OTPFailureFeedback(
+            title: "Code not verified",
+            message: "We couldn't verify the code. Check your connection and try again.",
+            systemImage: "exclamationmark.triangle.fill"
+        )
+    }
 
     var body: some View {
         Group {
@@ -377,6 +402,7 @@ struct AuthFlowView: View {
                         sessionStore: sessionStore,
                         onSent: {
                             localErrorMessage = nil
+                            otpFailureFeedback = nil
                             clearOTP()
                             if !sessionStore.isAuthenticated {
                                 step = .verify
@@ -446,6 +472,7 @@ struct AuthFlowView: View {
             return
         }
 
+        otpFailureFeedback = nil
         if digits.count > 1 {
             if index == 0 {
                 otpDigits = Array(repeating: "", count: 6)
@@ -490,8 +517,17 @@ struct AuthFlowView: View {
             return
         }
 
+        otpFailureFeedback = nil
         await sessionStore.verifyOTP(code: otpCode)
-        if sessionStore.errorMessage == nil {
+        if let errorMessage = sessionStore.errorMessage {
+            if isInvalidOTPError(errorMessage) {
+                clearOTP()
+                otpFailureFeedback = .invalidCode
+            } else {
+                otpFailureFeedback = .verificationFailed
+            }
+            sessionStore.clearErrorMessage()
+        } else {
             localErrorMessage = nil
         }
     }
@@ -507,6 +543,7 @@ struct AuthFlowView: View {
 
             VStack(spacing: 0) {
                 authBar(title: authIntent.verifyScreenTitle, onBack: {
+                    otpFailureFeedback = nil
                     step = .email
                 })
 
@@ -535,16 +572,21 @@ struct AuthFlowView: View {
 
                         Button("Resend Code") {
                             Task {
+                                otpFailureFeedback = nil
                                 clearOTP()
                                 await sessionStore.sendOTP()
+                                if sessionStore.errorMessage != nil {
+                                    otpFailureFeedback = .resendFailed
+                                    sessionStore.clearErrorMessage()
+                                }
                             }
                         }
                         .buttonStyle(PatchworkTextButtonStyle())
                         .accessibilityLabel("Resend verification code")
                         .accessibilityIdentifier("Auth.resendCodeButton")
 
-                        if let error = sessionStore.errorMessage {
-                            PatchworkInlineStatusBanner(tone: .error, text: error)
+                        if let otpFailureFeedback {
+                            otpFailureBanner(otpFailureFeedback)
                         }
                     }
                 }
@@ -558,6 +600,57 @@ struct AuthFlowView: View {
 
     private func authBar(title: String, onBack: @escaping () -> Void) -> some View {
         PatchworkTopBar(title: title, onBack: onBack)
+    }
+
+    private func isInvalidOTPError(_ message: String) -> Bool {
+        let normalized = message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if normalized.contains("invalid otp")
+            || normalized.contains("invalid code")
+            || normalized.contains("invalid verification code") {
+            return true
+        }
+
+        let invalidPhrases = ["invalid", "incorrect", "wrong"]
+        let otpPhrases = ["otp", "code", "verification"]
+        return invalidPhrases.contains(where: { normalized.contains($0) })
+            && otpPhrases.contains(where: { normalized.contains($0) })
+    }
+
+    private func otpFailureBanner(_ feedback: OTPFailureFeedback) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: feedback.systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(PatchworkTheme.danger)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(feedback.title)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.textPrimary)
+
+                Text(feedback.message)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            PatchworkTheme.danger.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                .stroke(PatchworkTheme.danger.opacity(0.22), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(feedback.title). \(feedback.message)")
+        .accessibilityIdentifier("Auth.otpFailureMessage")
     }
 }
 

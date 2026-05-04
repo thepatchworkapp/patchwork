@@ -79,6 +79,36 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(tabButton(named: "Profile").exists)
     }
 
+    func testInvalidOTPResetsCodeFieldsAndShowsActionableError() throws {
+        let email = uniqueTestEmail(prefix: "ios-invalid-otp")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+
+        let emailField = app.textFields["Auth.emailField"]
+        replaceText(in: emailField, with: email)
+        app.buttons["Auth.sendCodeButton"].tap()
+
+        let firstCodeField = app.textFields["Auth.codeField.0"]
+        XCTAssertTrue(firstCodeField.waitForExistence(timeout: 30))
+
+        let validOTP = testOTP(for: email)
+        let invalidOTP = validOTP == "000000" ? "111111" : "000000"
+        enterOTP(invalidOTP)
+
+        let otpFailureMessage = identifiedElement("Auth.otpFailureMessage")
+        XCTAssertTrue(otpFailureMessage.waitForExistence(timeout: 15))
+        XCTAssertTrue(otpFailureMessage.label.contains("That code didn't work"))
+
+        for index in 0 ..< 6 {
+            XCTAssertTrue(isEmptyTextField(app.textFields["Auth.codeField.\(index)"]))
+        }
+
+        app.typeText("1")
+        XCTAssertEqual(textFieldValue(app.textFields["Auth.codeField.0"]), "1")
+        XCTAssertTrue(isEmptyTextField(app.textFields["Auth.codeField.1"]))
+    }
+
     func testEmailAuthCompletesProfileSetup() throws {
         let email = uniqueTestEmail(prefix: "ios-auth")
         cleanupTestData(for: email)
@@ -1327,5 +1357,13 @@ final class PatchworkUITests: XCTestCase {
 
     private func elementHasKeyboardFocus(_ element: XCUIElement) -> Bool {
         (element.value(forKey: "hasKeyboardFocus") as? Bool) == true
+    }
+
+    private func textFieldValue(_ element: XCUIElement) -> String {
+        element.value as? String ?? ""
+    }
+
+    private func isEmptyTextField(_ element: XCUIElement) -> Bool {
+        textFieldValue(element).isEmpty
     }
 }

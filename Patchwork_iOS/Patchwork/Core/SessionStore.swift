@@ -206,6 +206,10 @@ final class SessionStore {
         }
     }
 
+    func clearErrorMessage() {
+        errorMessage = nil
+    }
+
     @discardableResult
     func restorePersistedSessionIfNeeded(forceRefresh: Bool = false) async -> Bool {
         guard hasRefreshCredential else {
