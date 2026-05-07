@@ -178,6 +178,7 @@ struct TaskerOnboardingView: View {
     @State private var profileWebsiteLinks: [String] = [""]
     @State private var profileSocialLinks: [String] = [""]
     @State private var addCategorySheet = false
+    @State private var hasRestoredOnboardingDraft = false
     @AppStorage("Patchwork.taskerOnboardingDraft") private var onboardingDraftJSON = ""
 
     var body: some View {
@@ -194,7 +195,7 @@ struct TaskerOnboardingView: View {
                 .patchworkSheetChrome(detents: [.large])
         }
         .task {
-            restoreOnboardingDraft()
+            restoreOnboardingDraftIfNeeded()
             await appState.refreshAuthedData(client: sessionStore.client)
         }
         .onChange(of: step) { _, _ in saveOnboardingDraft() }
@@ -353,6 +354,15 @@ struct TaskerOnboardingView: View {
         guard let data = try? JSONEncoder().encode(draft),
               let json = String(data: data, encoding: .utf8) else { return }
         onboardingDraftJSON = json
+    }
+
+    private func restoreOnboardingDraftIfNeeded() {
+        guard !hasRestoredOnboardingDraft else {
+            return
+        }
+
+        hasRestoredOnboardingDraft = true
+        restoreOnboardingDraft()
     }
 
     private func restoreOnboardingDraft() {
@@ -990,9 +1000,10 @@ private struct TaskerCreateFlowView: View {
                         CategoriesView(
                             title: "Select Primary Category",
                             selectedCategoryID: selectedCategoryId,
-                            dismissOnSelect: true,
+                            dismissOnSelect: false,
                             onSelect: { category in
                                 selectedCategoryId = category.id
+                                isShowingPrimaryCategoryPicker = false
                             }
                         )
                     }
@@ -1213,14 +1224,17 @@ private struct TaskerCreateFlowView: View {
                         .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(taskerPhotoSource == "custom" ? "Using custom tasker photo." : "Using account profile photo.")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                    if taskerPhotoSource == "user", accountPhotoImage == nil {
-                        Text("No account avatar set yet.")
+                if taskerPhotoSource == "user" {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Using account profile photo.")
                             .font(.patchworkCaption)
-                            .foregroundStyle(PatchworkTheme.warning)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+
+                        if accountPhotoImage == nil {
+                            Text("No account avatar set yet.")
+                                .font(.patchworkCaption)
+                                .foregroundStyle(PatchworkTheme.warning)
+                        }
                     }
                 }
 
@@ -1432,7 +1446,7 @@ private struct TaskerCreateFlowView: View {
             customPhotoAsset = uploadedAsset
             taskerCustomPhotoAssetId = uploadedAsset.id
             taskerPhotoSource = "custom"
-            photoStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Tasker photo uploaded.")
+            photoStatusMessage = nil
         } catch {
             photoStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
@@ -1781,9 +1795,11 @@ private struct TaskerProfileManageView: View {
                     Text("Tasker avatar controls")
                         .font(.patchworkBodyStrong)
                         .foregroundStyle(PatchworkTheme.textPrimary)
-                    Text(effectiveTaskerPhotoSource == "custom" ? "Using custom photo." : "Using account photo.")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
+                    if effectiveTaskerPhotoSource != "custom" {
+                        Text("Using account photo.")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
                 }
                 Spacer()
                 HStack(spacing: 8) {
@@ -1884,7 +1900,7 @@ private struct TaskerProfileManageView: View {
             ) as TaskerProfileSelf
             appState.taskerProfile = updatedProfile
             pendingTaskerPhotoAsset = nil
-            taskerPhotoStatusMessage = SubscriptionFeedbackMessage(tone: .success, text: "Tasker photo updated.")
+            taskerPhotoStatusMessage = nil
         } catch {
             taskerPhotoStatusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
