@@ -1,6 +1,7 @@
 import Foundation
 
 struct PatchworkAPI {
+    let analytics: Analytics
     let categories: Categories
     let conversations: Conversations
     let jobs: Jobs
@@ -10,6 +11,7 @@ struct PatchworkAPI {
     let users: Users
 
     init(client: ConvexHTTPClient) {
+        analytics = Analytics(client: client)
         categories = Categories(client: client)
         conversations = Conversations(client: client)
         jobs = Jobs(client: client)
@@ -17,6 +19,30 @@ struct PatchworkAPI {
         search = Search(client: client)
         taskers = Taskers(client: client)
         users = Users(client: client)
+    }
+
+    struct Analytics {
+        private let client: ConvexHTTPClient
+
+        init(client: ConvexHTTPClient) {
+            self.client = client
+        }
+
+        @discardableResult
+        func recordDiscoverCategorySelection(categorySlug: String) async throws -> AnalyticsRecordResult {
+            try await client.mutation(
+                "analytics:recordDiscoverCategorySelection",
+                args: ["categorySlug": categorySlug]
+            )
+        }
+
+        @discardableResult
+        func recordDiscoverCategorySearchSubmit(term: String) async throws -> AnalyticsRecordResult {
+            try await client.mutation(
+                "analytics:recordDiscoverCategorySearchSubmit",
+                args: ["term": term]
+            )
+        }
     }
 
     struct Categories {
@@ -176,4 +202,9 @@ struct PatchworkAPI {
 
 struct TaskerFavouriteResult: Codable, Hashable {
     let isFavourite: Bool
+}
+
+struct AnalyticsRecordResult: Codable, Hashable {
+    let recorded: Bool
+    let reason: String?
 }

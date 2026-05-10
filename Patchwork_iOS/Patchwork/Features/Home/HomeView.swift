@@ -437,16 +437,25 @@ struct HomeView: View {
                     PatchworkTopBar(title: "Category", onBack: { showCategorySheet = false })
 
                     HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(PatchworkTheme.textSecondary)
-                            .accessibilityHidden(true)
+                        Button {
+                            recordCategorySearchSubmitIfNeeded()
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(PatchworkTheme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("Home.categorySearchSubmitButton")
+                        .accessibilityLabel("Search categories")
 
                         TextField("Search categories", text: $categorySearchText)
                             .font(.patchworkBody)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled(true)
                             .submitLabel(.search)
+                            .onSubmit {
+                                recordCategorySearchSubmitIfNeeded()
+                            }
                             .accessibilityIdentifier("Home.categorySearchField")
                             .accessibilityLabel("Search categories")
 
@@ -709,6 +718,9 @@ struct HomeView: View {
         selectedCategorySlug = slug
         showCategorySheet = false
         Task { await reload() }
+        if let slug {
+            recordDiscoverCategorySelection(categorySlug: slug)
+        }
     }
 
     private func reload() async {
@@ -724,6 +736,38 @@ struct HomeView: View {
             currentCardIndex = 0
         } else if currentCardIndex >= appState.taskers.count {
             currentCardIndex = appState.taskers.count - 1
+        }
+    }
+
+    private func recordDiscoverCategorySelection(categorySlug: String) {
+        let trimmedSlug = categorySlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSlug.isEmpty else {
+            return
+        }
+
+        let client = sessionStore.client
+        Task(priority: .utility) {
+            do {
+                try await PatchworkAPI(client: client).analytics.recordDiscoverCategorySelection(categorySlug: trimmedSlug)
+            } catch {
+                print("[HomeView] Failed to record Discover category selection: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func recordCategorySearchSubmitIfNeeded() {
+        let term = trimmedCategorySearchText
+        guard !term.isEmpty else {
+            return
+        }
+
+        let client = sessionStore.client
+        Task(priority: .utility) {
+            do {
+                try await PatchworkAPI(client: client).analytics.recordDiscoverCategorySearchSubmit(term: term)
+            } catch {
+                print("[HomeView] Failed to record Discover category search: \(error.localizedDescription)")
+            }
         }
     }
 

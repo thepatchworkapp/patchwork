@@ -194,6 +194,39 @@ export default defineSchema({
     .index("by_userId_createdAt", ["userId", "createdAt"])
     .index("by_createdAt", ["createdAt"]),
 
+  discoverCategoryDailyViews: defineTable({
+    categoryId: v.id("categories"),
+    categorySlug: v.string(),
+    categoryName: v.string(),
+    dayKey: v.string(),
+    viewCount: v.number(),
+    uniqueUserCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_category_day", ["categoryId", "dayKey"])
+    .index("by_day_category", ["dayKey", "categoryId"]),
+
+  discoverCategoryUserDailyViews: defineTable({
+    userId: v.id("users"),
+    categoryId: v.id("categories"),
+    dayKey: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_user_category_day", ["userId", "categoryId", "dayKey"])
+    .index("by_category_day", ["categoryId", "dayKey"]),
+
+  discoverCategorySearchDailyTerms: defineTable({
+    normalizedTerm: v.string(),
+    displayTerm: v.string(),
+    dayKey: v.string(),
+    searchCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_term_day", ["normalizedTerm", "dayKey"])
+    .index("by_day_term", ["dayKey", "normalizedTerm"]),
+
   /**
    * One-way user blocks. A block from A -> B freezes direct messaging in both
    * directions, but only A can remove the block row.

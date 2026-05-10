@@ -48,6 +48,9 @@ const resetTableNameValidator = v.union(
   v.literal("favouriteTaskers"),
   v.literal("imageAssets"),
   v.literal("feedbackSubmissions"),
+  v.literal("discoverCategoryDailyViews"),
+  v.literal("discoverCategoryUserDailyViews"),
+  v.literal("discoverCategorySearchDailyTerms"),
   v.literal("userBlocks"),
   v.literal("userReports"),
   v.literal("reviewAccess"),
@@ -68,6 +71,9 @@ const RESET_TABLES = [
   "favouriteTaskers",
   "imageAssets",
   "feedbackSubmissions",
+  "discoverCategoryDailyViews",
+  "discoverCategoryUserDailyViews",
+  "discoverCategorySearchDailyTerms",
   "userBlocks",
   "userReports",
   "reviewAccess",
@@ -94,6 +100,9 @@ type ResetCounts = {
   deletedFavouriteTaskers: number;
   deletedImageAssets: number;
   deletedFeedbackSubmissions: number;
+  deletedDiscoverCategoryDailyViews: number;
+  deletedDiscoverCategoryUserDailyViews: number;
+  deletedDiscoverCategorySearchDailyTerms: number;
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedReviewAccess: number;
@@ -164,6 +173,32 @@ const userBlockAdminValidator = v.object({
   blockedUserEmail: v.union(v.string(), v.null()),
   createdAt: v.number(),
   updatedAt: v.number(),
+});
+const discoverCategoryAnalyticsRowValidator = v.object({
+  categoryId: v.id("categories"),
+  categoryName: v.string(),
+  categorySlug: v.string(),
+  oneDayCount: v.number(),
+  sevenDayCount: v.number(),
+  sevenDayAverage: v.number(),
+  thirtyDayCount: v.number(),
+  thirtyDayAverage: v.number(),
+  oneDayUniqueUsers: v.number(),
+  sevenDayUniqueUsers: v.number(),
+  thirtyDayUniqueUsers: v.number(),
+});
+const discoverCategorySearchAnalyticsRowValidator = v.object({
+  displayTerm: v.string(),
+  normalizedTerm: v.string(),
+  oneDayCount: v.number(),
+  sevenDayCount: v.number(),
+  thirtyDayCount: v.number(),
+  lastSeenDayKey: v.string(),
+});
+const discoverAnalyticsValidator = v.object({
+  generatedAt: v.number(),
+  categories: v.array(discoverCategoryAnalyticsRowValidator),
+  searchTerms: v.array(discoverCategorySearchAnalyticsRowValidator),
 });
 const adminUserDetailValidator = v.object({
   user: v.any(),
@@ -243,6 +278,9 @@ function createEmptyResetCounts(): ResetCounts {
     deletedFavouriteTaskers: 0,
     deletedImageAssets: 0,
     deletedFeedbackSubmissions: 0,
+    deletedDiscoverCategoryDailyViews: 0,
+    deletedDiscoverCategoryUserDailyViews: 0,
+    deletedDiscoverCategorySearchDailyTerms: 0,
     deletedUserBlocks: 0,
     deletedUserReports: 0,
     deletedReviewAccess: 0,
@@ -293,6 +331,15 @@ function incrementResetCount(resetCounts: ResetCounts, tableName: ResetTableName
       return;
     case "feedbackSubmissions":
       resetCounts.deletedFeedbackSubmissions += count;
+      return;
+    case "discoverCategoryDailyViews":
+      resetCounts.deletedDiscoverCategoryDailyViews += count;
+      return;
+    case "discoverCategoryUserDailyViews":
+      resetCounts.deletedDiscoverCategoryUserDailyViews += count;
+      return;
+    case "discoverCategorySearchDailyTerms":
+      resetCounts.deletedDiscoverCategorySearchDailyTerms += count;
       return;
     case "userBlocks":
       resetCounts.deletedUserBlocks += count;
@@ -384,6 +431,9 @@ const resetDatabaseResultValidator = v.object({
   deletedFavouriteTaskers: v.number(),
   deletedImageAssets: v.number(),
   deletedFeedbackSubmissions: v.number(),
+  deletedDiscoverCategoryDailyViews: v.number(),
+  deletedDiscoverCategoryUserDailyViews: v.number(),
+  deletedDiscoverCategorySearchDailyTerms: v.number(),
   deletedUserBlocks: v.number(),
   deletedUserReports: v.number(),
   deletedReviewAccess: v.number(),
@@ -1211,6 +1261,159 @@ export const getUserDetail = query({
       reportsSubmitted: reportsSubmittedEnriched,
       reportsReceived: reportsReceivedEnriched,
     };
+  },
+});
+
+const ANALYTICS_DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_ANALYTICS_BUCKETS = 5_000;
+
+function dayKeyForOffset(now: number, offsetDays: number): string {
+  return new Date(now + offsetDays * ANALYTICS_DAY_MS).toISOString().slice(0, 10);
+}
+
+function rollingDayKeySet(now: number, days: number): Set<string> {
+  const dayKeys = new Set<string>();
+  for (let offset = 0; offset > -days; offset--) {
+    dayKeys.add(dayKeyForOffset(now, offset));
+  }
+  return dayKeys;
+}
+
+export const getDiscoverAnalytics = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  returns: discoverAnalyticsValidator,
+  handler: async (ctx, args) => {
+    const generatedAt = Date.now();
+    if (!(await requireAdmin(ctx))) {
+      return { generatedAt, categories: [], searchTerms: [] };
+    }
+
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
+    const todayKey = dayKeyForOffset(generatedAt, 0);
+    const oneDayKeys = rollingDayKeySet(generatedAt, 1);
+    const sevenDayKeys = rollingDayKeySet(generatedAt, 7);
+    const thirtyDayKeys = rollingDayKeySet(generatedAt, 30);
+    const thirtyDayStart = dayKeyForOffset(generatedAt, -29);
+
+    const categoryBuckets = await ctx.db
+      .query("discoverCategoryDailyViews")
+      .withIndex("by_day_category", (q) => q.gte("dayKey", thirtyDayStart))
+      .take(MAX_ANALYTICS_BUCKETS);
+
+    const categoryRows = new Map<string, {
+      categoryId: any;
+      categoryName: string;
+      categorySlug: string;
+      oneDayCount: number;
+      sevenDayCount: number;
+      thirtyDayCount: number;
+      oneDayUniqueUsers: number;
+      sevenDayUniqueUsers: number;
+      thirtyDayUniqueUsers: number;
+    }>();
+
+    for (const bucket of categoryBuckets) {
+      if (bucket.dayKey > todayKey || !thirtyDayKeys.has(bucket.dayKey)) {
+        continue;
+      }
+
+      const categoryKey = String(bucket.categoryId);
+      const existing = categoryRows.get(categoryKey) ?? {
+        categoryId: bucket.categoryId,
+        categoryName: bucket.categoryName,
+        categorySlug: bucket.categorySlug,
+        oneDayCount: 0,
+        sevenDayCount: 0,
+        thirtyDayCount: 0,
+        oneDayUniqueUsers: 0,
+        sevenDayUniqueUsers: 0,
+        thirtyDayUniqueUsers: 0,
+      };
+
+      existing.categoryName = bucket.categoryName;
+      existing.categorySlug = bucket.categorySlug;
+      existing.thirtyDayCount += bucket.viewCount;
+      existing.thirtyDayUniqueUsers += bucket.uniqueUserCount;
+      if (sevenDayKeys.has(bucket.dayKey)) {
+        existing.sevenDayCount += bucket.viewCount;
+        existing.sevenDayUniqueUsers += bucket.uniqueUserCount;
+      }
+      if (oneDayKeys.has(bucket.dayKey)) {
+        existing.oneDayCount += bucket.viewCount;
+        existing.oneDayUniqueUsers += bucket.uniqueUserCount;
+      }
+
+      categoryRows.set(categoryKey, existing);
+    }
+
+    const categories = Array.from(categoryRows.values())
+      .map((row) => ({
+        ...row,
+        sevenDayAverage: row.sevenDayCount / 7,
+        thirtyDayAverage: row.thirtyDayCount / 30,
+      }))
+      .sort((a, b) =>
+        b.thirtyDayCount - a.thirtyDayCount ||
+        b.sevenDayCount - a.sevenDayCount ||
+        a.categoryName.localeCompare(b.categoryName)
+      )
+      .slice(0, limit);
+
+    const searchBuckets = await ctx.db
+      .query("discoverCategorySearchDailyTerms")
+      .withIndex("by_day_term", (q) => q.gte("dayKey", thirtyDayStart))
+      .take(MAX_ANALYTICS_BUCKETS);
+
+    const searchRows = new Map<string, {
+      displayTerm: string;
+      normalizedTerm: string;
+      oneDayCount: number;
+      sevenDayCount: number;
+      thirtyDayCount: number;
+      lastSeenDayKey: string;
+    }>();
+
+    for (const bucket of searchBuckets) {
+      if (bucket.dayKey > todayKey || !thirtyDayKeys.has(bucket.dayKey)) {
+        continue;
+      }
+
+      const existing = searchRows.get(bucket.normalizedTerm) ?? {
+        displayTerm: bucket.displayTerm,
+        normalizedTerm: bucket.normalizedTerm,
+        oneDayCount: 0,
+        sevenDayCount: 0,
+        thirtyDayCount: 0,
+        lastSeenDayKey: bucket.dayKey,
+      };
+
+      if (bucket.dayKey >= existing.lastSeenDayKey) {
+        existing.displayTerm = bucket.displayTerm;
+        existing.lastSeenDayKey = bucket.dayKey;
+      }
+
+      existing.thirtyDayCount += bucket.searchCount;
+      if (sevenDayKeys.has(bucket.dayKey)) {
+        existing.sevenDayCount += bucket.searchCount;
+      }
+      if (oneDayKeys.has(bucket.dayKey)) {
+        existing.oneDayCount += bucket.searchCount;
+      }
+
+      searchRows.set(bucket.normalizedTerm, existing);
+    }
+
+    const searchTerms = Array.from(searchRows.values())
+      .sort((a, b) =>
+        b.thirtyDayCount - a.thirtyDayCount ||
+        b.sevenDayCount - a.sevenDayCount ||
+        a.displayTerm.localeCompare(b.displayTerm)
+      )
+      .slice(0, limit);
+
+    return { generatedAt, categories, searchTerms };
   },
 });
 

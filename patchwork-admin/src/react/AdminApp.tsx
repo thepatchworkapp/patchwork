@@ -17,7 +17,7 @@ import { Table } from "@cloudflare/kumo/components/table";
 import { Tabs } from "@cloudflare/kumo/components/tabs";
 import { CodeBlock } from "@cloudflare/kumo/components/code";
 
-import { AlertTriangle, ArrowRight, Briefcase, Globe, LogOut, MapPin, MessageSquare, ShieldAlert, Star, User } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, Briefcase, Globe, LogOut, MapPin, MessageSquare, Search, ShieldAlert, Star, User } from "lucide-react";
 
 const api = anyApi as any;
 
@@ -231,6 +231,9 @@ type ResetDatabaseResult = {
   deletedUsers: number;
   deletedImageAssets: number;
   deletedFeedbackSubmissions?: number;
+  deletedDiscoverCategoryDailyViews?: number;
+  deletedDiscoverCategoryUserDailyViews?: number;
+  deletedDiscoverCategorySearchDailyTerms?: number;
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedStorageFiles: number;
@@ -282,6 +285,9 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
     ["Review access", result.deletedReviewAccess],
     ["Tasker categories", result.deletedTaskerCategories],
     ["Feedback", result.deletedFeedbackSubmissions],
+    ["Category analytics", result.deletedDiscoverCategoryDailyViews],
+    ["Category analytics dedupe", result.deletedDiscoverCategoryUserDailyViews],
+    ["Search analytics", result.deletedDiscoverCategorySearchDailyTerms],
     ["User blocks", result.deletedUserBlocks],
     ["User reports", result.deletedUserReports],
     ["Image assets", result.deletedImageAssets],
@@ -331,6 +337,7 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
           <div className="text-xs font-semibold uppercase tracking-wide text-kumo-muted">Deleted</div>
           <div className="mt-2 text-sm text-kumo-strong">
             Non-admin users, marketplace records, conversations, reports, OTPs, image assets, and storage files.
+            Discover analytics buckets are reset with application data.
           </div>
           {result.revenueCatCleanup && (
             <div className="mt-2 text-xs text-kumo-muted">
@@ -674,6 +681,35 @@ type ModerationReportRow = {
   updatedAt?: number | null;
 };
 
+type DiscoverAnalytics = {
+  generatedAt: number;
+  categories: DiscoverCategoryAnalyticsRow[];
+  searchTerms: DiscoverCategorySearchAnalyticsRow[];
+};
+
+type DiscoverCategoryAnalyticsRow = {
+  categoryId: string;
+  categoryName: string;
+  categorySlug: string;
+  oneDayCount: number;
+  sevenDayCount: number;
+  sevenDayAverage: number;
+  thirtyDayCount: number;
+  thirtyDayAverage: number;
+  oneDayUniqueUsers: number;
+  sevenDayUniqueUsers: number;
+  thirtyDayUniqueUsers: number;
+};
+
+type DiscoverCategorySearchAnalyticsRow = {
+  displayTerm: string;
+  normalizedTerm: string;
+  oneDayCount: number;
+  sevenDayCount: number;
+  thirtyDayCount: number;
+  lastSeenDayKey: string;
+};
+
 type ReviewAccessStatus = {
   allowedEmails?: string[];
   email: string;
@@ -694,6 +730,16 @@ function shortId(id: string, start = 10, end = 6): string {
 function formatMoneyCents(cents: unknown): string {
   if (typeof cents !== "number" || !Number.isFinite(cents)) return "—";
   return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function formatCount(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "—";
+}
+
+function formatAverage(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toLocaleString(undefined, { maximumFractionDigits: 1 })
+    : "—";
 }
 
 function formatIsoDate(value: unknown): string {
@@ -727,6 +773,126 @@ function EmptyHint({ title, body }: { title: string; body: string }) {
       <div className="pw-display text-sm tracking-tight text-kumo-strong">{title}</div>
       <div className="mt-1 text-sm leading-relaxed text-kumo-muted">{body}</div>
     </div>
+  );
+}
+
+function DiscoverAnalyticsCard({ analytics }: { analytics: DiscoverAnalytics | undefined }) {
+  const categoryCount = analytics?.categories.length ?? 0;
+  const searchTermCount = analytics?.searchTerms.length ?? 0;
+
+  return (
+    <Surface className="pw-card pw-fade-up mb-6 rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="size-4 text-kumo-muted" />
+          <div className="pw-display text-base tracking-tight">Discover analytics</div>
+          <Badge variant="outline" className="pw-badge-tight">
+            {categoryCount.toLocaleString()} categories
+          </Badge>
+        </div>
+        {analytics && (
+          <div className="pw-mono text-xs text-kumo-muted">
+            Updated {formatDate(analytics.generatedAt)}
+          </div>
+        )}
+      </div>
+
+      {!analytics ? (
+        <EmptyHint title="Loading Discover analytics…" body="Fetching category selections and submitted category searches from Convex." />
+      ) : categoryCount === 0 && searchTermCount === 0 ? (
+        <EmptyHint title="No Discover analytics yet" body="Category selections and submitted searches will appear here once seekers use Discover." />
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <div className="text-sm font-semibold text-kumo-strong">Category selections</div>
+              <Badge variant="outline" className="pw-badge-tight">
+                1 / 7 / 30 days
+              </Badge>
+            </div>
+            {categoryCount === 0 ? (
+              <EmptyHint title="No category selections" body="No category has been selected in the current reporting window." />
+            ) : (
+              <div className="pw-inset">
+                <div className="max-h-[36dvh] overflow-auto">
+                  <Table layout="fixed" className="w-full text-[13px]">
+                    <Table.Header className="pw-inset-header">
+                      <Table.Row>
+                        <Table.Head className="pw-th w-[30%]">Category</Table.Head>
+                        <Table.Head className="pw-th w-[10%] text-right">1d</Table.Head>
+                        <Table.Head className="pw-th w-[12%] text-right">7d</Table.Head>
+                        <Table.Head className="pw-th w-[13%] text-right">7d/day</Table.Head>
+                        <Table.Head className="pw-th w-[12%] text-right">30d</Table.Head>
+                        <Table.Head className="pw-th w-[13%] text-right">30d/day</Table.Head>
+                        <Table.Head className="pw-th w-[10%] text-right">Users</Table.Head>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body className="divide-y divide-kumo-fill/80">
+                      {analytics.categories.map((row) => (
+                        <Table.Row key={row.categoryId}>
+                          <Table.Cell className="pw-td">
+                            <div className="truncate text-sm font-semibold text-kumo-strong">{row.categoryName}</div>
+                            <div className="pw-mono truncate text-[11px] text-kumo-muted">{row.categorySlug}</div>
+                          </Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.oneDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.sevenDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatAverage(row.sevenDayAverage)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.thirtyDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatAverage(row.thirtyDayAverage)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.thirtyDayUniqueUsers)}</Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Search className="size-3.5 text-kumo-muted" />
+              <div className="text-sm font-semibold text-kumo-strong">Submitted searches</div>
+            </div>
+            {searchTermCount === 0 ? (
+              <EmptyHint title="No submitted searches" body="Explicit category search submissions will appear here." />
+            ) : (
+              <div className="pw-inset">
+                <div className="max-h-[36dvh] overflow-auto">
+                  <Table layout="fixed" className="w-full text-[13px]">
+                    <Table.Header className="pw-inset-header">
+                      <Table.Row>
+                        <Table.Head className="pw-th w-[42%]">Term</Table.Head>
+                        <Table.Head className="pw-th w-[12%] text-right">1d</Table.Head>
+                        <Table.Head className="pw-th w-[12%] text-right">7d</Table.Head>
+                        <Table.Head className="pw-th w-[12%] text-right">30d</Table.Head>
+                        <Table.Head className="pw-th w-[22%]">Last seen</Table.Head>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body className="divide-y divide-kumo-fill/80">
+                      {analytics.searchTerms.map((row) => (
+                        <Table.Row key={row.normalizedTerm}>
+                          <Table.Cell className="pw-td">
+                            <div className="truncate text-sm font-semibold text-kumo-strong">{row.displayTerm}</div>
+                            <div className="pw-mono truncate text-[11px] text-kumo-muted">{row.normalizedTerm}</div>
+                          </Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.oneDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.sevenDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td text-right">{formatCount(row.thirtyDayCount)}</Table.Cell>
+                          <Table.Cell className="pw-td">
+                            <span className="pw-mono text-[11px] text-kumo-muted">{row.lastSeenDayKey}</span>
+                          </Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Surface>
   );
 }
 
@@ -975,6 +1141,9 @@ function DashboardShell({ email }: { email: string }) {
   const recentReports = useQuery(api.admin.listRecentReports, { limit: 12 }) as
     | ModerationReportRow[]
     | undefined;
+  const discoverAnalytics = useQuery(api.admin.getDiscoverAnalytics, { limit: 50 }) as
+    | DiscoverAnalytics
+    | undefined;
 
   const data = useQuery(api.admin.listAllUsers, { limit }) as
     | { users: UserRow[]; cursor: string | null }
@@ -1024,6 +1193,8 @@ function DashboardShell({ email }: { email: string }) {
       <div className="mb-6">
         <AdminMaintenanceCard />
       </div>
+
+      <DiscoverAnalyticsCard analytics={discoverAnalytics} />
 
       <Surface className="pw-card pw-fade-up mb-6 rounded-[var(--pw-radius)] border border-kumo-fill bg-kumo-base p-5 shadow-[var(--pw-shadow)]">
         <div className="mb-3 flex items-center gap-2">
