@@ -359,6 +359,10 @@ struct AuthFlowView: View {
                         .accessibilityLabel("Continue with Email")
                         .accessibilityIdentifier("Auth.emailSignInButton")
 
+                        if !sessionStore.recentEmails.isEmpty {
+                            recentEmailSection
+                        }
+
                         if let error = localErrorMessage ?? sessionStore.errorMessage {
                             PatchworkInlineStatusBanner(tone: .error, text: error)
                         }
@@ -383,6 +387,62 @@ struct AuthFlowView: View {
                 Spacer()
             }
         }
+    }
+
+    private var recentEmailSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent emails")
+                .font(.patchworkCaption.weight(.semibold))
+                .foregroundStyle(PatchworkTheme.textSecondary)
+
+            VStack(spacing: 8) {
+                ForEach(Array(sessionStore.recentEmails.prefix(3)), id: \.self) { email in
+                    Button {
+                        selectRecentEmail(email)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "envelope.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(PatchworkTheme.brand)
+                                .frame(width: 22, height: 22)
+                                .background(
+                                    PatchworkTheme.brandSoft,
+                                    in: Circle()
+                                )
+                                .accessibilityHidden(true)
+
+                            Text(email)
+                                .font(.patchworkBodyStrong)
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+
+                            Spacer(minLength: 8)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(PatchworkTheme.textTertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .background(
+                            PatchworkTheme.surface,
+                            in: RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: PatchworkMetrics.controlRadius, style: .continuous)
+                                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Sign in with \(email)")
+                    .accessibilityHint("Prefills this email address")
+                    .accessibilityIdentifier("Auth.recentEmail.\(email.authAccessibilityIdentifierComponent)")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var emailEntryScreen: some View {
@@ -602,6 +662,13 @@ struct AuthFlowView: View {
         PatchworkTopBar(title: title, onBack: onBack)
     }
 
+    private func selectRecentEmail(_ email: String) {
+        sessionStore.selectRecentEmail(email)
+        authIntent = .signIn
+        localErrorMessage = nil
+        step = .email
+    }
+
     private func isInvalidOTPError(_ message: String) -> Bool {
         let normalized = message
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -695,5 +762,15 @@ private struct EmailEntryForm: View {
                 PatchworkInlineStatusBanner(tone: .error, text: error)
             }
         }
+    }
+}
+
+private extension String {
+    var authAccessibilityIdentifierComponent: String {
+        lowercased()
+            .replacingOccurrences(of: "@", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
     }
 }
