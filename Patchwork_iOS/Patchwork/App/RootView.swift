@@ -133,6 +133,9 @@ struct RootView: View {
         .task(id: periodicLocationSyncKey) {
             await periodicallySyncAuthorizedLocation()
         }
+        .task(id: periodicSessionRefreshKey) {
+            await periodicallyRefreshSession()
+        }
     }
 
     private var shouldShowForegroundRefreshLoading: Bool {
@@ -158,6 +161,10 @@ struct RootView: View {
         }
 
         return !sessionStore.launchedWithPersistedSession
+    }
+
+    private var periodicSessionRefreshKey: String {
+        sessionStore.isAuthenticated ? "authenticated" : "signed-out"
     }
 
 #if DEBUG
@@ -407,6 +414,20 @@ struct RootView: View {
         while !Task.isCancelled {
             await syncAuthorizedDeviceLocationIfAvailable()
             try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
+        }
+    }
+
+    private func periodicallyRefreshSession() async {
+        guard sessionStore.isAuthenticated else {
+            return
+        }
+
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 30 * 60 * 1_000_000_000)
+            guard sessionStore.isAuthenticated else {
+                return
+            }
+            _ = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: false)
         }
     }
 

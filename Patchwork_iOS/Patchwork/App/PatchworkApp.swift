@@ -1,8 +1,12 @@
 import SwiftUI
 import UIKit
+import BackgroundTasks
 
 @main
 struct PatchworkApp: App {
+    private static let sessionRefreshTaskIdentifier = "ltd.ddga.patchwork.session-refresh"
+
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sessionStore: SessionStore
     @State private var appState = AppState()
     @State private var locationManager = LocationManager()
@@ -35,5 +39,28 @@ struct PatchworkApp: App {
                 .environment(revenueCatManager)
                 .preferredColorScheme(.light)
         }
+        .backgroundTask(.appRefresh(Self.sessionRefreshTaskIdentifier)) {
+            await refreshSessionInBackground()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                scheduleSessionRefresh()
+            }
+        }
+    }
+
+    private func refreshSessionInBackground() async {
+        scheduleSessionRefresh()
+        guard sessionStore.isAuthenticated else {
+            return
+        }
+
+        _ = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: false)
+    }
+
+    private func scheduleSessionRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: Self.sessionRefreshTaskIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        try? BGTaskScheduler.shared.submit(request)
     }
 }

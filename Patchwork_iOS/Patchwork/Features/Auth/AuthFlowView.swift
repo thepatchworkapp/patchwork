@@ -166,6 +166,11 @@ struct AuthFlowView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(disablesAnimatedTransitions ? nil : .easeInOut(duration: 0.2), value: step)
+        .onAppear {
+            if sessionStore.errorMessage != nil {
+                step = .signIn
+            }
+        }
     }
 
     private var splashScreen: some View {

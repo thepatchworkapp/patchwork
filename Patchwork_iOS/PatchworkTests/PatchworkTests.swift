@@ -745,6 +745,125 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testSessionStoreRefreshesAgedPersistedConvexToken() async throws {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: Self.makeJWT(expiration: Date().addingTimeInterval(60 * 60 * 24)),
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                convexAuthTokenRefreshedAt: Date().addingTimeInterval(-7 * 60 * 60)
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+        let refreshedAtBeforeRestore = Date()
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "application/json",
+                    "Set-Better-Auth-Cookie": "session=renewed; Path=/; HttpOnly",
+                ]
+            )!
+            return (response, Data("{\"token\":\"fresh-jwt\"}".utf8))
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: false)
+
+        XCTAssertTrue(restored)
+        XCTAssertEqual(store.token, "fresh-jwt")
+        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=renewed")
+        XCTAssertGreaterThanOrEqual(
+            persistence.session?.convexAuthTokenRefreshedAt ?? .distantPast,
+            refreshedAtBeforeRestore
+        )
+    }
+
+    @MainActor
+    func testSessionStoreKeepsMostRecentThreeLoginEmails() async throws {
+        let persistence = InMemorySessionPersistence()
+        let emailPersistence = InMemoryRecentEmailPersistence(
+            emails: ["old@example.com", "existing@example.com", "extra@example.com"]
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            switch request.url?.path ?? "" {
+            case "/api/auth/sign-in/email-otp":
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Set-Better-Auth-Cookie": "session=abc; Path=/; HttpOnly"]
+                )!
+                return (response, Data("{}".utf8))
+            case "/api/auth/convex/token":
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data("{\"token\":\"jwt-token\"}".utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "")")
+                throw PatchworkError.invalidResponse
+            }
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            recentEmailPersistence: emailPersistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        store.emailForOTP = " Existing@Example.com "
+        await store.verifyOTP(code: "123456")
+
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(store.recentEmails, ["existing@example.com", "old@example.com", "extra@example.com"])
+        XCTAssertEqual(emailPersistence.emails, store.recentEmails)
+    }
+
+    @MainActor
     func testRestoreKeepsSessionOnNonAuthRefreshFailure() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
@@ -1263,6 +1382,12 @@ final class PatchworkTests: XCTestCase {
         }
         return data
     }
+
+    private static func makeJWT(expiration: Date) -> String {
+        let header = Data("{\"alg\":\"none\",\"typ\":\"JWT\"}".utf8).base64URLEncodedString()
+        let payload = Data("{\"exp\":\(Int(expiration.timeIntervalSince1970))}".utf8).base64URLEncodedString()
+        return "\(header).\(payload)."
+    }
 }
 
 private final class TestURLProtocol: URLProtocol {
@@ -1308,6 +1433,31 @@ private final class InMemorySessionPersistence: SessionPersisting {
 
     func saveSession(_ session: StoredSession?) {
         self.session = session
+    }
+}
+
+private final class InMemoryRecentEmailPersistence: RecentEmailPersisting {
+    var emails: [String]
+
+    init(emails: [String] = []) {
+        self.emails = emails
+    }
+
+    func loadRecentEmails() -> [String] {
+        emails
+    }
+
+    func saveRecentEmails(_ emails: [String]) {
+        self.emails = emails
+    }
+}
+
+private extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
 

@@ -6,6 +6,7 @@ struct StoredSession: Codable, Equatable {
     var convexAuthToken: String?
     var betterAuthCookie: String?
     var betterAuthSessionToken: String?
+    var convexAuthTokenRefreshedAt: Date? = nil
 
     var hasRefreshCredential: Bool {
         if let betterAuthCookie, !betterAuthCookie.isEmpty {
@@ -21,6 +22,28 @@ struct StoredSession: Codable, Equatable {
 protocol SessionPersisting {
     func loadSession() -> StoredSession?
     func saveSession(_ session: StoredSession?)
+}
+
+protocol RecentEmailPersisting {
+    func loadRecentEmails() -> [String]
+    func saveRecentEmails(_ emails: [String])
+}
+
+struct UserDefaultsRecentEmailPersistence: RecentEmailPersisting {
+    private let key = "Patchwork.recentLoginEmails"
+    private let userDefaults: UserDefaults
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
+
+    func loadRecentEmails() -> [String] {
+        userDefaults.stringArray(forKey: key) ?? []
+    }
+
+    func saveRecentEmails(_ emails: [String]) {
+        userDefaults.set(emails, forKey: key)
+    }
 }
 
 struct KeychainSessionPersistence: SessionPersisting {
@@ -84,6 +107,7 @@ final class SessionStore {
     ]
 
     private let sessionPersistence: SessionPersisting
+    private let recentEmailPersistence: RecentEmailPersisting
     private let clientBuilder: (
         _ authToken: String?,
         _ betterAuthCookie: String?,
@@ -100,10 +124,12 @@ final class SessionStore {
     private(set) var isLoading = false
     private(set) var isRestoringSession = false
     private(set) var errorMessage: String?
+    private(set) var recentEmails: [String]
     var emailForOTP = ""
 
     init(
         sessionPersistence: SessionPersisting = KeychainSessionPersistence(),
+        recentEmailPersistence: RecentEmailPersisting = UserDefaultsRecentEmailPersistence(),
         clientBuilder: @escaping (
             _ authToken: String?,
             _ betterAuthCookie: String?,
@@ -123,7 +149,9 @@ final class SessionStore {
         }
     ) {
         self.sessionPersistence = sessionPersistence
+        self.recentEmailPersistence = recentEmailPersistence
         self.clientBuilder = clientBuilder
+        recentEmails = Self.normalizedRecentEmails(recentEmailPersistence.loadRecentEmails())
 
         if let storedSession = sessionPersistence.loadSession() {
             token = storedSession.convexAuthToken
@@ -171,18 +199,20 @@ final class SessionStore {
         }
         await run {
             if usesAppReviewShortcut {
-                let reviewClient = ConvexHTTPClient()
+                let reviewClient = unauthenticatedClient()
                 let sessionToken = try await reviewClient.signInForAppReview(email: emailForOTP)
                 let refresh = try await reviewClient.fetchConvexAuthRefresh(sessionToken: sessionToken)
                 persistSession(
                     StoredSession(
                         convexAuthToken: refresh.token,
                         betterAuthCookie: refresh.betterAuthCookie,
-                        betterAuthSessionToken: sessionToken
+                        betterAuthSessionToken: sessionToken,
+                        convexAuthTokenRefreshedAt: Date()
                     )
                 )
+                recordRecentEmail(emailForOTP)
             } else {
-                try await ConvexHTTPClient().sendEmailOTP(email: emailForOTP)
+                try await unauthenticatedClient().sendEmailOTP(email: emailForOTP)
             }
         }
     }
@@ -193,16 +223,18 @@ final class SessionStore {
             return
         }
         await run {
-            var unauthenticatedClient = ConvexHTTPClient()
+            var unauthenticatedClient = unauthenticatedClient()
             try await unauthenticatedClient.verifyEmailOTP(email: emailForOTP, otp: code)
             let refresh = try await unauthenticatedClient.fetchConvexAuthRefresh()
             persistSession(
                 StoredSession(
                     convexAuthToken: refresh.token,
                     betterAuthCookie: refresh.betterAuthCookie ?? unauthenticatedClient.currentBetterAuthCookie,
-                    betterAuthSessionToken: nil
+                    betterAuthSessionToken: nil,
+                    convexAuthTokenRefreshedAt: Date()
                 )
             )
+            recordRecentEmail(emailForOTP)
         }
     }
 
@@ -215,7 +247,7 @@ final class SessionStore {
         guard hasRefreshCredential else {
             return token != nil
         }
-        guard forceRefresh || token == nil else {
+        guard forceRefresh || token == nil || shouldRefreshStoredConvexToken() else {
             return true
         }
 
@@ -235,7 +267,8 @@ final class SessionStore {
                 StoredSession(
                     convexAuthToken: refresh.token,
                     betterAuthCookie: refresh.betterAuthCookie ?? betterAuthCookie,
-                    betterAuthSessionToken: betterAuthSessionToken
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    convexAuthTokenRefreshedAt: Date()
                 )
             )
             return true
@@ -281,12 +314,21 @@ final class SessionStore {
         }
     }
 
+    func selectRecentEmail(_ email: String) {
+        emailForOTP = Self.normalizedEmail(email)
+        errorMessage = nil
+    }
+
     private func invalidateSession(message: String) {
         guard isAuthenticated else {
             return
         }
 
         clearSession(errorMessage: message)
+    }
+
+    private func unauthenticatedClient() -> ConvexHTTPClient {
+        clientBuilder(nil, nil, nil, nil, nil, nil)
     }
 
     private func run(_ task: () async throws -> Void) async {
@@ -329,7 +371,8 @@ final class SessionStore {
             StoredSession(
                 convexAuthToken: refreshedToken,
                 betterAuthCookie: betterAuthCookie,
-                betterAuthSessionToken: betterAuthSessionToken
+                betterAuthSessionToken: betterAuthSessionToken,
+                convexAuthTokenRefreshedAt: Date()
             )
         )
     }
@@ -343,7 +386,8 @@ final class SessionStore {
             StoredSession(
                 convexAuthToken: token,
                 betterAuthCookie: refreshedCookie,
-                betterAuthSessionToken: betterAuthSessionToken
+                betterAuthSessionToken: betterAuthSessionToken,
+                convexAuthTokenRefreshedAt: currentSessionRefreshDate
             )
         )
     }
@@ -353,6 +397,81 @@ final class SessionStore {
         emailForOTP = ""
         persistSession(nil)
     }
+
+    private var currentSessionRefreshDate: Date? {
+        sessionPersistence.loadSession()?.convexAuthTokenRefreshedAt
+    }
+
+    private func shouldRefreshStoredConvexToken(now: Date = Date()) -> Bool {
+        guard token != nil else {
+            return true
+        }
+
+        if let expiryDate = Self.jwtExpiryDate(token),
+           expiryDate.timeIntervalSince(now) <= Self.proactiveRefreshLeeway {
+            return true
+        }
+
+        guard let refreshedAt = currentSessionRefreshDate else {
+            return false
+        }
+
+        return now.timeIntervalSince(refreshedAt) >= Self.maximumTokenRefreshAge
+    }
+
+    private func recordRecentEmail(_ email: String) {
+        let normalized = Self.normalizedEmail(email)
+        guard !normalized.isEmpty else {
+            return
+        }
+
+        recentEmails = Self.normalizedRecentEmails([normalized] + recentEmails)
+        recentEmailPersistence.saveRecentEmails(recentEmails)
+    }
+
+    private static func normalizedRecentEmails(_ emails: [String]) -> [String] {
+        var deduped: [String] = []
+        for email in emails {
+            let normalized = normalizedEmail(email)
+            guard !normalized.isEmpty, !deduped.contains(normalized) else {
+                continue
+            }
+            deduped.append(normalized)
+            if deduped.count == maximumRecentEmailCount {
+                break
+            }
+        }
+        return deduped
+    }
+
+    private static func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func jwtExpiryDate(_ token: String?) -> Date? {
+        guard let token,
+              let payload = token.split(separator: ".").dropFirst().first else {
+            return nil
+        }
+
+        var base64 = String(payload)
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - base64.count % 4) % 4
+        base64.append(String(repeating: "=", count: padding))
+
+        guard let data = Data(base64Encoded: base64),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let expiresAt = object["exp"] as? TimeInterval else {
+            return nil
+        }
+
+        return Date(timeIntervalSince1970: expiresAt)
+    }
+
+    private static let proactiveRefreshLeeway: TimeInterval = 60 * 60 * 6
+    private static let maximumTokenRefreshAge: TimeInterval = 60 * 60 * 6
+    private static let maximumRecentEmailCount = 3
 
     private func restoreFailureMessage(for error: Error) -> String {
         if let patchworkError = error as? PatchworkError,
