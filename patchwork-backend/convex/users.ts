@@ -14,6 +14,7 @@ import {
 import { requireAppUser } from "./authHelpers";
 
 const ACCOUNT_CLEANUP_BATCH_SIZE = 1000;
+const MAX_BADGE_CONVERSATIONS = 200;
 
 function tombstoneEmail(userId: string) {
   return `deleted+${userId}@deleted.patchwork.local`;
@@ -226,6 +227,101 @@ export const getCurrentUser = query({
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  },
+});
+
+export const registerPushToken = mutation({
+  args: {
+    token: v.string(),
+    environment: v.union(v.literal("sandbox"), v.literal("production")),
+  },
+  returns: v.object({ registered: v.boolean() }),
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+    const token = args.token.trim();
+    if (!token) {
+      throw new ConvexError("Push token is required");
+    }
+    if (token.length > 512) {
+      throw new ConvexError("Push token is too long");
+    }
+
+    const now = Date.now();
+    const existingToken = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .unique();
+
+    if (existingToken) {
+      await ctx.db.patch(existingToken._id, {
+        userId: user._id,
+        platform: "ios",
+        environment: args.environment,
+        disabledAt: undefined,
+        updatedAt: now,
+      });
+      return { registered: true };
+    }
+
+    await ctx.db.insert("pushTokens", {
+      userId: user._id,
+      token,
+      platform: "ios",
+      environment: args.environment,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { registered: true };
+  },
+});
+
+export const unregisterPushToken = mutation({
+  args: {
+    token: v.string(),
+  },
+  returns: v.object({ unregistered: v.boolean() }),
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+    const existingToken = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token.trim()))
+      .unique();
+
+    if (!existingToken || existingToken.userId !== user._id) {
+      return { unregistered: false };
+    }
+
+    await ctx.db.patch(existingToken._id, {
+      disabledAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { unregistered: true };
+  },
+});
+
+export const getUnreadBadgeCount = query({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const { user } = await requireAppUser(ctx);
+
+    const seekerConversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_seeker_lastMessage", (q) => q.eq("seekerId", user._id))
+      .take(MAX_BADGE_CONVERSATIONS);
+    const taskerConversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_tasker_lastMessage", (q) => q.eq("taskerId", user._id))
+      .take(MAX_BADGE_CONVERSATIONS);
+
+    return [...seekerConversations, ...taskerConversations].reduce((total, conversation) => {
+      if (conversation.seekerId === user._id) {
+        return total + (conversation.seekerUnreadCount ?? 0);
+      }
+      return total + (conversation.taskerUnreadCount ?? 0);
+    }, 0);
   },
 });
 

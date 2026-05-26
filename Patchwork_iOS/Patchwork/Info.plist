@@ -28,6 +28,10 @@
 	<string>Patchwork uses your location to show nearby taskers and improve local job matches.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Patchwork uses the camera when you choose to take a profile or portfolio photo.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Patchwork adds accepted job proposals to your calendar when you choose Add to Calendar.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Patchwork adds accepted job proposals to your calendar when you choose Add to Calendar.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIApplicationSceneManifest</key>

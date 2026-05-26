@@ -1,3 +1,4 @@
+import EventKit
 import SwiftUI
 
 struct MessagesView: View {
@@ -351,6 +352,8 @@ struct ChatView: View {
     @State private var pendingSafetyConfirmation: ChatSafetyAction?
     @State private var reportSheetAction: ChatSafetyAction?
     @State private var safetyFeedbackMessage: SubscriptionFeedbackMessage?
+    @State private var calendarFeedbackMessage: SubscriptionFeedbackMessage?
+    @State private var isAddingToCalendar = false
 
     @State private var showProposalForm = false
     @State private var counteringProposal: ProposalPayload?
@@ -395,9 +398,20 @@ struct ChatView: View {
                 }
 
                 if hasAcceptedProposal {
-                    ChatAcceptedBanner(text: job?.status == "completed" ? "Job completed" : "Job in progress")
+                    ChatAcceptedBanner(
+                        text: job?.status == "completed" ? "Job completed" : "Job in progress",
+                        canAddToCalendar: acceptedProposal != nil,
+                        isAddingToCalendar: isAddingToCalendar,
+                        onAddToCalendar: { Task { await addAcceptedProposalToCalendar() } }
+                    )
                         .padding(.horizontal, 20)
                         .accessibilityIdentifier("Chat.jobInProgressBanner")
+                }
+
+                if let calendarFeedbackMessage {
+                    PatchworkInlineStatusBanner(tone: calendarFeedbackMessage.tone, text: calendarFeedbackMessage.text)
+                        .padding(.horizontal, 20)
+                        .accessibilityIdentifier("Chat.calendarStatusBanner")
                 }
 
                 ScrollViewReader { proxy in
@@ -445,8 +459,9 @@ struct ChatView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .accessibilityIdentifier("Chat.screen.\(conversationId)")
-        .task {
+        .task(id: conversationId) {
             await bootstrap()
+            await pollForConversationUpdates()
         }
         .sheet(isPresented: $showProposalForm) {
             ProposalFormSheet(
@@ -663,7 +678,11 @@ struct ChatView: View {
     }
 
     private var hasAcceptedProposal: Bool {
-        messages.contains(where: { $0.proposal?.status == "accepted" })
+        acceptedProposal != nil
+    }
+
+    private var acceptedProposal: ProposalPayload? {
+        messages.reversed().compactMap(\.proposal).first { $0.status == "accepted" }
     }
 
     private var canShowCompleteButton: Bool {
@@ -675,12 +694,41 @@ struct ChatView: View {
 
     private func bootstrap() async {
         await appState.refreshAuthedData(client: sessionStore.client)
-        await appState.loadConversation(client: sessionStore.client, conversationId: conversationId)
-        conversation = appState.selectedConversation
+        await refreshConversationDetail(surfaceErrors: true)
         await loadSafetyStatus()
-        await markRead()
-        await loadMessages(loadMore: false)
-        await refreshJobState()
+        await markRead(surfaceErrors: true)
+        await loadMessages(loadMore: false, surfaceErrors: true)
+        await refreshJobState(surfaceErrors: true)
+    }
+
+    private func pollForConversationUpdates() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else {
+                return
+            }
+            await refreshOpenConversation(surfaceErrors: false)
+        }
+    }
+
+    private func refreshOpenConversation(surfaceErrors: Bool) async {
+        await refreshConversationDetail(surfaceErrors: surfaceErrors)
+        await loadMessages(loadMore: false, surfaceErrors: surfaceErrors)
+        await markRead(surfaceErrors: false)
+        await refreshJobState(surfaceErrors: surfaceErrors)
+    }
+
+    private func refreshConversationDetail(surfaceErrors: Bool) async {
+        do {
+            conversation = try await PatchworkAPI(client: sessionStore.client).conversations.get(
+                conversationId: conversationId
+            )
+            appState.selectedConversation = conversation
+        } catch {
+            if surfaceErrors {
+                appState.presentError(error, prefix: "Failed to load conversation")
+            }
+        }
     }
 
     private func loadSafetyStatus() async {
@@ -694,7 +742,7 @@ struct ChatView: View {
         }
     }
 
-    private func refreshJobState() async {
+    private func refreshJobState(surfaceErrors: Bool = true) async {
         guard let conversation else { return }
         do {
             if let jobId = conversation.jobId {
@@ -708,11 +756,14 @@ struct ChatView: View {
                 canReview = try await canReviewCall
             }
         } catch {
+            guard surfaceErrors else {
+                return
+            }
             appState.presentError(error)
         }
     }
 
-    private func loadMessages(loadMore: Bool) async {
+    private func loadMessages(loadMore: Bool, surfaceErrors: Bool = true) async {
         if isLoading { return }
         isLoading = true
         defer { isLoading = false }
@@ -738,6 +789,9 @@ struct ChatView: View {
             cursor = result.continueCursor.isEmpty ? nil : result.continueCursor
             canLoadMore = !result.isDone
         } catch {
+            guard surfaceErrors else {
+                return
+            }
             appState.presentError(error)
         }
     }
@@ -753,6 +807,7 @@ struct ChatView: View {
             ) as ConvexID
             text = ""
             await loadMessages(loadMore: false)
+            await markRead()
         } catch {
             appState.presentError(error)
         }
@@ -870,8 +925,7 @@ struct ChatView: View {
             }
             _ = try await sessionStore.client.mutation("proposals:acceptProposal", args: ["proposalId": proposal.id]) as JobCreateResult
             await loadMessages(loadMore: false)
-            await appState.loadConversation(client: sessionStore.client, conversationId: conversationId)
-            conversation = appState.selectedConversation
+            await refreshConversationDetail(surfaceErrors: true)
             await refreshJobState()
         } catch {
             appState.presentError(error)
@@ -930,7 +984,7 @@ struct ChatView: View {
         }
     }
 
-    private func markRead() async {
+    private func markRead(surfaceErrors: Bool = true) async {
         do {
             struct ReadResult: Decodable {
                 let success: Bool
@@ -939,8 +993,38 @@ struct ChatView: View {
                 "conversations:markAsRead",
                 args: ["conversationId": conversationId]
             ) as ReadResult
+            await appState.refreshConversations(
+                client: sessionStore.client,
+                role: appState.conversationRole,
+                surfaceErrors: false
+            )
         } catch {
+            guard surfaceErrors else {
+                return
+            }
             appState.presentError(error)
+        }
+    }
+
+    private func addAcceptedProposalToCalendar() async {
+        guard !isAddingToCalendar,
+              let acceptedProposal else {
+            return
+        }
+
+        isAddingToCalendar = true
+        calendarFeedbackMessage = nil
+        defer { isAddingToCalendar = false }
+
+        do {
+            try await PatchworkCalendarWriter.addProposalEvent(
+                proposal: acceptedProposal,
+                conversation: conversation,
+                job: job
+            )
+            calendarFeedbackMessage = SubscriptionFeedbackMessage(tone: .success, text: "Added to Calendar.")
+        } catch {
+            calendarFeedbackMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }
 
@@ -1209,16 +1293,33 @@ private enum ProposalDateTimeCodec {
 
 private struct ChatAcceptedBanner: View {
     let text: String
+    let canAddToCalendar: Bool
+    let isAddingToCalendar: Bool
+    let onAddToCalendar: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(PatchworkTheme.success)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(.patchworkBodyStrong)
-                .foregroundStyle(PatchworkTheme.success)
-            Spacer()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(PatchworkTheme.success)
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(.patchworkBodyStrong)
+                    .foregroundStyle(PatchworkTheme.success)
+                Spacer()
+            }
+
+            if canAddToCalendar {
+                Button {
+                    onAddToCalendar()
+                } label: {
+                    Label(isAddingToCalendar ? "Adding..." : "Add to Calendar", systemImage: "calendar.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PatchworkSecondaryButtonStyle())
+                .disabled(isAddingToCalendar)
+                .accessibilityIdentifier("Chat.addToCalendarButton")
+            }
         }
         .padding(14)
         .background(PatchworkTheme.success.opacity(0.12), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1227,6 +1328,92 @@ private struct ChatAcceptedBanner: View {
                 .stroke(PatchworkTheme.success.opacity(0.24), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+private enum PatchworkCalendarError: LocalizedError {
+    case accessDenied
+    case missingStartDate
+    case missingCalendar
+
+    var errorDescription: String? {
+        switch self {
+        case .accessDenied:
+            return "Calendar access is required to add this job."
+        case .missingStartDate:
+            return "This proposal does not have a valid start date."
+        case .missingCalendar:
+            return "No writable calendar is available on this device."
+        }
+    }
+}
+
+private enum PatchworkCalendarWriter {
+    static func addProposalEvent(
+        proposal: ProposalPayload,
+        conversation: ConversationDetail?,
+        job: JobDetail?
+    ) async throws {
+        let eventStore = EKEventStore()
+        let hasAccess: Bool
+        if #available(iOS 17.0, *) {
+            hasAccess = try await eventStore.requestFullAccessToEvents()
+        } else {
+            hasAccess = try await eventStore.requestAccess(to: .event)
+        }
+        guard hasAccess else {
+            throw PatchworkCalendarError.accessDenied
+        }
+        guard let startDate = ProposalDateTimeCodec.parse(proposal.startDateTime) else {
+            throw PatchworkCalendarError.missingStartDate
+        }
+        guard let calendar = eventStore.defaultCalendarForNewEvents else {
+            throw PatchworkCalendarError.missingCalendar
+        }
+
+        let event = EKEvent(eventStore: eventStore)
+        event.calendar = calendar
+        event.title = calendarTitle(conversation: conversation, job: job)
+        event.startDate = startDate
+        event.endDate = Calendar.current.date(byAdding: .hour, value: 1, to: startDate)
+            ?? startDate.addingTimeInterval(60 * 60)
+        event.notes = calendarNotes(proposal: proposal, conversation: conversation, job: job)
+
+        try eventStore.save(event, span: .thisEvent)
+    }
+
+    private static func calendarTitle(conversation: ConversationDetail?, job: JobDetail?) -> String {
+        if let categoryName = job?.categoryName.trimmingCharacters(in: .whitespacesAndNewlines),
+           !categoryName.isEmpty {
+            return "Patchwork: \(categoryName)"
+        }
+        if let participantName = conversation?.participantName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !participantName.isEmpty {
+            return "Patchwork job with \(participantName)"
+        }
+        return "Patchwork job"
+    }
+
+    private static func calendarNotes(
+        proposal: ProposalPayload,
+        conversation: ConversationDetail?,
+        job: JobDetail?
+    ) -> String {
+        var lines: [String] = []
+        if let participantName = conversation?.participantName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !participantName.isEmpty {
+            lines.append("Conversation: \(participantName)")
+        }
+        let amount = (Double(proposal.rate) / 100).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        lines.append("Rate: \(amount) \(proposal.rateType)")
+        if let notes = proposal.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+            lines.append("")
+            lines.append(notes)
+        } else if let jobNotes = job?.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !jobNotes.isEmpty {
+            lines.append("")
+            lines.append(jobNotes)
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

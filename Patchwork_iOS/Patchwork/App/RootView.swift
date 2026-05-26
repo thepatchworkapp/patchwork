@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var locationPromptCompletedForSession = false
     @State private var locationPromptSessionUserId: ConvexID?
     @State private var isForegroundRefreshPending = false
+    @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 #if DEBUG
     @State private var didApplyVisualPreview = false
 #endif
@@ -136,6 +137,10 @@ struct RootView: View {
         .task(id: periodicSessionRefreshKey) {
             await periodicallyRefreshSession()
         }
+        .task(id: pushRegistrationKey) {
+            await registerPushTokenIfNeeded()
+            await refreshUnreadBadgeCount()
+        }
     }
 
     private var shouldShowForegroundRefreshLoading: Bool {
@@ -165,6 +170,14 @@ struct RootView: View {
 
     private var periodicSessionRefreshKey: String {
         sessionStore.isAuthenticated ? "authenticated" : "signed-out"
+    }
+
+    private var pushRegistrationKey: String {
+        [
+            sessionStore.isAuthenticated ? "authenticated" : "signed-out",
+            appState.currentUser?.id ?? "no-user",
+            remoteNotificationDeviceToken,
+        ].joined(separator: "|")
     }
 
 #if DEBUG
@@ -429,6 +442,46 @@ struct RootView: View {
             }
             _ = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: false)
         }
+    }
+
+    private func registerPushTokenIfNeeded() async {
+        guard sessionStore.isAuthenticated,
+              appState.currentUser != nil,
+              !remoteNotificationDeviceToken.isEmpty else {
+            return
+        }
+
+        do {
+            try await PatchworkAPI(client: sessionStore.client).users.registerPushToken(
+                remoteNotificationDeviceToken,
+                environment: pushTokenEnvironment
+            )
+        } catch {
+            print("[Notifications] Failed to register push token: \(error.localizedDescription)")
+        }
+    }
+
+    private func refreshUnreadBadgeCount() async {
+        guard sessionStore.isAuthenticated,
+              appState.currentUser != nil else {
+            PatchworkNotificationCenter.updateAppBadge(0)
+            return
+        }
+
+        do {
+            let unreadCount = try await PatchworkAPI(client: sessionStore.client).users.unreadBadgeCount()
+            PatchworkNotificationCenter.updateAppBadge(unreadCount)
+        } catch {
+            print("[Notifications] Failed to refresh badge count: \(error.localizedDescription)")
+        }
+    }
+
+    private var pushTokenEnvironment: String {
+#if DEBUG
+        "sandbox"
+#else
+        "production"
+#endif
     }
 
     @discardableResult
@@ -853,7 +906,10 @@ private struct ProfileSetupView: View {
             .accessibilityIdentifier("ProfileSetup.locationSkipButton")
         case .notifications:
             Button("Allow notifications") {
-                Task { await finalizeSetup() }
+                Task {
+                    _ = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
+                    await finalizeSetup()
+                }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
             .accessibilityIdentifier("ProfileSetup.notificationsAllowButton")
@@ -1221,6 +1277,7 @@ private struct MainTabView: View {
     @AppStorage("Patchwork.taskerOnboardingDraft") private var taskerOnboardingDraftJSON = ""
     @AppStorage("Patchwork.taskerOnboardingRouteActive") private var taskerOnboardingRouteActive = false
     @AppStorage("Patchwork.taskerOnboardingRouteUserId") private var taskerOnboardingRouteUserId = ""
+    @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 
     init() {
         let appearance = UITabBarAppearance()
@@ -1266,10 +1323,12 @@ private struct MainTabView: View {
 
             NavigationStack(path: $profilePath) {
                 ProfileView(onSignOut: {
+                    await unregisterPushTokenIfNeeded()
                     clearTaskerOnboardingRouteState(clearDraft: true)
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
                 }, onDeleteAccount: {
+                    await unregisterPushTokenIfNeeded()
                     let _: EmptyResponse = try await sessionStore.client.mutation("users:deleteAccount", args: [:])
                     clearTaskerOnboardingRouteState(clearDraft: true)
                     appState.resetForSignedOutSession()
@@ -1345,6 +1404,19 @@ private struct MainTabView: View {
         taskerOnboardingRouteUserId = ""
         if clearDraft {
             taskerOnboardingDraftJSON = ""
+        }
+    }
+
+    private func unregisterPushTokenIfNeeded() async {
+        guard sessionStore.isAuthenticated,
+              !remoteNotificationDeviceToken.isEmpty else {
+            return
+        }
+
+        do {
+            try await PatchworkAPI(client: sessionStore.client).users.unregisterPushToken(remoteNotificationDeviceToken)
+        } catch {
+            print("[Notifications] Failed to unregister push token: \(error.localizedDescription)")
         }
     }
 }

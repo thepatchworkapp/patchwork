@@ -572,7 +572,7 @@ describe("searchTaskers", () => {
     expect(results[0].price).toBe("$150 flat"); // Formatted from 15000 cents fixed
   });
 
-  test("matches when service area overlaps seeker radius", async () => {
+  test("excludes when outside seeker search radius even if tasker service radius reaches", async () => {
     const t = createTest();
 
     await t.mutation(internal.categories.seedCategories);
@@ -618,10 +618,10 @@ describe("searchTaskers", () => {
       radiusKm: 5,
     });
 
-    expect(results.length).toBe(1);
+    expect(results.length).toBe(0);
   });
 
-  test("excludes when outside combined service areas", async () => {
+  test("excludes when outside tasker service radius even if seeker search radius reaches", async () => {
     const t = createTest();
 
     await t.mutation(internal.categories.seedCategories);
@@ -645,7 +645,7 @@ describe("searchTaskers", () => {
       categoryBio: "I clean houses",
       rateType: "hourly",
       hourlyRate: 5000,
-      serviceRadius: 200,
+      serviceRadius: 5,
     });
 
     const taskerUser = await asTasker.query(api.users.getCurrentUser);
@@ -656,7 +656,7 @@ describe("searchTaskers", () => {
     const seekerLng = -79.38;
 
     await asTasker.mutation(api.location.updateTaskerLocation, {
-      lat: seekerLat + 2.0,
+      lat: seekerLat + 0.09,
       lng: seekerLng,
     });
 
@@ -664,9 +664,59 @@ describe("searchTaskers", () => {
       categorySlug: "cleaning",
       lat: seekerLat,
       lng: seekerLng,
-      radiusKm: 5,
+      radiusKm: 100,
     });
 
     expect(results.length).toBe(0);
+  });
+
+  test("matches only when both seeker radius and tasker service radius include the distance", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker8",
+      email: "tasker8@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker 8",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Tasker 8 Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 20,
+    });
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+
+    const seekerLat = 43.65;
+    const seekerLng = -79.38;
+
+    await asTasker.mutation(api.location.updateTaskerLocation, {
+      lat: seekerLat + 0.09,
+      lng: seekerLng,
+    });
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlug: "cleaning",
+      lat: seekerLat,
+      lng: seekerLng,
+      radiusKm: 100,
+    });
+
+    expect(results.length).toBe(1);
+    expect(results[0].name).toBe("Tasker 8 Pro");
   });
 });

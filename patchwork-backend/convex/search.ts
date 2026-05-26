@@ -7,7 +7,6 @@ import { getEffectiveGhostMode, hasActiveSubscription } from "../lib/convex/subs
 import { searchTaskerResultValidator } from "../lib/convex/validators";
 import { getAppUserOrNull } from "./authHelpers";
 
-const MAX_SERVICE_RADIUS_KM = 250;
 const MAX_GEO_RESULTS = 100;
 const DEFAULT_GEO_RESULTS = 50;
 
@@ -43,7 +42,7 @@ export const searchTaskers = query({
       }
     }
 
-    const maxDistanceMeters = (args.radiusKm + MAX_SERVICE_RADIUS_KM) * 1000;
+    const maxDistanceMeters = args.radiusKm * 1000;
     const nearbyTaskers = await taskerGeo.nearest(ctx, {
       point: {
         latitude: args.lat,
@@ -106,8 +105,7 @@ export const searchTaskers = query({
       }
 
       const distanceKm = geoResult.distance / 1000;
-      const maxOverlapDistance = args.radiusKm + categoryData.serviceRadius;
-      if (distanceKm > maxOverlapDistance) {
+      if (distanceKm > args.radiusKm || distanceKm > categoryData.serviceRadius) {
         continue;
       }
 

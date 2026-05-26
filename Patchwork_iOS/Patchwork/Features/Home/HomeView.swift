@@ -22,6 +22,7 @@ struct HomeView: View {
     @State private var isStartingChat = false
     @State private var currentCardIndex = 0
     @State private var cardDragOffset: CGFloat = 0
+    @State private var dismissedTaskerIDs = Set<ConvexID>()
     @State private var taskerRoute: TaskerRoute?
     private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
 
@@ -178,7 +179,7 @@ struct HomeView: View {
 
     private var spotlightContent: some View {
         VStack(spacing: 0) {
-            if appState.taskers.isEmpty {
+            if visibleTaskers.isEmpty {
                 emptyState
                     .padding(.horizontal, MainLayout.horizontalGutter)
                     .padding(.top, MainLayout.topRhythm)
@@ -199,11 +200,11 @@ struct HomeView: View {
                             }
                     )
 
-                Text("\(currentCardIndex + 1) of \(appState.taskers.count)")
+                Text("\(currentCardIndex + 1) of \(visibleTaskers.count)")
                     .font(.subheadline)
                     .foregroundStyle(PatchworkTheme.textSecondary)
                     .padding(.top, 14)
-                    .accessibilityLabel("Profile \(currentCardIndex + 1) of \(appState.taskers.count)")
+                    .accessibilityLabel("Profile \(currentCardIndex + 1) of \(visibleTaskers.count)")
             }
 
             Spacer(minLength: 0)
@@ -312,7 +313,7 @@ struct HomeView: View {
                 HStack(spacing: 14) {
                     Button {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            advanceCard()
+                            dismissCurrentCard()
                         }
                     } label: {
                         Image(systemName: "xmark")
@@ -732,10 +733,11 @@ struct HomeView: View {
             radiusKm: radiusKm,
             excludeCurrentUserWhenTasker: true
         )
-        if appState.taskers.isEmpty {
+        dismissedTaskerIDs.removeAll()
+        if visibleTaskers.isEmpty {
             currentCardIndex = 0
-        } else if currentCardIndex >= appState.taskers.count {
-            currentCardIndex = appState.taskers.count - 1
+        } else if currentCardIndex >= visibleTaskers.count {
+            currentCardIndex = visibleTaskers.count - 1
         }
     }
 
@@ -772,25 +774,27 @@ struct HomeView: View {
     }
 
     private var currentTasker: TaskerSummary? {
-        guard !appState.taskers.isEmpty else {
+        guard !visibleTaskers.isEmpty else {
             return nil
         }
-        let safeIndex = min(max(0, currentCardIndex), appState.taskers.count - 1)
-        return appState.taskers[safeIndex]
+        let safeIndex = min(max(0, currentCardIndex), visibleTaskers.count - 1)
+        return visibleTaskers[safeIndex]
     }
 
-    private func advanceCard() {
-        guard !appState.taskers.isEmpty else {
-            return
-        }
-        currentCardIndex = (currentCardIndex + 1) % appState.taskers.count
+    private var visibleTaskers: [TaskerSummary] {
+        appState.taskers.filter { !dismissedTaskerIDs.contains($0.id) }
     }
 
-    private func retreatCard() {
-        guard !appState.taskers.isEmpty else {
+    private func dismissCurrentCard() {
+        guard let tasker = currentTasker else {
             return
         }
-        currentCardIndex = (currentCardIndex - 1 + appState.taskers.count) % appState.taskers.count
+        dismissedTaskerIDs.insert(tasker.id)
+        if visibleTaskers.isEmpty {
+            currentCardIndex = 0
+        } else if currentCardIndex >= visibleTaskers.count {
+            currentCardIndex = visibleTaskers.count - 1
+        }
     }
 
     private func handleSpotlightSwipeEnd(_ value: DragGesture.Value) {
@@ -817,6 +821,7 @@ struct HomeView: View {
 
     private func performSpotlightSwipe(direction: SwipeDirection) {
         let offscreenOffset: CGFloat = direction == .left ? -380 : 380
+        let swipedTasker = currentTasker
 
         withAnimation(.easeOut(duration: 0.16)) {
             cardDragOffset = offscreenOffset
@@ -824,9 +829,9 @@ struct HomeView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
             if direction == .left {
-                advanceCard()
-            } else {
-                retreatCard()
+                dismissCurrentCard()
+            } else if let swipedTasker {
+                Task { await startChat(with: swipedTasker.userId) }
             }
             cardDragOffset = -offscreenOffset * 0.14
             withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {

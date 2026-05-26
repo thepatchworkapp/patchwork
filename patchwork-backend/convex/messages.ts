@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { paginationOptsValidator } from "convex/server";
 import { messagesPageValidator } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
@@ -68,6 +69,17 @@ export const sendMessage = mutation({
       updatedAt: now,
     });
 
+    if (await hasActivePushToken(ctx, recipientId)) {
+      await ctx.scheduler.runAfter(0, internal.notifications.sendChatNotification, {
+        recipientId,
+        senderId: user._id,
+        conversationId: args.conversationId,
+        messageId,
+        title: user.name || "Patchwork",
+        body: args.content,
+      });
+    }
+
     return messageId;
   },
 });
@@ -111,6 +123,18 @@ export const sendProposalMessage = internalMutation({
       [isSeeker ? "taskerUnreadCount" : "seekerUnreadCount"]: currentUnreadCount + 1,
       updatedAt: now,
     });
+
+    if (await hasActivePushToken(ctx, recipientId)) {
+      const sender = await ctx.db.get(args.senderId);
+      await ctx.scheduler.runAfter(0, internal.notifications.sendChatNotification, {
+        recipientId,
+        senderId: args.senderId,
+        conversationId: args.conversationId,
+        messageId,
+        title: sender?.name || "Patchwork",
+        body: args.content === "Counter proposal sent" ? "New counter proposal" : "New proposal",
+      });
+    }
 
     return messageId;
   },
@@ -246,3 +270,19 @@ export const sendSystemMessage = internalMutation({
     return messageId;
   },
 });
+
+async function hasActivePushToken(ctx: any, userId: any) {
+  const user = await ctx.db.get(userId);
+  if (!user || user.settings?.notificationsEnabled === false) {
+    return false;
+  }
+
+  const tokens = await ctx.db
+    .query("pushTokens")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .take(MAX_PUSH_TOKEN_LOOKUP);
+
+  return tokens.some((token: any) => !token.disabledAt);
+}
+
+const MAX_PUSH_TOKEN_LOOKUP = 20;

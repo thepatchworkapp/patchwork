@@ -1,11 +1,71 @@
 import SwiftUI
 import UIKit
 import BackgroundTasks
+import UserNotifications
+
+final class PatchworkAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    private enum Defaults {
+        static let deviceTokenKey = "Patchwork.remoteNotificationDeviceToken"
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .badge]
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(token, forKey: Defaults.deviceTokenKey)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("[Notifications] Failed to register for remote notifications: \(error.localizedDescription)")
+    }
+}
+
+enum PatchworkNotificationCenter {
+    @MainActor
+    @discardableResult
+    static func requestAuthorizationAndRegister() async -> Bool {
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .badge, .sound]
+            )
+            if granted {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+            return granted
+        } catch {
+            return false
+        }
+    }
+
+    @MainActor
+    static func updateAppBadge(_ count: Int) {
+        let sanitizedCount = max(0, count)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(sanitizedCount)
+        } else {
+            UIApplication.shared.applicationIconBadgeNumber = sanitizedCount
+        }
+    }
+}
 
 @main
 struct PatchworkApp: App {
     private static let sessionRefreshTaskIdentifier = "ltd.ddga.patchwork.session-refresh"
 
+    @UIApplicationDelegateAdaptor(PatchworkAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var sessionStore: SessionStore
     @State private var appState = AppState()

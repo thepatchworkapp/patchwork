@@ -5,6 +5,7 @@ import schema from "../schema";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
 import * as messagesModule from "../messages";
+import * as notificationsModule from "../notifications";
 import * as moderationModule from "../moderation";
 import * as categoriesModule from "../categories";
 import * as filesModule from "../files";
@@ -19,6 +20,7 @@ const modules: Record<string, () => Promise<any>> = {
   "../conversations.ts": async () => conversationsModule,
   "../users.ts": async () => usersModule,
   "../messages.ts": async () => messagesModule,
+  "../notifications.ts": async () => notificationsModule,
   "../moderation.ts": async () => moderationModule,
   "../categories.ts": async () => categoriesModule,
   "../files.ts": async () => filesModule,

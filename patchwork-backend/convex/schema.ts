@@ -32,6 +32,19 @@ export default defineSchema({
     .index("by_authId", ["authId"])
     .index("by_email", ["email"]),
 
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    platform: v.union(v.literal("ios")),
+    environment: v.union(v.literal("sandbox"), v.literal("production")),
+    disabledAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_user", ["userId"])
+    .index("by_user_environment", ["userId", "environment"]),
+
   imageAssets: defineTable({
     ownerUserId: v.id("users"),
     purpose: v.union(

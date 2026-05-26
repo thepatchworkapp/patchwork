@@ -104,6 +104,16 @@ export const acceptProposal = mutation({
       systemType: "proposal_accepted",
     });
 
+    if (await hasActivePushToken(ctx, proposal.senderId)) {
+      await ctx.scheduler.runAfter(0, internal.notifications.sendChatNotification, {
+        recipientId: proposal.senderId,
+        senderId: user._id,
+        conversationId: proposal.conversationId,
+        title: user.name || "Patchwork",
+        body: "Proposal accepted",
+      });
+    }
+
     return { jobId };
   },
 });
@@ -135,6 +145,16 @@ export const declineProposal = mutation({
       conversationId: proposal.conversationId,
       systemType: "proposal_declined",
     });
+
+    if (await hasActivePushToken(ctx, proposal.senderId)) {
+      await ctx.scheduler.runAfter(0, internal.notifications.sendChatNotification, {
+        recipientId: proposal.senderId,
+        senderId: user._id,
+        conversationId: proposal.conversationId,
+        title: user.name || "Patchwork",
+        body: "Proposal declined",
+      });
+    }
 
     return args.proposalId;
   },
@@ -207,3 +227,19 @@ export const counterProposal = mutation({
     return counterProposalId;
   },
 });
+
+async function hasActivePushToken(ctx: any, userId: any) {
+  const user = await ctx.db.get(userId);
+  if (!user || user.settings?.notificationsEnabled === false) {
+    return false;
+  }
+
+  const tokens = await ctx.db
+    .query("pushTokens")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .take(MAX_PUSH_TOKEN_LOOKUP);
+
+  return tokens.some((token: any) => !token.disabledAt);
+}
+
+const MAX_PUSH_TOKEN_LOOKUP = 20;

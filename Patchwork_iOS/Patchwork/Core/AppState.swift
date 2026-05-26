@@ -204,6 +204,8 @@ final class AppState {
                 role: role,
                 limit: Self.defaultListLimit
             )
+            let unreadBadgeCount = try? await PatchworkAPI(client: client).users.unreadBadgeCount()
+            PatchworkNotificationCenter.updateAppBadge(unreadBadgeCount ?? totalUnreadCount(conversations))
             prefetchConversationImages(conversations)
         } catch {
             if surfaceErrors {
@@ -451,6 +453,12 @@ final class AppState {
 
         Task(priority: .utility) {
             await PatchworkImageCache.shared.prefetch(requests: requests)
+        }
+    }
+
+    private func totalUnreadCount(_ conversations: [ConversationSummary]) -> Int {
+        conversations.reduce(0) { total, conversation in
+            total + (conversation.seekerUnreadCount ?? 0) + (conversation.taskerUnreadCount ?? 0)
         }
     }
 }

@@ -10,6 +10,7 @@ import * as authModule from "../auth";
 import * as httpModule from "../http";
 import * as conversationsModule from "../conversations";
 import * as messagesModule from "../messages";
+import * as notificationsModule from "../notifications";
 import * as moderationModule from "../moderation";
 import * as proposalsModule from "../proposals";
 import * as jobsModule from "../jobs";
@@ -23,6 +24,7 @@ const modules: Record<string, () => Promise<any>> = {
   "../http.ts": async () => httpModule,
   "../conversations.ts": async () => conversationsModule,
   "../messages.ts": async () => messagesModule,
+  "../notifications.ts": async () => notificationsModule,
   "../moderation.ts": async () => moderationModule,
   "../proposals.ts": async () => proposalsModule,
   "../jobs.ts": async () => jobsModule,
@@ -78,6 +80,88 @@ function storageIdsForAsset(asset: any) {
 }
 
 describe("users", () => {
+  test("registerPushToken upserts the current user's iOS token", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|push-token-user",
+      email: "push-token@example.com",
+    });
+
+    const userId = await asUser.mutation(api.users.createProfile, {
+      name: "Push Token User",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asUser.mutation(api.users.registerPushToken, {
+      token: "abc123",
+      environment: "sandbox",
+    });
+    await asUser.mutation(api.users.registerPushToken, {
+      token: "abc123",
+      environment: "production",
+    });
+
+    const tokens = await t.run(async (ctx: any) => {
+      return await ctx.db
+        .query("pushTokens")
+        .withIndex("by_user", (q: any) => q.eq("userId", userId))
+        .collect();
+    });
+
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].token).toBe("abc123");
+    expect(tokens[0].platform).toBe("ios");
+    expect(tokens[0].environment).toBe("production");
+    expect(tokens[0].disabledAt).toBeUndefined();
+  });
+
+  test("getUnreadBadgeCount returns the current user's unread conversation total", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|badge-seeker",
+      email: "badge-seeker@example.com",
+    });
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "Badge Seeker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|badge-tasker",
+      email: "badge-tasker@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Badge Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+      initialMessage: "Can you help with cleaning?",
+    });
+
+    expect(await asTasker.query(api.users.getUnreadBadgeCount)).toBe(1);
+    expect(await asSeeker.query(api.users.getUnreadBadgeCount)).toBe(0);
+
+    await asTasker.mutation(api.conversations.markAsRead, { conversationId });
+    await asTasker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Yes, I can help tomorrow.",
+    });
+
+    expect(await asTasker.query(api.users.getUnreadBadgeCount)).toBe(0);
+    expect(await asSeeker.query(api.users.getUnreadBadgeCount)).toBe(1);
+
+    await asSeeker.mutation(api.conversations.markAsRead, { conversationId });
+    expect(await asSeeker.query(api.users.getUnreadBadgeCount)).toBe(0);
+    expect(seekerId).toBeDefined();
+  });
+
   test("createProfile creates user and seekerProfile", async () => {
     const t = convexTest(schema, modules);
     

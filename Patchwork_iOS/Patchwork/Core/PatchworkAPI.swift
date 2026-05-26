@@ -183,6 +183,34 @@ struct PatchworkAPI {
         }
 
         @discardableResult
+        func registerPushToken(_ token: String, environment: String) async throws -> Bool {
+            struct RegisterPushTokenResult: Codable {
+                let registered: Bool
+            }
+            let result: RegisterPushTokenResult = try await client.mutation(
+                "users:registerPushToken",
+                args: ["token": token, "environment": environment]
+            )
+            return result.registered
+        }
+
+        func unreadBadgeCount() async throws -> Int {
+            try await client.query("users:getUnreadBadgeCount", args: [:])
+        }
+
+        @discardableResult
+        func unregisterPushToken(_ token: String) async throws -> Bool {
+            struct UnregisterPushTokenResult: Codable {
+                let unregistered: Bool
+            }
+            let result: UnregisterPushTokenResult = try await client.mutation(
+                "users:unregisterPushToken",
+                args: ["token": token]
+            )
+            return result.unregistered
+        }
+
+        @discardableResult
         func updateProfile(name: String, city: String, province: String) async throws -> CurrentUser {
             try await client.mutation(
                 "users:updateProfile",
