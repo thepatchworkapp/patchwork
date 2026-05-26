@@ -121,6 +121,24 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(tabButton(named: "Messages").exists)
     }
 
+    func testFirstSignupProfileSetupLandsOnSeekWithoutTaskerOnboarding() throws {
+        let email = uniqueTestEmail(prefix: "ios-first-signup-routing")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "First Signup Seeker", city: "Toronto", province: "ON")
+
+        let seekTab = tabButton(named: "Seek")
+        XCTAssertTrue(seekTab.waitForExistence(timeout: 10))
+        XCTAssertTrue(seekTab.isSelected)
+        XCTAssertTrue(app.buttons["Home.radiusButton"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.textFields["ProfileSetup.nameField"].exists)
+        XCTAssertFalse(app.textFields["TaskerOnboarding1.displayNameField"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["TaskerOnboarding1.categoryPicker"].exists)
+        XCTAssertFalse(app.buttons["TaskerOnboarding1.continueButton"].exists)
+    }
+
     func testTaskerSubscriptionLifecycle() throws {
         let email = uniqueTestEmail(prefix: "ios-tasker")
         cleanupTestData(for: email)
