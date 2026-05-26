@@ -110,6 +110,7 @@ export default defineSchema({
     completedJobs: v.number(),
     rating: v.number(),
     ratingCount: v.number(),
+    favouriteTaskers: v.optional(v.array(v.id("users"))),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 
@@ -373,6 +374,7 @@ export default defineSchema({
   messages: defineTable({
     conversationId: v.id("conversations"),
     senderId: v.id("users"),
+    clientMessageId: v.optional(v.string()),
 
     // Content
     type: v.union(
@@ -396,6 +398,7 @@ export default defineSchema({
   })
     .index("by_conversation", ["conversationId"])
     .index("by_conversation_time", ["conversationId", "createdAt"])
+    .index("by_conversation_clientMessage", ["conversationId", "clientMessageId"])
     .index("by_sender", ["senderId"]),
 
   // ============================================
@@ -409,6 +412,7 @@ export default defineSchema({
     conversationId: v.id("conversations"),
     senderId: v.id("users"),
     receiverId: v.id("users"),
+    clientProposalId: v.optional(v.string()),
 
     // Optional linkage
     jobRequestId: v.optional(v.id("jobRequests")),
@@ -438,6 +442,8 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
   })
     .index("by_conversation", ["conversationId"])
+    .index("by_conversation_updatedAt", ["conversationId", "updatedAt"])
+    .index("by_conversation_clientProposal", ["conversationId", "clientProposalId"])
     .index("by_sender", ["senderId"])
     .index("by_receiver", ["receiverId"])
     .index("by_status", ["status"]),

@@ -294,6 +294,7 @@ struct ConversationDetail: Identifiable, Codable, Hashable {
 
 struct ProposalPayload: Codable, Hashable {
     let id: ConvexID
+    let conversationId: ConvexID?
     let senderId: ConvexID
     let receiverId: ConvexID
     let rate: Int
@@ -303,9 +304,13 @@ struct ProposalPayload: Codable, Hashable {
     let status: String
     let previousProposalId: ConvexID?
     let counterProposalId: ConvexID?
+    let clientProposalId: String?
+    let createdAt: Int?
+    let updatedAt: Int?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
+        case conversationId
         case senderId
         case receiverId
         case rate
@@ -315,26 +320,37 @@ struct ProposalPayload: Codable, Hashable {
         case status
         case previousProposalId
         case counterProposalId
+        case clientProposalId
+        case createdAt
+        case updatedAt
     }
 }
 
 struct ChatMessage: Identifiable, Codable, Hashable {
     let id: ConvexID
+    let conversationId: ConvexID?
     let senderId: ConvexID
     let type: String
     let content: String
     let proposalId: ConvexID?
     let proposal: ProposalPayload?
     let createdAt: Int
+    let updatedAt: Int?
+    let clientMessageId: String?
+    let localStatus: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
+        case conversationId
         case senderId
         case type
         case content
         case proposalId
         case proposal
         case createdAt
+        case updatedAt
+        case clientMessageId
+        case localStatus
     }
 }
 
@@ -363,6 +379,24 @@ struct MessagesPage: Decodable {
     let page: [ChatMessage]
     let isDone: Bool
     let continueCursor: String
+}
+
+struct MessagesSinceResponse: Decodable {
+    let messages: [ChatMessage]
+    let hasMore: Bool
+    let latestCursor: Int?
+    let latestMessageAt: Int?
+    let latestProposalUpdatedAt: Int?
+}
+
+struct ThreadDelta: Decodable {
+    let conversation: ConversationDetail?
+    let messages: [ChatMessage]
+    let latestCursor: Int?
+    let latestProposal: ProposalPayload?
+    let latestMessageAt: Int?
+    let latestProposalUpdatedAt: Int?
+    let hasMore: Bool?
 }
 
 struct JobSummary: Identifiable, Codable, Hashable {

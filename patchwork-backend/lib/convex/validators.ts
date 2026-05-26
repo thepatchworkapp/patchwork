@@ -262,6 +262,7 @@ export const proposalPayloadValidator = v.object({
   conversationId: v.id("conversations"),
   senderId: v.id("users"),
   receiverId: v.id("users"),
+  clientProposalId: v.optional(v.string()),
   jobRequestId: v.optional(v.id("jobRequests")),
   rate: v.number(),
   rateType: v.union(v.literal("hourly"), v.literal("flat")),
@@ -285,6 +286,7 @@ export const messageWithProposalValidator = v.object({
   _id: v.id("messages"),
   conversationId: v.id("conversations"),
   senderId: v.id("users"),
+  clientMessageId: v.optional(v.string()),
   type: v.union(v.literal("text"), v.literal("proposal"), v.literal("system")),
   content: v.string(),
   proposalId: v.optional(v.id("proposals")),
@@ -299,6 +301,19 @@ export const messagesPageValidator = v.object({
   page: v.array(messageWithProposalValidator),
   isDone: v.boolean(),
   continueCursor: v.string(),
+});
+
+export const messagesDeltaValidator = v.object({
+  messages: v.array(messageWithProposalValidator),
+  hasMore: v.boolean(),
+  latestCursor: v.number(),
+});
+
+export const threadWatchValidator = v.object({
+  messages: v.array(messageWithProposalValidator),
+  hasMore: v.boolean(),
+  latestCursor: v.number(),
+  latestProposal: v.union(proposalPayloadValidator, v.null()),
 });
 
 export const reviewDocValidator = v.object({

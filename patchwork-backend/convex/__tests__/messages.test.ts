@@ -12,6 +12,8 @@ import * as filesModule from "../files";
 import * as taskersModule from "../taskers";
 import * as authModule from "../auth";
 import * as httpModule from "../http";
+import * as proposalsModule from "../proposals";
+import * as jobsModule from "../jobs";
 
 const modules: Record<string, () => Promise<any>> = {
   "../conversations.ts": async () => conversationsModule,
@@ -24,9 +26,39 @@ const modules: Record<string, () => Promise<any>> = {
   "../taskers.ts": async () => taskersModule,
   "../auth.ts": async () => authModule,
   "../http.ts": async () => httpModule,
+  "../proposals.ts": async () => proposalsModule,
+  "../jobs.ts": async () => jobsModule,
   "../_generated/api.ts": async () => ({ default: api }),
   "../schema.ts": async () => ({ default: schema }),
 };
+
+async function createConversation(t: ReturnType<typeof convexTest>, suffix: string) {
+  const asSeeker = t.withIdentity({
+    tokenIdentifier: `google|seeker_${suffix}`,
+    email: `seeker_${suffix}@example.com`,
+  });
+  const seekerId = await asSeeker.mutation(api.users.createProfile, {
+    name: `Seeker ${suffix}`,
+    city: "Toronto",
+    province: "ON",
+  });
+
+  const asTasker = t.withIdentity({
+    tokenIdentifier: `google|tasker_${suffix}`,
+    email: `tasker_${suffix}@example.com`,
+  });
+  const taskerId = await asTasker.mutation(api.users.createProfile, {
+    name: `Tasker ${suffix}`,
+    city: "Toronto",
+    province: "ON",
+  });
+
+  const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+    taskerId,
+  });
+
+  return { asSeeker, asTasker, seekerId, taskerId, conversationId };
+}
 
 describe("messages", () => {
   test("unauthenticated user cannot send message", async () => {
@@ -688,5 +720,157 @@ describe("messages", () => {
     });
     expect(blockedUsers).toHaveLength(1);
     expect(blockedUsers[0]?.blockedUserId).toBe(taskerId);
+  });
+
+  test("sendMessage stores clientMessageId and listMessages returns it", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "client_msg");
+
+    const messageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      clientMessageId: "ios-msg-1",
+      content: "Client tracked message",
+    });
+
+    const result = await asSeeker.query(api.messages.listMessages, {
+      conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
+    });
+
+    const message = result.page.find((item) => item._id === messageId);
+    expect(message?.clientMessageId).toBe("ios-msg-1");
+  });
+
+  test("listMessagesSince enforces participant auth and exclusive cursor boundary", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "since_auth");
+
+    const firstMessageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Before cursor",
+    });
+    const secondMessageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "After cursor",
+    });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(firstMessageId, { createdAt: 1000, updatedAt: 1000 });
+      await ctx.db.patch(secondMessageId, { createdAt: 2000, updatedAt: 2000 });
+    });
+
+    const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      since: 1000,
+      limit: 10,
+    });
+    expect(delta.messages.map((message: any) => message._id)).toStrictEqual([
+      secondMessageId,
+    ]);
+    expect(delta.latestCursor).toBe(2000);
+    expect(delta.hasMore).toBe(false);
+
+    const asStranger = t.withIdentity({
+      tokenIdentifier: "google|stranger_since_auth",
+      email: "stranger_since_auth@example.com",
+    });
+    await asStranger.mutation(api.users.createProfile, {
+      name: "Stranger Since",
+      city: "Toronto",
+      province: "ON",
+    });
+    const unauthorized = await asStranger.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      since: 0,
+      limit: 10,
+    });
+    expect(unauthorized.messages).toHaveLength(0);
+    expect(unauthorized.latestCursor).toBe(0);
+  });
+
+  test("listMessagesSince respects limit and hasMore", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "since_limit");
+
+    const messageIds = [];
+    for (let i = 1; i <= 3; i++) {
+      messageIds.push(
+        await asSeeker.mutation(api.messages.sendMessage, {
+          conversationId,
+          content: `Delta ${i}`,
+        })
+      );
+    }
+
+    await t.run(async (ctx) => {
+      for (let i = 0; i < messageIds.length; i++) {
+        await ctx.db.patch(messageIds[i], {
+          createdAt: 1000 + i,
+          updatedAt: 1000 + i,
+        });
+      }
+    });
+
+    const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      since: 999,
+      limit: 2,
+    });
+
+    expect(delta.messages.map((message: any) => message.content)).toStrictEqual([
+      "Delta 1",
+      "Delta 2",
+    ]);
+    expect(delta.hasMore).toBe(true);
+    expect(delta.latestCursor).toBe(1001);
+  });
+
+  test("watchThread returns message deltas and latest proposal update", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, asTasker, conversationId } = await createConversation(
+      t,
+      "watch_thread"
+    );
+
+    const proposalId = await asTasker.mutation((api as any).proposals.sendProposal, {
+      conversationId,
+      clientProposalId: "ios-proposal-1",
+      rate: 7500,
+      rateType: "flat",
+      startDateTime: "2026-02-15T10:00:00Z",
+      notes: "I can do it",
+    });
+
+    const messageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Can you start earlier?",
+    });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(proposalId, { updatedAt: 3000 });
+      const existingMessages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+        .collect();
+      for (const message of existingMessages) {
+        if (message._id !== messageId) {
+          await ctx.db.patch(message._id, { createdAt: 2000, updatedAt: 2000 });
+        }
+      }
+      await ctx.db.patch(messageId, { createdAt: 3500, updatedAt: 3500 });
+    });
+
+    const watched = await asSeeker.query((api as any).messages.watchThread, {
+      conversationId,
+      since: 2500,
+      limit: 10,
+    });
+
+    expect(watched.messages.some((message: any) => message._id === messageId)).toBe(
+      true
+    );
+    expect(watched.latestProposal?._id).toBe(proposalId);
+    expect(watched.latestProposal?.clientProposalId).toBe("ios-proposal-1");
+    expect(watched.latestCursor).toBe(3500);
   });
 });

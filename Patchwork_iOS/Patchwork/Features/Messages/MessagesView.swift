@@ -335,6 +335,8 @@ private enum ChatSafetyAction: String, Identifiable {
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(RealtimeChatClient.self) private var realtimeChatClient
+    @Environment(ChatLocalStore.self) private var chatLocalStore
     @Environment(\.dismiss) private var dismiss
 
     let conversationId: ConvexID
@@ -461,7 +463,10 @@ struct ChatView: View {
         .accessibilityIdentifier("Chat.screen.\(conversationId)")
         .task(id: conversationId) {
             await bootstrap()
-            await pollForConversationUpdates()
+            startRealtimeSubscription()
+        }
+        .onDisappear {
+            realtimeChatClient.stopThreadSubscription(conversationId: conversationId)
         }
         .sheet(isPresented: $showProposalForm) {
             ProposalFormSheet(
@@ -697,23 +702,18 @@ struct ChatView: View {
         await refreshConversationDetail(surfaceErrors: true)
         await loadSafetyStatus()
         await markRead(surfaceErrors: true)
-        await loadMessages(loadMore: false, surfaceErrors: true)
-        await refreshJobState(surfaceErrors: true)
-    }
-
-    private func pollForConversationUpdates() async {
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else {
-                return
-            }
-            await refreshOpenConversation(surfaceErrors: false)
+        reloadMessagesFromLocalStore(surfaceErrors: false)
+        if messages.isEmpty {
+            await loadMessages(loadMore: false, surfaceErrors: true)
+        } else {
+            await syncMessagesSince(surfaceErrors: true)
         }
+        await refreshJobState(surfaceErrors: true)
     }
 
     private func refreshOpenConversation(surfaceErrors: Bool) async {
         await refreshConversationDetail(surfaceErrors: surfaceErrors)
-        await loadMessages(loadMore: false, surfaceErrors: surfaceErrors)
+        await syncMessagesSince(surfaceErrors: surfaceErrors)
         await markRead(surfaceErrors: false)
         await refreshJobState(surfaceErrors: surfaceErrors)
     }
@@ -782,12 +782,98 @@ struct ChatView: View {
             )
 
             if loadMore {
-                messages = (result.page.reversed() + messages)
+                cacheMessages(result.page)
             } else {
-                messages = result.page.reversed()
+                cacheMessages(result.page)
             }
+            reloadMessagesFromLocalStore(surfaceErrors: surfaceErrors)
             cursor = result.continueCursor.isEmpty ? nil : result.continueCursor
             canLoadMore = !result.isDone
+        } catch {
+            guard surfaceErrors else {
+                return
+            }
+            appState.presentError(error)
+        }
+    }
+
+    private func syncMessagesSince(surfaceErrors: Bool) async {
+        do {
+            let cursor = try chatLocalStore.newestCursor(for: conversationId)
+            let since = Int(cursor ?? "0") ?? 0
+            var nextSince = since
+            var hasMore = true
+
+            while hasMore {
+                let result: MessagesSinceResponse = try await sessionStore.client.query(
+                    "messages:listMessagesSince",
+                    args: [
+                        "conversationId": conversationId,
+                        "since": nextSince,
+                        "limit": 100,
+                    ]
+                )
+                let nextCursor = try chatLocalStore.apply(messagesSince: result, conversationId: conversationId)
+                reloadMessagesFromLocalStore(surfaceErrors: surfaceErrors)
+                hasMore = result.hasMore
+                let updatedSince = Int(nextCursor ?? String(nextSince)) ?? nextSince
+                guard updatedSince > nextSince else {
+                    break
+                }
+                nextSince = updatedSince
+            }
+        } catch {
+            guard surfaceErrors else {
+                return
+            }
+            appState.presentError(error)
+        }
+    }
+
+    private func startRealtimeSubscription() {
+        let currentCursor = (try? chatLocalStore.newestCursor(for: conversationId))
+            .flatMap { Int($0) } ?? 0
+        realtimeChatClient.subscribeToThread(
+            conversationId: conversationId,
+            afterCreatedAt: currentCursor,
+            onUpdate: { delta in
+                do {
+                    try chatLocalStore.apply(threadDelta: delta, conversationId: conversationId)
+                    reloadMessagesFromLocalStore(surfaceErrors: false)
+                    if delta.messages.contains(where: { $0.senderId != appState.currentUser?.id }) {
+                        Task { await markRead(surfaceErrors: false) }
+                    }
+                    if delta.latestProposal != nil {
+                        Task {
+                            await refreshConversationDetail(surfaceErrors: false)
+                            await refreshJobState(surfaceErrors: false)
+                        }
+                    }
+                } catch {
+                    appState.presentError(error)
+                }
+            }
+        )
+    }
+
+    private func cacheMessages(_ incomingMessages: [ChatMessage]) {
+        let proposals = incomingMessages.compactMap { message in
+            message.proposal.map {
+                LocalProposal.Snapshot(proposal: $0, conversationId: message.conversationId ?? conversationId)
+            }
+        }
+        let localMessages = incomingMessages.map {
+            LocalMessage.Snapshot(message: $0, conversationId: conversationId)
+        }
+        _ = try? chatLocalStore.apply(
+            delta: ChatLocalStore.Delta(messages: localMessages, proposals: proposals),
+            conversationId: conversationId
+        )
+    }
+
+    private func reloadMessagesFromLocalStore(surfaceErrors: Bool) {
+        do {
+            messages = try chatLocalStore.chatMessages(conversationId: conversationId)
         } catch {
             guard surfaceErrors else {
                 return
@@ -800,15 +886,37 @@ struct ChatView: View {
         guard !isConversationBlocked else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard let currentUserId = appState.currentUser?.id else { return }
+        let clientMessageId = UUID().uuidString
+        let now = Int(Date().timeIntervalSince1970 * 1000)
         do {
+            try chatLocalStore.upsertOptimisticMessage(
+                LocalMessage.Snapshot(
+                    conversationId: conversationId,
+                    clientMessageId: clientMessageId,
+                    senderId: currentUserId,
+                    content: trimmed,
+                    createdAt: now,
+                    updatedAt: now,
+                    isOptimistic: true,
+                    localStatus: "sending"
+                )
+            )
+            reloadMessagesFromLocalStore(surfaceErrors: true)
+            text = ""
             _ = try await sessionStore.client.mutation(
                 "messages:sendMessage",
-                args: ["conversationId": conversationId, "content": trimmed]
+                args: [
+                    "conversationId": conversationId,
+                    "clientMessageId": clientMessageId,
+                    "content": trimmed,
+                ]
             ) as ConvexID
-            text = ""
-            await loadMessages(loadMore: false)
+            await syncMessagesSince(surfaceErrors: false)
             await markRead()
         } catch {
+            try? chatLocalStore.markMessageFailed(clientMessageId: clientMessageId)
+            reloadMessagesFromLocalStore(surfaceErrors: false)
             appState.presentError(error)
         }
     }
@@ -887,11 +995,13 @@ struct ChatView: View {
             return
         }
         do {
+            let clientProposalId = UUID().uuidString
             if let original = counteringProposal {
                 _ = try await sessionStore.client.mutation(
                     "proposals:counterProposal",
                     args: [
                         "proposalId": original.id,
+                        "clientProposalId": clientProposalId,
                         "rate": cents,
                         "rateType": proposalRateType,
                         "startDateTime": startDateTime,
@@ -903,6 +1013,7 @@ struct ChatView: View {
                     "proposals:sendProposal",
                     args: [
                         "conversationId": conversationId,
+                        "clientProposalId": clientProposalId,
                         "rate": cents,
                         "rateType": proposalRateType,
                         "startDateTime": startDateTime,
@@ -912,7 +1023,7 @@ struct ChatView: View {
             }
             showProposalForm = false
             counteringProposal = nil
-            await loadMessages(loadMore: false)
+            await syncMessagesSince(surfaceErrors: false)
         } catch {
             appState.presentError(error)
         }
@@ -924,7 +1035,7 @@ struct ChatView: View {
                 let jobId: ConvexID
             }
             _ = try await sessionStore.client.mutation("proposals:acceptProposal", args: ["proposalId": proposal.id]) as JobCreateResult
-            await loadMessages(loadMore: false)
+            await syncMessagesSince(surfaceErrors: false)
             await refreshConversationDetail(surfaceErrors: true)
             await refreshJobState()
         } catch {
@@ -935,7 +1046,7 @@ struct ChatView: View {
     private func decline(proposal: ProposalPayload) async {
         do {
             _ = try await sessionStore.client.mutation("proposals:declineProposal", args: ["proposalId": proposal.id]) as ConvexID
-            await loadMessages(loadMore: false)
+            await syncMessagesSince(surfaceErrors: false)
         } catch {
             appState.presentError(error)
         }
@@ -1055,9 +1166,17 @@ struct ChatView: View {
             ChatMessageRow(
                 text: message.content,
                 time: timeLabel(message.createdAt),
-                isMine: isMyMessage(message)
+                isMine: isMyMessage(message),
+                localStatus: message.localStatus,
+                onRetry: { Task { await retry(message: message) } }
             )
         }
+    }
+
+    private func retry(message: ChatMessage) async {
+        guard message.localStatus == "failed" else { return }
+        text = message.content
+        await send()
     }
 
     private func timeLabel(_ millis: Int) -> String {
@@ -1512,6 +1631,8 @@ private struct ChatMessageRow: View {
     let text: String
     let time: String
     let isMine: Bool
+    let localStatus: String?
+    let onRetry: () -> Void
 
     var body: some View {
         HStack {
@@ -1529,6 +1650,17 @@ private struct ChatMessageRow: View {
                 Text(time)
                     .font(.patchworkCaption)
                     .foregroundStyle(PatchworkTheme.textSecondary)
+                if localStatus == "sending" {
+                    Text("Sending...")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                } else if localStatus == "failed" {
+                    Button("Failed - Retry", action: onRetry)
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.danger)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("Chat.messageRetryButton")
+                }
             }
             if !isMine { Spacer() }
         }

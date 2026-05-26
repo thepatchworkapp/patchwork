@@ -68,6 +68,8 @@ struct PatchworkApp: App {
     @UIApplicationDelegateAdaptor(PatchworkAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var sessionStore: SessionStore
+    @State private var realtimeChatClient: RealtimeChatClient
+    @State private var chatLocalStore: ChatLocalStore
     @State private var appState = AppState()
     @State private var locationManager = LocationManager()
     @State private var revenueCatManager = RevenueCatManager()
@@ -100,13 +102,24 @@ struct PatchworkApp: App {
             )
         }
 #endif
-        _sessionStore = State(initialValue: SessionStore(sessionPersistence: sessionPersistence))
+        let sessionStore = SessionStore(sessionPersistence: sessionPersistence)
+        _sessionStore = State(initialValue: sessionStore)
+        _realtimeChatClient = State(initialValue: RealtimeChatClient(sessionStore: sessionStore))
+        do {
+            _chatLocalStore = State(
+                initialValue: ChatLocalStore(modelContainer: try ChatLocalStore.makeModelContainer())
+            )
+        } catch {
+            fatalError("Failed to initialize chat local store: \(error.localizedDescription)")
+        }
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(sessionStore)
+                .environment(realtimeChatClient)
+                .environment(chatLocalStore)
                 .environment(appState)
                 .environment(locationManager)
                 .environment(revenueCatManager)

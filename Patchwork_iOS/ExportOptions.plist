@@ -7,7 +7,7 @@
 	<key>provisioningProfiles</key>
 	<dict>
 		<key>ltd.ddga.patchwork</key>
-		<string>Patchwork App Store 2026-02-17</string>
+		<string>Patchwork App Store 2026-05-26</string>
 	</dict>
 	<key>signingCertificate</key>
 	<string>iPhone Distribution</string>

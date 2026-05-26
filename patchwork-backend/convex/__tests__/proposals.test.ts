@@ -131,6 +131,54 @@ describe("proposals", () => {
     expect(proposal.receiverId).toBe(seekerId);
   });
 
+  test("sendProposal stores and hydrates clientProposalId", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_client_proposal",
+      email: "seeker_client_proposal@example.com",
+    });
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Client Proposal",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_client_proposal",
+      email: "tasker_client_proposal@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Client Proposal",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const proposalId = await asTasker.mutation((api as any).proposals.sendProposal, {
+      conversationId,
+      clientProposalId: "ios-proposal-send-1",
+      rate: 5000,
+      rateType: "hourly",
+      startDateTime: "2026-02-15T10:00:00Z",
+    });
+
+    const proposal = (await t.run(async (ctx) => {
+      return await ctx.db.get(proposalId);
+    })) as Doc<"proposals">;
+    expect(proposal.clientProposalId).toBe("ios-proposal-send-1");
+
+    const messages = await asSeeker.query(api.messages.listMessages, {
+      conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
+    });
+    const proposalMessage = messages.page.find((message) => message.proposalId === proposalId);
+    expect(proposalMessage?.proposal?.clientProposalId).toBe("ios-proposal-send-1");
+  });
+
   test("sending proposal creates proposal_sent system message", async () => {
     const t = convexTest(schema, modules);
     
@@ -344,6 +392,8 @@ describe("proposals", () => {
       m.type === "system" && m.content.includes("accepted")
     );
     expect(acceptMessage).toBeDefined();
+    expect(acceptMessage?.proposalId).toBe(proposalId);
+    expect(acceptMessage?.proposal?.status).toBe("accepted");
   });
 
   test("receiver can decline proposal", async () => {
@@ -454,6 +504,8 @@ describe("proposals", () => {
       m.type === "system" && m.content.includes("declined")
     );
     expect(declineMessage).toBeDefined();
+    expect(declineMessage?.proposalId).toBe(proposalId);
+    expect(declineMessage?.proposal?.status).toBe("declined");
   });
 
   test("receiver can counter proposal", async () => {
@@ -497,8 +549,9 @@ describe("proposals", () => {
     });
 
     // Counter proposal as seeker
-    const counterProposalId = await asSeeker.mutation(api.proposals.counterProposal, {
+    const counterProposalId = await asSeeker.mutation((api as any).proposals.counterProposal, {
       proposalId,
+      clientProposalId: "ios-counter-1",
       rate: 4000,
       rateType: "hourly",
       startDateTime: "2026-02-15T10:00:00Z",
@@ -522,7 +575,15 @@ describe("proposals", () => {
     })) as Doc<"proposals">;
     expect(counterProposal.status).toBe("pending");
     expect(counterProposal.rate).toBe(4000);
+    expect(counterProposal.clientProposalId).toBe("ios-counter-1");
     expect(counterProposal.previousProposalId).toBe(proposalId);
+
+    const messages = await asSeeker.query(api.messages.listMessages, {
+      conversationId,
+      paginationOpts: { cursor: null, numItems: 25 },
+    });
+    const counterMessage = messages.page.find((message) => message.proposalId === counterProposalId);
+    expect(counterMessage?.proposal?.clientProposalId).toBe("ios-counter-1");
   });
 
   test("counterProposal creates proposal_countered system message", async () => {
@@ -583,6 +644,8 @@ describe("proposals", () => {
       m.type === "system" && m.content.includes("counter")
     );
     expect(counterMessage).toBeDefined();
+    expect(counterMessage?.proposalId).toBe(proposalId);
+    expect(counterMessage?.proposal?.status).toBe("countered");
   });
 
   test("cannot accept already-declined proposal", async () => {

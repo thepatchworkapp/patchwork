@@ -2,9 +2,14 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { paginationOptsValidator } from "convex/server";
-import { messagesPageValidator } from "../lib/convex/validators";
+import {
+  messagesDeltaValidator,
+  messagesPageValidator,
+  threadWatchValidator,
+} from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
 import { assertUsersCanMessage } from "./moderation";
+import { Doc } from "./_generated/dataModel";
 
 type SystemMessageType =
   | "proposal_sent"
@@ -16,6 +21,7 @@ type SystemMessageType =
 export const sendMessage = mutation({
   args: {
     conversationId: v.id("conversations"),
+    clientMessageId: v.optional(v.string()),
     content: v.string(),
     attachments: v.optional(v.array(v.id("_storage"))),
   },
@@ -48,6 +54,7 @@ export const sendMessage = mutation({
     const messageId = await ctx.db.insert("messages", {
       conversationId: args.conversationId,
       senderId: user._id,
+      clientMessageId: args.clientMessageId,
       type: "text",
       content: args.content,
       attachments: args.attachments,
@@ -169,57 +176,7 @@ export const listMessages = query({
       .order("desc")
       .paginate(args.paginationOpts);
 
-    const pageWithProposals = await Promise.all(
-      messages.page.map(async (msg) => {
-        if (msg.proposalId) {
-          const proposal = await ctx.db.get(msg.proposalId);
-          return {
-            _id: msg._id,
-            conversationId: msg.conversationId,
-            senderId: msg.senderId,
-            type: msg.type,
-            content: msg.content,
-            proposalId: msg.proposalId,
-            proposal: proposal
-              ? {
-                  _id: proposal._id,
-                  conversationId: proposal.conversationId,
-                  senderId: proposal.senderId,
-                  receiverId: proposal.receiverId,
-                  jobRequestId: proposal.jobRequestId,
-                  rate: proposal.rate,
-                  rateType: proposal.rateType,
-                  startDateTime: proposal.startDateTime,
-                  notes: proposal.notes,
-                  status: proposal.status,
-                  previousProposalId: proposal.previousProposalId,
-                  counterProposalId: proposal.counterProposalId,
-                  createdAt: proposal.createdAt,
-                  updatedAt: proposal.updatedAt,
-                  expiresAt: proposal.expiresAt,
-                }
-              : null,
-            attachments: msg.attachments,
-            readAt: msg.readAt,
-            createdAt: msg.createdAt,
-            updatedAt: msg.updatedAt,
-          };
-        }
-        return {
-          _id: msg._id,
-          conversationId: msg.conversationId,
-          senderId: msg.senderId,
-          type: msg.type,
-          content: msg.content,
-          proposalId: msg.proposalId,
-          proposal: null,
-          attachments: msg.attachments,
-          readAt: msg.readAt,
-          createdAt: msg.createdAt,
-          updatedAt: msg.updatedAt,
-        };
-      })
-    );
+    const pageWithProposals = await hydrateMessages(ctx, messages.page);
 
     return {
       page: pageWithProposals,
@@ -229,9 +186,90 @@ export const listMessages = query({
   },
 });
 
+export const listMessagesSince = query({
+  args: {
+    conversationId: v.id("conversations"),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: messagesDeltaValidator,
+  handler: async (ctx, args) => {
+    const empty = { messages: [], hasMore: false, latestCursor: args.since };
+    const isParticipant = await isConversationParticipant(ctx, args.conversationId);
+    if (!isParticipant) return empty;
+
+    const limit = normalizeRealtimeLimit(args.limit);
+    const rows = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation_time", (q) =>
+        q.eq("conversationId", args.conversationId).gt("createdAt", args.since)
+      )
+      .order("asc")
+      .take(limit + 1);
+
+    const messages = rows.slice(0, limit);
+    const hydrated = await hydrateMessages(ctx, messages);
+
+    return {
+      messages: hydrated,
+      hasMore: rows.length > limit,
+      latestCursor: hydrated.at(-1)?.createdAt ?? args.since,
+    };
+  },
+});
+
+export const watchThread = query({
+  args: {
+    conversationId: v.id("conversations"),
+    since: v.number(),
+    limit: v.optional(v.number()),
+  },
+  returns: threadWatchValidator,
+  handler: async (ctx, args) => {
+    const empty = {
+      messages: [],
+      hasMore: false,
+      latestCursor: args.since,
+      latestProposal: null,
+    };
+    const isParticipant = await isConversationParticipant(ctx, args.conversationId);
+    if (!isParticipant) return empty;
+
+    const limit = normalizeRealtimeLimit(args.limit);
+    const rows = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation_time", (q) =>
+        q.eq("conversationId", args.conversationId).gt("createdAt", args.since)
+      )
+      .order("asc")
+      .take(limit + 1);
+    const messages = rows.slice(0, limit);
+    const hydrated = await hydrateMessages(ctx, messages);
+
+    const latestProposal = await ctx.db
+      .query("proposals")
+      .withIndex("by_conversation_updatedAt", (q) =>
+        q.eq("conversationId", args.conversationId).gt("updatedAt", args.since)
+      )
+      .order("desc")
+      .first();
+
+    return {
+      messages: hydrated,
+      hasMore: rows.length > limit,
+      latestCursor: Math.max(
+        hydrated.at(-1)?.createdAt ?? args.since,
+        latestProposal?.updatedAt ?? args.since
+      ),
+      latestProposal: latestProposal ? serializeProposal(latestProposal) : null,
+    };
+  },
+});
+
 export const sendSystemMessage = internalMutation({
   args: {
     conversationId: v.id("conversations"),
+    proposalId: v.optional(v.id("proposals")),
     systemType: v.union(
       v.literal("proposal_sent"),
       v.literal("proposal_accepted"),
@@ -263,6 +301,7 @@ export const sendSystemMessage = internalMutation({
       senderId: conversation.seekerId,
       type: "system",
       content,
+      proposalId: args.proposalId,
       createdAt: now,
       updatedAt: now,
     });
@@ -286,3 +325,69 @@ async function hasActivePushToken(ctx: any, userId: any) {
 }
 
 const MAX_PUSH_TOKEN_LOOKUP = 20;
+
+function normalizeRealtimeLimit(limit: number | undefined) {
+  if (limit === undefined) return 50;
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new ConvexError("Limit must be a positive integer");
+  }
+  return Math.min(limit, 100);
+}
+
+async function isConversationParticipant(
+  ctx: any,
+  conversationId: Doc<"conversations">["_id"]
+) {
+  const session = await getAppUserOrNull(ctx);
+  if (!session) return false;
+
+  const conversation = await ctx.db.get(conversationId);
+  return Boolean(
+    conversation &&
+      (conversation.seekerId === session.user._id ||
+        conversation.taskerId === session.user._id)
+  );
+}
+
+async function hydrateMessages(ctx: any, messages: Doc<"messages">[]) {
+  return await Promise.all(
+    messages.map(async (msg) => {
+      const proposal = msg.proposalId ? await ctx.db.get(msg.proposalId) : null;
+      return {
+        _id: msg._id,
+        conversationId: msg.conversationId,
+        senderId: msg.senderId,
+        clientMessageId: msg.clientMessageId,
+        type: msg.type,
+        content: msg.content,
+        proposalId: msg.proposalId,
+        proposal: proposal ? serializeProposal(proposal) : null,
+        attachments: msg.attachments,
+        readAt: msg.readAt,
+        createdAt: msg.createdAt,
+        updatedAt: msg.updatedAt,
+      };
+    })
+  );
+}
+
+function serializeProposal(proposal: Doc<"proposals">) {
+  return {
+    _id: proposal._id,
+    conversationId: proposal.conversationId,
+    senderId: proposal.senderId,
+    receiverId: proposal.receiverId,
+    clientProposalId: proposal.clientProposalId,
+    jobRequestId: proposal.jobRequestId,
+    rate: proposal.rate,
+    rateType: proposal.rateType,
+    startDateTime: proposal.startDateTime,
+    notes: proposal.notes,
+    status: proposal.status,
+    previousProposalId: proposal.previousProposalId,
+    counterProposalId: proposal.counterProposalId,
+    createdAt: proposal.createdAt,
+    updatedAt: proposal.updatedAt,
+    expiresAt: proposal.expiresAt,
+  };
+}

@@ -17,6 +17,7 @@
 		3F3BF22D0E9B935CD4FE040F /* TaskerPaywallArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */; };
 		451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2E0F804448A5611B7946DA /* LeaveReviewView.swift */; };
 		466DF59B65C572F961448DC5 /* SubscriptionFeedbackMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */; };
+		46FE6F0EDB9BDD85BCBCE67A /* ConvexMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 1ED565BFCFE5A76AE2073FAC /* ConvexMobile */; };
 		474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */; };
 		48CD452FB3052C6976D36007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 729E33D4E7B681C1ABDBD69A /* RootView.swift */; };
 		4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDAD88D57BEC8C727115A6F /* MessagesView.swift */; };
@@ -27,11 +28,14 @@
 		62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B810AFA2F7D8E281A10001B8 /* ProfileView.swift */; };
 		686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */; };
 		73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA14B5338C5C33F540967A21 /* LocationManager.swift */; };
+		7690CFC8C4A104D87DE6FEA8 /* LocalConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 164956A3AA3DC835FF7BB831 /* LocalConversation.swift */; };
 		7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68BA4F09EB1C8E4E34CCC252 /* AppState.swift */; };
 		7E2DF4F80C2A23B6773AB1D4 /* PhotoFlowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */; };
+		83F1208A5E038F6909952294 /* ChatLocalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A568009F99CF7E0BAF5648 /* ChatLocalStoreTests.swift */; };
 		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
 		8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */; };
 		8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */; };
+		8F95190A8F0A7942215EBF7B /* ChatLocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A51B22A907726DFD906C2C /* ChatLocalStore.swift */; };
 		904B5860B537B33D2733A84C /* PatchworkTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */; };
 		9159CA9BA57F8DDBC1796AFB /* PatchworkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */; };
 		93A59CCD06D37288237907D6 /* ProfilePanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BAC9730550B4849CDAE391 /* ProfilePanels.swift */; };
@@ -42,8 +46,10 @@
 		AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */; };
 		B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DDDC0232ADB67B2B6B8632 /* HomeView.swift */; };
 		B6FCA6DEA07790C039C32177 /* PatchworkInputFieldStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */; };
+		B9685F2D4D3A9E0AF4FED2A1 /* RealtimeChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B472015566F4B52D4FE965CA /* RealtimeChatClient.swift */; };
 		BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */; };
 		BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */; };
+		C6DBFCBA574614DBBC3DBE00 /* LocalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EFBCD450AB7C1E102F8BA0 /* LocalMessage.swift */; };
 		CBDF12E8E71F8CE4E39E3F0F /* ProfileTaskerSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0CE7572C7A892BA52FE850 /* ProfileTaskerSection.swift */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
@@ -58,6 +64,7 @@
 		EFBCC26E20DE468AF021E796 /* PatchworkBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */; };
 		F10F7EBA15ED5C0A339C70BD /* PatchworkSurfaceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */; };
 		F713D2AF3260F99F0A8CF19D /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = A2B6386314D137BE552E1DFA /* RevenueCat */; };
+		F7C982C662D84280FCB2D46F /* LocalProposal.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39ADB06147496F5B0126A9C /* LocalProposal.swift */; };
 		F8897AC3264797291BAD224B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF104625A9E3F2BC20B0518E /* Models.swift */; };
 		FAFE4B58A3664CE4D1443EF5 /* PatchworkSheetChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */; };
 /* End PBXBuildFile section */
@@ -80,8 +87,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		03A568009F99CF7E0BAF5648 /* ChatLocalStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLocalStoreTests.swift; sourceTree = "<group>"; };
 		09019FECF835A15001917199 /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
 		0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerPaywallOptionCard.swift; sourceTree = "<group>"; };
+		164956A3AA3DC835FF7BB831 /* LocalConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalConversation.swift; sourceTree = "<group>"; };
 		19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkTopBar.swift; sourceTree = "<group>"; };
 		1BBC96B8B11DE94E16DC2A03 /* PatchworkInputFieldStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkInputFieldStyle.swift; sourceTree = "<group>"; };
 		1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSurfaceCard.swift; sourceTree = "<group>"; };
@@ -115,17 +124,21 @@
 		A57B242954A6EEEB83B0145B /* ProviderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderDetailView.swift; sourceTree = "<group>"; };
 		B2645A99676B08C632ABA998 /* JobDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobDetailView.swift; sourceTree = "<group>"; };
 		B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkButtonStyles.swift; sourceTree = "<group>"; };
+		B472015566F4B52D4FE965CA /* RealtimeChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeChatClient.swift; sourceTree = "<group>"; };
 		B6CA4515A711E82E5DF211EF /* PatchworkRemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkRemoteImage.swift; sourceTree = "<group>"; };
 		B810AFA2F7D8E281A10001B8 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		B90C5197B927D191D7C3A296 /* SubscriptionReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliationTests.swift; sourceTree = "<group>"; };
+		B9A51B22A907726DFD906C2C /* ChatLocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLocalStore.swift; sourceTree = "<group>"; };
 		BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCropJPEGHelperTests.swift; sourceTree = "<group>"; };
 		BDF20E73132396D39BDD54F7 /* Patchwork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Patchwork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2FF7A5790E5506D5EF7226A /* JobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsView.swift; sourceTree = "<group>"; };
 		C3FF35620B9B6C5B749A03AB /* TaskerPaywallArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskerPaywallArtworkView.swift; sourceTree = "<group>"; };
+		C7EFBCD450AB7C1E102F8BA0 /* LocalMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMessage.swift; sourceTree = "<group>"; };
 		CCDAD88D57BEC8C727115A6F /* MessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesView.swift; sourceTree = "<group>"; };
 		CF104625A9E3F2BC20B0518E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		CFD2BD5E80A7F39881A464BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D1BDCE50B380DDF4CDDCF5A3 /* PatchworkUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PatchworkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D39ADB06147496F5B0126A9C /* LocalProposal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProposal.swift; sourceTree = "<group>"; };
 		D5656FF60AE9B93703C1A1A6 /* PatchworkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkApp.swift; sourceTree = "<group>"; };
 		D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionReconciliation.swift; sourceTree = "<group>"; };
 		DBD6D5FE7B4FC563B6ED48C3 /* LocationSyncCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationSyncCache.swift; sourceTree = "<group>"; };
@@ -145,6 +158,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F713D2AF3260F99F0A8CF19D /* RevenueCat in Frameworks */,
+				46FE6F0EDB9BDD85BCBCE67A /* ConvexMobile in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -236,6 +250,7 @@
 		9E9DB7AB7650439DF15F9B0B /* PatchworkTests */ = {
 			isa = PBXGroup;
 			children = (
+				03A568009F99CF7E0BAF5648 /* ChatLocalStoreTests.swift */,
 				8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */,
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
 				BCAF6CC841BCF10DD1566766 /* PhotoCropJPEGHelperTests.swift */,
@@ -250,6 +265,7 @@
 			children = (
 				E8CE0A5718D2AC6132157B5B /* AppConfig.swift */,
 				68BA4F09EB1C8E4E34CCC252 /* AppState.swift */,
+				B9A51B22A907726DFD906C2C /* ChatLocalStore.swift */,
 				424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */,
 				8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */,
 				FA14B5338C5C33F540967A21 /* LocationManager.swift */,
@@ -267,6 +283,7 @@
 				1D8026593D391EA651E29224 /* PatchworkSurfaceCard.swift */,
 				19396F47A320F81FC468DB0C /* PatchworkTopBar.swift */,
 				79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */,
+				B472015566F4B52D4FE965CA /* RealtimeChatClient.swift */,
 				6FF295505C244A4858E39A5D /* RevenueCatManager.swift */,
 				5F6BFF40E136CB2D9D516ECB /* SessionStore.swift */,
 				D7BC3B531AA5A8B6CDABF40E /* SubscriptionReconciliation.swift */,
@@ -298,6 +315,9 @@
 		BE901AEF2A31157915F1E50A /* Messages */ = {
 			isa = PBXGroup;
 			children = (
+				164956A3AA3DC835FF7BB831 /* LocalConversation.swift */,
+				C7EFBCD450AB7C1E102F8BA0 /* LocalMessage.swift */,
+				D39ADB06147496F5B0126A9C /* LocalProposal.swift */,
 				CCDAD88D57BEC8C727115A6F /* MessagesView.swift */,
 			);
 			path = Messages;
@@ -344,6 +364,7 @@
 			name = Patchwork;
 			packageProductDependencies = (
 				A2B6386314D137BE552E1DFA /* RevenueCat */,
+				1ED565BFCFE5A76AE2073FAC /* ConvexMobile */,
 			);
 			productName = Patchwork;
 			productReference = BDF20E73132396D39BDD54F7 /* Patchwork.app */;
@@ -420,6 +441,7 @@
 			mainGroup = FD415B9AB19D7B27E769085E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				199463F4A8D310C19FFCC9CB /* XCRemoteSwiftPackageReference "convex-swift" */,
 				D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -454,12 +476,16 @@
 				7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */,
 				DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */,
 				5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */,
+				8F95190A8F0A7942215EBF7B /* ChatLocalStore.swift in Sources */,
 				AF20EF1813688F062C927AD4 /* ConvexHTTPClient.swift in Sources */,
 				B4EECA46483D853DC3E634B3 /* HomeView.swift in Sources */,
 				EE828ACC0C32E93217216297 /* ImageAssetUploadService.swift in Sources */,
 				A087AA9759E50A7CDF5F14C3 /* JobDetailView.swift in Sources */,
 				CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */,
 				451923C2FFF3664B54840B45 /* LeaveReviewView.swift in Sources */,
+				7690CFC8C4A104D87DE6FEA8 /* LocalConversation.swift in Sources */,
+				C6DBFCBA574614DBBC3DBE00 /* LocalMessage.swift in Sources */,
+				F7C982C662D84280FCB2D46F /* LocalProposal.swift in Sources */,
 				73648FA3C1860C2EC507074D /* LocationManager.swift in Sources */,
 				D7696C15EE5A69B6740EF839 /* LocationSyncCache.swift in Sources */,
 				4D0CDF68A14678DF324EA135 /* MessagesView.swift in Sources */,
@@ -486,6 +512,7 @@
 				CBDF12E8E71F8CE4E39E3F0F /* ProfileTaskerSection.swift in Sources */,
 				62EF7FB4B7937D3B945A379B /* ProfileView.swift in Sources */,
 				686965AB2374488BE189116A /* ProviderDetailView.swift in Sources */,
+				B9685F2D4D3A9E0AF4FED2A1 /* RealtimeChatClient.swift in Sources */,
 				A70CBB56D3F564CDA575EA44 /* RevenueCatManager.swift in Sources */,
 				48CD452FB3052C6976D36007 /* RootView.swift in Sources */,
 				14D68E1CD8350F71E111E6FB /* SessionStore.swift in Sources */,
@@ -502,6 +529,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				83F1208A5E038F6909952294 /* ChatLocalStoreTests.swift in Sources */,
 				BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */,
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
 				AED712E0EB69F15230E4CAAF /* PhotoCropJPEGHelperTests.swift in Sources */,
@@ -667,7 +695,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 55;
+				CURRENT_PROJECT_VERSION = 56;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -752,7 +780,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 55;
+				CURRENT_PROJECT_VERSION = 56;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -833,6 +861,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		199463F4A8D310C19FFCC9CB /* XCRemoteSwiftPackageReference "convex-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/get-convex/convex-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.8.1;
+			};
+		};
 		D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
@@ -844,6 +880,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1ED565BFCFE5A76AE2073FAC /* ConvexMobile */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 199463F4A8D310C19FFCC9CB /* XCRemoteSwiftPackageReference "convex-swift" */;
+			productName = ConvexMobile;
+		};
 		A2B6386314D137BE552E1DFA /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D8C773E7C453FF97259ED827 /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;

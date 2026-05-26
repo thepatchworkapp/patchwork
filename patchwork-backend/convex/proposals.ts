@@ -8,6 +8,7 @@ import { assertUsersCanMessage } from "./moderation";
 export const sendProposal = mutation({
   args: {
     conversationId: v.id("conversations"),
+    clientProposalId: v.optional(v.string()),
     rate: v.number(),
     rateType: v.union(v.literal("hourly"), v.literal("flat")),
     startDateTime: v.string(),
@@ -42,6 +43,7 @@ export const sendProposal = mutation({
       conversationId: args.conversationId,
       senderId: user._id,
       receiverId,
+      clientProposalId: args.clientProposalId,
       jobRequestId: conversation.jobRequestId,
       rate: args.rate,
       rateType: args.rateType,
@@ -61,6 +63,7 @@ export const sendProposal = mutation({
 
     await ctx.runMutation(internal.messages.sendSystemMessage, {
       conversationId: args.conversationId,
+      proposalId,
       systemType: "proposal_sent",
     });
 
@@ -101,6 +104,7 @@ export const acceptProposal = mutation({
 
     await ctx.runMutation(internal.messages.sendSystemMessage, {
       conversationId: proposal.conversationId,
+      proposalId: args.proposalId,
       systemType: "proposal_accepted",
     });
 
@@ -143,6 +147,7 @@ export const declineProposal = mutation({
 
     await ctx.runMutation(internal.messages.sendSystemMessage, {
       conversationId: proposal.conversationId,
+      proposalId: args.proposalId,
       systemType: "proposal_declined",
     });
 
@@ -163,6 +168,7 @@ export const declineProposal = mutation({
 export const counterProposal = mutation({
   args: {
     proposalId: v.id("proposals"),
+    clientProposalId: v.optional(v.string()),
     rate: v.number(),
     rateType: v.union(v.literal("hourly"), v.literal("flat")),
     startDateTime: v.string(),
@@ -196,6 +202,7 @@ export const counterProposal = mutation({
       conversationId: originalProposal.conversationId,
       senderId: user._id,
       receiverId: originalProposal.senderId,
+      clientProposalId: args.clientProposalId,
       jobRequestId: originalProposal.jobRequestId,
       rate: args.rate,
       rateType: args.rateType,
@@ -221,6 +228,7 @@ export const counterProposal = mutation({
 
     await ctx.runMutation(internal.messages.sendSystemMessage, {
       conversationId: originalProposal.conversationId,
+      proposalId: args.proposalId,
       systemType: "proposal_countered",
     });
 
