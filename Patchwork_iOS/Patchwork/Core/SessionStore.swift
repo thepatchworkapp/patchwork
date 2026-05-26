@@ -277,7 +277,7 @@ final class SessionStore {
             )
             return true
         } catch {
-            if isAuthenticationFailure(error) {
+            if shouldClearSessionAfterRestoreFailure(error) {
                 clearSession(errorMessage: restoreFailureMessage(for: error))
                 return false
             }
@@ -438,6 +438,28 @@ final class SessionStore {
         return now.timeIntervalSince(refreshedAt) >= Self.maximumTokenRefreshAge
     }
 
+    private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
+        if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
+            if isAuthenticationFailure(message) {
+                return true
+            }
+            if statusCode == 401 {
+                return !hasCurrentlyUsableConvexToken()
+            }
+            return false
+        }
+
+        return isAuthenticationFailure(error)
+    }
+
+    private func hasCurrentlyUsableConvexToken(now: Date = Date()) -> Bool {
+        guard let expiryDate = Self.jwtExpiryDate(token) else {
+            return false
+        }
+
+        return expiryDate.timeIntervalSince(now) > Self.minimumUsableTokenLifetime
+    }
+
     private func recordRecentEmail(_ email: String) {
         let normalized = Self.normalizedEmail(email)
         guard !normalized.isEmpty else {
@@ -488,11 +510,17 @@ final class SessionStore {
         return Date(timeIntervalSince1970: expiresAt)
     }
 
-    private static let proactiveRefreshLeeway: TimeInterval = 60 * 60 * 6
+    private static let proactiveRefreshLeeway: TimeInterval = 60 * 5
+    private static let minimumUsableTokenLifetime: TimeInterval = 60
     private static let maximumTokenRefreshAge: TimeInterval = 60 * 60 * 6
     private static let maximumRecentEmailCount = 3
 
     private func restoreFailureMessage(for error: Error) -> String {
+        if case let PatchworkError.authRefreshFailed(statusCode, _) = error,
+           statusCode == 401 {
+            return "Your session expired. Sign in again."
+        }
+
         if let patchworkError = error as? PatchworkError,
            let description = patchworkError.errorDescription,
            !description.isEmpty {

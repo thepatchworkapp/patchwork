@@ -27,7 +27,7 @@ private final class PatchworkConvexAuthProvider: AuthProvider {
             throw PatchworkError.missingToken
         }
 
-        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: true)
+        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: false)
         let token = await MainActor.run { sessionStore.token }
 
         guard restored, let token, !token.isEmpty else {

@@ -2,12 +2,15 @@ import Foundation
 
 enum PatchworkError: LocalizedError {
     case server(String)
+    case authRefreshFailed(statusCode: Int, message: String)
     case invalidResponse
     case missingToken
 
     var errorDescription: String? {
         switch self {
         case .server(let message):
+            return message
+        case .authRefreshFailed(_, let message):
             return message
         case .invalidResponse:
             return "Unexpected response from server."
@@ -194,8 +197,11 @@ struct ConvexHTTPClient {
             let message = Self.errorMessage(from: data) ?? "Authentication request failed."
             lastErrorMessage = message
             if httpResponse.statusCode == 401 {
-                await notifyAuthSessionInvalidated()
-                throw PatchworkError.server(Self.sessionExpiredMessage)
+                if authFailurePhrase(in: message) != nil {
+                    await notifyAuthSessionInvalidated()
+                    throw PatchworkError.server(Self.sessionExpiredMessage)
+                }
+                throw PatchworkError.authRefreshFailed(statusCode: httpResponse.statusCode, message: message)
             }
             if httpResponse.statusCode == 403,
                message.localizedCaseInsensitiveContains("invalid origin") {
@@ -205,10 +211,10 @@ struct ConvexHTTPClient {
             if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: message) {
                 await notifyAuthSessionInvalidated()
             }
-            throw PatchworkError.server(message)
+            throw PatchworkError.authRefreshFailed(statusCode: httpResponse.statusCode, message: message)
         }
 
-        throw PatchworkError.server(lastErrorMessage ?? "Authentication request failed.")
+        throw PatchworkError.authRefreshFailed(statusCode: 0, message: lastErrorMessage ?? "Authentication request failed.")
     }
 
     private func call<T: Decodable>(functionType: String, path: String, args: [String: Any]) async throws -> T {
@@ -435,6 +441,10 @@ struct ConvexHTTPClient {
             await onAuthTokenRefresh?(refreshedToken)
             return refreshedToken
         } catch {
+            if case let PatchworkError.authRefreshFailed(statusCode, message) = error,
+               shouldInvalidateSession(statusCode: statusCode, errorMessage: message) {
+                await notifyAuthSessionInvalidated()
+            }
             if case let PatchworkError.server(message) = error,
                isAuthenticationFailure(statusCode: nil, errorMessage: message) {
                 await notifyAuthSessionInvalidated()

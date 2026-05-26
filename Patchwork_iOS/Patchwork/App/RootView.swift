@@ -105,7 +105,7 @@ struct RootView: View {
             isForegroundRefreshPending = true
             Task { @MainActor in
                 defer { isForegroundRefreshPending = false }
-                await restoreSessionAndRefreshIfNeeded(forceRefresh: true)
+                await restoreSessionAndRefreshIfNeeded(forceRefresh: false)
                 await reconcileRevenueCatWithBackendIfNeeded()
                 await syncAuthorizedDeviceLocationIfAvailable()
             }
