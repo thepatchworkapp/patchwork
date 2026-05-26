@@ -23,8 +23,21 @@ struct PatchworkApp: App {
             let resetTokenKey = "Patchwork.uiTestSessionResetToken"
             if UserDefaults.standard.string(forKey: resetTokenKey) != resetToken {
                 sessionPersistence.saveSession(nil)
+                UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingDraft")
+                UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingRouteActive")
+                UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingRouteUserId")
                 UserDefaults.standard.set(resetToken, forKey: resetTokenKey)
             }
+        }
+        if ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_STALE_TASKER_ROUTE") {
+            UserDefaults.standard.set(true, forKey: "Patchwork.taskerOnboardingRouteActive")
+            UserDefaults.standard.set("stale-user", forKey: "Patchwork.taskerOnboardingRouteUserId")
+            UserDefaults.standard.set(
+                """
+                {"step":1,"displayName":"Stale Tasker","selectedCategoryId":null,"websiteLinks":[""],"socialLinks":[""],"categoryBio":"","rateType":"hourly","hourlyRate":"","fixedRate":"","serviceRadius":25}
+                """,
+                forKey: "Patchwork.taskerOnboardingDraft"
+            )
         }
 #endif
         _sessionStore = State(initialValue: SessionStore(sessionPersistence: sessionPersistence))

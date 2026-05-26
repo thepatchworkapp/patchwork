@@ -189,7 +189,8 @@ struct TaskerOnboardingView: View {
                 createFlowView
             }
         }
-        .navigationTitle("Tasker Setup")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isShowingSubscriptions) {
             TaskerBillingSheet()
                 .patchworkSheetChrome(detents: [.large])

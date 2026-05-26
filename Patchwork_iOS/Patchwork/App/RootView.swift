@@ -1220,6 +1220,7 @@ private struct MainTabView: View {
     @State private var profilePath: [MainTabProfileRoute] = []
     @AppStorage("Patchwork.taskerOnboardingDraft") private var taskerOnboardingDraftJSON = ""
     @AppStorage("Patchwork.taskerOnboardingRouteActive") private var taskerOnboardingRouteActive = false
+    @AppStorage("Patchwork.taskerOnboardingRouteUserId") private var taskerOnboardingRouteUserId = ""
 
     init() {
         let appearance = UITabBarAppearance()
@@ -1265,14 +1266,12 @@ private struct MainTabView: View {
 
             NavigationStack(path: $profilePath) {
                 ProfileView(onSignOut: {
-                    taskerOnboardingRouteActive = false
-                    taskerOnboardingDraftJSON = ""
+                    clearTaskerOnboardingRouteState(clearDraft: true)
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
                 }, onDeleteAccount: {
                     let _: EmptyResponse = try await sessionStore.client.mutation("users:deleteAccount", args: [:])
-                    taskerOnboardingRouteActive = false
-                    taskerOnboardingDraftJSON = ""
+                    clearTaskerOnboardingRouteState(clearDraft: true)
                     appState.resetForSignedOutSession()
                     await sessionStore.signOut()
                 })
@@ -1291,34 +1290,61 @@ private struct MainTabView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(PatchworkTheme.surface, for: .tabBar)
         .onAppear {
-            restoreTaskerOnboardingRouteIfNeeded()
+            reconcileTaskerOnboardingRouteState()
         }
         .onChange(of: appState.isBootstrapped) { _, _ in
-            restoreTaskerOnboardingRouteIfNeeded()
+            reconcileTaskerOnboardingRouteState()
         }
         .onChange(of: appState.taskerProfile?.id) { _, taskerProfileId in
             if taskerProfileId != nil {
-                taskerOnboardingRouteActive = false
+                clearTaskerOnboardingRouteState()
             } else {
-                restoreTaskerOnboardingRouteIfNeeded()
+                reconcileTaskerOnboardingRouteState()
             }
         }
         .onChange(of: profilePath) { _, newPath in
             taskerOnboardingRouteActive = newPath.contains(.taskerOnboarding)
+            taskerOnboardingRouteUserId = taskerOnboardingRouteActive ? (appState.currentUser?.id ?? "") : ""
+        }
+        .onChange(of: appState.selectedTab) { _, selectedTab in
+            if selectedTab != .profile {
+                profilePath = []
+                clearTaskerOnboardingRouteState()
+            }
         }
     }
 
-    private func restoreTaskerOnboardingRouteIfNeeded() {
+    private func reconcileTaskerOnboardingRouteState() {
         guard taskerOnboardingRouteActive,
               !taskerOnboardingDraftJSON.isEmpty,
               appState.isBootstrapped,
-              appState.currentUser != nil,
-              appState.taskerProfile == nil,
-              !profilePath.contains(.taskerOnboarding) else {
+              let currentUserId = appState.currentUser?.id,
+              appState.taskerProfile == nil else {
+            if appState.currentUser == nil || appState.taskerProfile != nil {
+                clearTaskerOnboardingRouteState()
+            }
+            return
+        }
+
+        guard taskerOnboardingRouteUserId == currentUserId,
+              appState.selectedTab == .profile else {
+            clearTaskerOnboardingRouteState()
+            return
+        }
+
+        guard !profilePath.contains(.taskerOnboarding) else {
             return
         }
 
         appState.selectedTab = .profile
         profilePath = [.taskerOnboarding]
+    }
+
+    private func clearTaskerOnboardingRouteState(clearDraft: Bool = false) {
+        taskerOnboardingRouteActive = false
+        taskerOnboardingRouteUserId = ""
+        if clearDraft {
+            taskerOnboardingDraftJSON = ""
+        }
     }
 }

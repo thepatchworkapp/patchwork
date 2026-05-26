@@ -115,10 +115,32 @@ final class PatchworkUITests: XCTestCase {
 
         launchToEmailEntry()
         completeEmailAuth(email: email)
-        completeProfileSetup(name: "iOS Auth Tester", city: "Toronto", province: "ON")
+        completeProfileSetup(name: "iOS Auth Tester", city: "Toronto", province: "ON", finishWithNotificationsAllow: true)
 
-        XCTAssertTrue(tabButton(named: "Profile").waitForExistence(timeout: 10))
+        XCTAssertTrue(tabButton(named: "Seek").waitForExistence(timeout: 10))
+        XCTAssertTrue(tabButton(named: "Seek").isSelected)
         XCTAssertTrue(tabButton(named: "Messages").exists)
+        XCTAssertFalse(app.textFields["TaskerOnboarding1.displayNameField"].exists)
+        XCTAssertFalse(app.staticTexts["Tasker Setup"].exists)
+    }
+
+    func testFirstSignupIgnoresStaleTaskerOnboardingRoute() throws {
+        app.terminate()
+        app.launchArguments.append("PATCHWORK_UI_STALE_TASKER_ROUTE")
+        app.launchEnvironment["PATCHWORK_UI_RESET_SESSION_TOKEN"] = UUID().uuidString
+        app.launch()
+
+        let email = uniqueTestEmail(prefix: "ios-stale-tasker-route")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "Fresh Seeker", city: "Toronto", province: "ON", finishWithNotificationsAllow: true)
+
+        XCTAssertTrue(tabButton(named: "Seek").waitForExistence(timeout: 10))
+        XCTAssertTrue(tabButton(named: "Seek").isSelected)
+        XCTAssertFalse(app.textFields["TaskerOnboarding1.displayNameField"].exists)
+        XCTAssertFalse(app.staticTexts["Tasker Setup"].exists)
     }
 
     func testFirstSignupProfileSetupLandsOnSeekWithoutTaskerOnboarding() throws {
@@ -767,7 +789,12 @@ final class PatchworkUITests: XCTestCase {
         }
     }
 
-    private func completeProfileSetup(name: String, city: String, province: String) {
+    private func completeProfileSetup(
+        name: String,
+        city: String,
+        province: String,
+        finishWithNotificationsAllow: Bool = false
+    ) {
         let nameField = app.textFields["ProfileSetup.nameField"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 30))
         replaceText(in: nameField, with: name, shouldClearExisting: false)
@@ -787,9 +814,11 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(locationSkip.waitForExistence(timeout: 10))
         locationSkip.tap()
 
-        let notificationsSkip = app.buttons["ProfileSetup.notificationsSkipButton"]
-        XCTAssertTrue(notificationsSkip.waitForExistence(timeout: 10))
-        notificationsSkip.tap()
+        let notificationsButton = finishWithNotificationsAllow
+            ? app.buttons["ProfileSetup.notificationsAllowButton"]
+            : app.buttons["ProfileSetup.notificationsSkipButton"]
+        XCTAssertTrue(notificationsButton.waitForExistence(timeout: 10))
+        notificationsButton.tap()
 
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
     }
