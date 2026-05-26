@@ -356,6 +356,7 @@ struct ChatView: View {
     @State private var safetyFeedbackMessage: SubscriptionFeedbackMessage?
     @State private var calendarFeedbackMessage: SubscriptionFeedbackMessage?
     @State private var isAddingToCalendar = false
+    @State private var dismissedAcceptedProposalIds: Set<ConvexID> = []
 
     @State private var showProposalForm = false
     @State private var counteringProposal: ProposalPayload?
@@ -399,12 +400,16 @@ struct ChatView: View {
                     .accessibilityIdentifier("Chat.loadOlderButton")
                 }
 
-                if hasAcceptedProposal {
+                if let acceptedProposalForBanner = acceptedProposal,
+                   !dismissedAcceptedProposalIds.contains(acceptedProposalForBanner.id) {
                     ChatAcceptedBanner(
                         text: job?.status == "completed" ? "Job completed" : "Job in progress",
-                        canAddToCalendar: acceptedProposal != nil,
+                        canAddToCalendar: true,
                         isAddingToCalendar: isAddingToCalendar,
-                        onAddToCalendar: { Task { await addAcceptedProposalToCalendar() } }
+                        onAddToCalendar: { Task { await addAcceptedProposalToCalendar() } },
+                        onDismiss: {
+                            dismissedAcceptedProposalIds.insert(acceptedProposalForBanner.id)
+                        }
                     )
                         .padding(.horizontal, 20)
                         .accessibilityIdentifier("Chat.jobInProgressBanner")
@@ -429,6 +434,10 @@ struct ChatView: View {
                         .padding(.bottom, 12)
                     }
                     .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onTapGesture {
+                        PatchworkKeyboard.dismiss()
+                    }
                     .onChange(of: messages.last?.id) { _, lastMessageID in
                         guard let lastMessageID else { return }
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -1415,6 +1424,7 @@ private struct ChatAcceptedBanner: View {
     let canAddToCalendar: Bool
     let isAddingToCalendar: Bool
     let onAddToCalendar: () -> Void
+    let onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1426,6 +1436,20 @@ private struct ChatAcceptedBanner: View {
                     .font(.patchworkBodyStrong)
                     .foregroundStyle(PatchworkTheme.success)
                 Spacer()
+                Button {
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.patchworkCaption.weight(.bold))
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(PatchworkTheme.surface.opacity(0.8), in: Circle())
+                        .overlay(Circle().stroke(PatchworkTheme.stroke, lineWidth: 1))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss job status banner")
+                .accessibilityIdentifier("Chat.dismissJobInProgressBanner")
             }
 
             if canAddToCalendar {
@@ -1446,7 +1470,6 @@ private struct ChatAcceptedBanner: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(PatchworkTheme.success.opacity(0.24), lineWidth: 1)
         )
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1624,6 +1647,7 @@ private struct ChatComposerBar: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+        .patchworkKeyboardDismissToolbar(isPresented: !isDisabled)
     }
 }
 

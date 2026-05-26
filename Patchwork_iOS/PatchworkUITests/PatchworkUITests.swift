@@ -545,7 +545,21 @@ final class PatchworkUITests: XCTestCase {
         acceptButton.tap()
 
         XCTAssertTrue(app.staticTexts["Accepted"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Job in progress"].waitForExistence(timeout: 15))
+        let jobStatusText = app.staticTexts["Job in progress"]
+        XCTAssertTrue(jobStatusText.waitForExistence(timeout: 15))
+
+        let dismissJobBannerButton = app.buttons["Dismiss job status banner"]
+        XCTAssertTrue(dismissJobBannerButton.waitForExistence(timeout: 10))
+        dismissJobBannerButton.tap()
+        XCTAssertFalse(app.buttons["Dismiss job status banner"].waitForExistence(timeout: 2))
+
+        let messageField = app.textFields["Message"]
+        focusForTyping(messageField)
+        let doneButton = app.buttons["Done"]
+        XCTAssertTrue(doneButton.waitForExistence(timeout: 5))
+        doneButton.tap()
+        XCTAssertFalse(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+
         XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
             proposal["status"] as? String == "accepted"
         })
