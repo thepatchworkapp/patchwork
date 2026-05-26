@@ -1158,6 +1158,22 @@ private enum ProposalDateTimeCodec {
         return (dateFormatter.string(from: parsed), timeFormatter.string(from: parsed))
     }
 
+    static func formDate(from value: String) -> Date? {
+        dateFormatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    static func formTime(from value: String) -> Date? {
+        timeFormatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    static func formDateString(from date: Date) -> String {
+        dateFormatter.string(from: date)
+    }
+
+    static func formTimeString(from date: Date) -> String {
+        timeFormatter.string(from: date)
+    }
+
     private static let calendar = Calendar(identifier: .gregorian)
 
     private static let dateFormatter: DateFormatter = {
@@ -1517,19 +1533,28 @@ private struct ProposalFormSheet: View {
                             .accessibilityLabel("Rate type")
                             .accessibilityIdentifier("ProposalForm.rateType")
 
-                            TextField("Rate", text: $rate)
-                                .keyboardType(.decimalPad)
-                                .patchworkInputFieldStyle()
-                                .accessibilityLabel("Rate amount")
-                                .accessibilityIdentifier("ProposalForm.rateField")
+                            HStack(spacing: 8) {
+                                Text("$")
+                                    .font(.patchworkBody.weight(.semibold))
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+                                    .accessibilityHidden(true)
 
-                            HStack(spacing: 12) {
-                                TextField("Date (YYYY-MM-DD)", text: $date)
+                                TextField("Rate", text: $rate)
+                                    .keyboardType(.decimalPad)
+                                    .accessibilityLabel("Rate amount")
+                                    .accessibilityIdentifier("ProposalForm.rateField")
+                            }
+                            .patchworkInputFieldStyle()
+
+                            VStack(spacing: 12) {
+                                DatePicker("Date", selection: proposalDateBinding, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
                                     .patchworkInputFieldStyle()
                                     .accessibilityLabel("Start date")
                                     .accessibilityIdentifier("ProposalForm.dateField")
 
-                                TextField("Time (HH:MM)", text: $time)
+                                DatePicker("Time", selection: proposalTimeBinding, displayedComponents: .hourAndMinute)
+                                    .datePickerStyle(.compact)
                                     .patchworkInputFieldStyle()
                                     .accessibilityLabel("Start time")
                                     .accessibilityIdentifier("ProposalForm.timeField")
@@ -1562,6 +1587,31 @@ private struct ProposalFormSheet: View {
             .scrollIndicators(.hidden)
         }
         .patchworkKeyboardDismissToolbar()
+        .onAppear(perform: initializePickerDefaults)
+    }
+
+    private var proposalDateBinding: Binding<Date> {
+        Binding(
+            get: { ProposalDateTimeCodec.formDate(from: date) ?? Date() },
+            set: { date = ProposalDateTimeCodec.formDateString(from: $0) }
+        )
+    }
+
+    private var proposalTimeBinding: Binding<Date> {
+        Binding(
+            get: { ProposalDateTimeCodec.formTime(from: time) ?? Date() },
+            set: { time = ProposalDateTimeCodec.formTimeString(from: $0) }
+        )
+    }
+
+    private func initializePickerDefaults() {
+        let now = Date()
+        if date.isEmpty {
+            date = ProposalDateTimeCodec.formDateString(from: now)
+        }
+        if time.isEmpty {
+            time = ProposalDateTimeCodec.formTimeString(from: now)
+        }
     }
 }
 
