@@ -647,6 +647,46 @@ final class PatchworkTests: XCTestCase {
         }
     }
 
+    func testFetchConvexAuthRefreshDoesNotInvalidateSessionOnGenericAuthRequestFailure() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let invalidationMessage = LockedBox<String?>(nil)
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 403,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"error\":\"Authentication request failed.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            authToken: "existing-token",
+            betterAuthCookie: "session=abc",
+            onAuthSessionInvalidated: { message in
+                invalidationMessage.set(message)
+            }
+        )
+
+        do {
+            _ = try await client.fetchConvexJWT()
+            XCTFail("Expected refresh to fail")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Authentication request failed.")
+            XCTAssertNil(invalidationMessage.get())
+        }
+    }
+
     func testQueryDoesNotInvalidateSessionOnBusinessErrorThatMentionsToken() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -913,6 +953,57 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoreKeepsSessionOnGenericAuthRequestFailure() async throws {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "existing-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 403,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"error\":\"Authentication request failed.\"}".utf8))
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
+
+        XCTAssertTrue(restored)
+        XCTAssertTrue(store.isAuthenticated)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(persistence.session?.convexAuthToken, "existing-token")
+    }
+
+    @MainActor
     func testRestoreKeepsSessionWhenTransientRefreshFailsWithoutActiveToken() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
@@ -1046,6 +1137,81 @@ final class PatchworkTests: XCTestCase {
         XCTAssertFalse(store.isAuthenticated)
         XCTAssertNil(store.token)
         XCTAssertNil(persistence.session)
+    }
+
+    @MainActor
+    func testSuccessfulOTPLoginIgnoresStaleInvalidationCallback() async throws {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "old-token",
+                betterAuthCookie: "old-session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+        var staleRefreshCallback: (@Sendable (String) async -> Void)?
+        var staleInvalidationCallback: (@Sendable (String) async -> Void)?
+
+        TestURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/api/auth/sign-in/email-otp":
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Set-Better-Auth-Cookie": "new-session=xyz; Path=/; HttpOnly"]
+                )!
+                return (response, Data("{}".utf8))
+            case "/api/auth/convex/token":
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "new-session=xyz")
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data("{\"token\":\"new-token\"}".utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "")")
+                throw PatchworkError.invalidResponse
+            }
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                if staleRefreshCallback == nil, let onAuthTokenRefresh {
+                    staleRefreshCallback = onAuthTokenRefresh
+                }
+                if staleInvalidationCallback == nil, let onAuthSessionInvalidated {
+                    staleInvalidationCallback = onAuthSessionInvalidated
+                }
+                return ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        _ = store.client
+        store.emailForOTP = "new@example.com"
+        await store.verifyOTP(code: "123456")
+        await staleRefreshCallback?("stale-token")
+        await staleInvalidationCallback?("Your session expired. Sign in again.")
+
+        XCTAssertTrue(store.isAuthenticated)
+        XCTAssertEqual(store.token, "new-token")
+        XCTAssertEqual(persistence.session?.convexAuthToken, "new-token")
+        XCTAssertNil(store.errorMessage)
     }
 
     @MainActor

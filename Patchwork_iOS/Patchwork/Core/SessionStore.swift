@@ -126,6 +126,7 @@ final class SessionStore {
     private(set) var errorMessage: String?
     private(set) var recentEmails: [String]
     var emailForOTP = ""
+    private var authSessionGeneration = 0
 
     init(
         sessionPersistence: SessionPersisting = KeychainSessionPersistence(),
@@ -170,18 +171,19 @@ final class SessionStore {
     }
 
     var client: ConvexHTTPClient {
-        clientBuilder(
+        let clientAuthSessionGeneration = authSessionGeneration
+        return clientBuilder(
             token,
             betterAuthCookie,
             betterAuthSessionToken,
             { [weak self] refreshedToken in
-                await self?.storeRefreshedConvexToken(refreshedToken)
+                await self?.storeRefreshedConvexToken(refreshedToken, generation: clientAuthSessionGeneration)
             },
             { [weak self] refreshedCookie in
-                await self?.storeRefreshedBetterAuthCookie(refreshedCookie)
+                await self?.storeRefreshedBetterAuthCookie(refreshedCookie, generation: clientAuthSessionGeneration)
             },
             { [weak self] message in
-                await self?.invalidateSession(message: message)
+                await self?.invalidateSession(message: message, generation: clientAuthSessionGeneration)
             }
         )
     }
@@ -208,7 +210,8 @@ final class SessionStore {
                         betterAuthCookie: refresh.betterAuthCookie,
                         betterAuthSessionToken: sessionToken,
                         convexAuthTokenRefreshedAt: Date()
-                    )
+                    ),
+                    startsNewAuthSession: true
                 )
                 recordRecentEmail(emailForOTP)
             } else {
@@ -232,7 +235,8 @@ final class SessionStore {
                     betterAuthCookie: refresh.betterAuthCookie ?? unauthenticatedClient.currentBetterAuthCookie,
                     betterAuthSessionToken: nil,
                     convexAuthTokenRefreshedAt: Date()
-                )
+                ),
+                startsNewAuthSession: true
             )
             recordRecentEmail(emailForOTP)
         }
@@ -319,7 +323,10 @@ final class SessionStore {
         errorMessage = nil
     }
 
-    private func invalidateSession(message: String) {
+    private func invalidateSession(message: String, generation: Int) {
+        guard generation == authSessionGeneration else {
+            return
+        }
         guard isAuthenticated else {
             return
         }
@@ -352,17 +359,26 @@ final class SessionStore {
         return false
     }
 
-    private func persistSession(_ session: StoredSession?) {
+    private func persistSession(_ session: StoredSession?, startsNewAuthSession: Bool = false) {
+        if startsNewAuthSession {
+            authSessionGeneration &+= 1
+        }
         token = session?.convexAuthToken
         betterAuthCookie = session?.betterAuthCookie
         betterAuthSessionToken = session?.betterAuthSessionToken
+        if session != nil {
+            errorMessage = nil
+        }
         if session == nil {
             launchedWithPersistedSession = false
         }
         sessionPersistence.saveSession(session)
     }
 
-    private func storeRefreshedConvexToken(_ refreshedToken: String) {
+    private func storeRefreshedConvexToken(_ refreshedToken: String, generation: Int) {
+        guard generation == authSessionGeneration else {
+            return
+        }
         guard hasRefreshCredential else {
             return
         }
@@ -377,7 +393,10 @@ final class SessionStore {
         )
     }
 
-    private func storeRefreshedBetterAuthCookie(_ refreshedCookie: String) {
+    private func storeRefreshedBetterAuthCookie(_ refreshedCookie: String, generation: Int) {
+        guard generation == authSessionGeneration else {
+            return
+        }
         guard !refreshedCookie.isEmpty else {
             return
         }

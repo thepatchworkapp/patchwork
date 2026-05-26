@@ -198,7 +198,7 @@ struct ConvexHTTPClient {
                 continue
             }
 
-            if isHTTPAuthenticationFailure(statusCode: httpResponse.statusCode) {
+            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: message) {
                 await notifyAuthSessionInvalidated()
             }
             throw PatchworkError.server(message)
@@ -250,7 +250,7 @@ struct ConvexHTTPClient {
                     args: args
                 )
             }
-            if isHTTPAuthenticationFailure(statusCode: httpResponse.statusCode) {
+            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: errorMessage) {
                 await notifyAuthSessionInvalidated()
             }
             throw PatchworkError.server(errorMessage ?? PatchworkError.invalidResponse.localizedDescription)
@@ -269,7 +269,7 @@ struct ConvexHTTPClient {
                     args: args
                 )
             }
-            if isHTTPAuthenticationFailure(statusCode: httpResponse.statusCode) {
+            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: nil) {
                 await notifyAuthSessionInvalidated()
             }
             throw PatchworkError.invalidResponse
@@ -456,10 +456,26 @@ struct ConvexHTTPClient {
     }
 
     private func isAuthenticationFailure(statusCode: Int?, errorMessage: String?) -> Bool {
-        if let statusCode, isHTTPAuthenticationFailure(statusCode: statusCode) {
+        if shouldInvalidateSession(statusCode: statusCode, errorMessage: errorMessage) {
             return true
         }
         return authFailurePhrase(in: errorMessage) != nil
+    }
+
+    private func shouldInvalidateSession(statusCode: Int?, errorMessage: String?) -> Bool {
+        if authFailurePhrase(in: errorMessage) != nil {
+            return true
+        }
+
+        guard let statusCode else {
+            return false
+        }
+
+        if statusCode == 401 {
+            return errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        }
+
+        return false
     }
 
     private func notifyAuthSessionInvalidated() async {
