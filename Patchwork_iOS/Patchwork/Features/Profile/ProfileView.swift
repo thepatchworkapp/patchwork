@@ -209,6 +209,13 @@ struct TaskerOnboardingView: View {
         .onChange(of: hourlyRate) { _, _ in saveOnboardingDraft() }
         .onChange(of: fixedRate) { _, _ in saveOnboardingDraft() }
         .onChange(of: serviceRadius) { _, _ in saveOnboardingDraft() }
+        .onChange(of: appState.taskerProfile?.hasActiveSubscription) { _, hasActiveSubscription in
+            guard step >= 6, hasActiveSubscription == true else {
+                return
+            }
+            isShowingSubscriptions = false
+            dismiss()
+        }
     }
 
     private func manageProfileView(_ profile: TaskerProfileSelf) -> some View {
@@ -902,7 +909,7 @@ private struct TaskerCreateFlowView: View {
         ScrollView {
             VStack(spacing: 18) {
                 StepHeader(currentStep: min(step, 5), totalSteps: 5)
-                    .padding(.top, 12)
+                    .padding(.top, 4)
                 createFlowContent
             }
         }
@@ -957,7 +964,7 @@ private struct TaskerCreateFlowView: View {
             PatchworkSurfaceCard {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
-                        eyebrow: "Tasker setup",
+                        eyebrow: nil,
                         title: "Identity",
                         message: "Set the name, category, and avatar seekers see first."
                     )
@@ -1029,7 +1036,7 @@ private struct TaskerCreateFlowView: View {
             PatchworkSurfaceCard {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
-                        eyebrow: "Tasker setup",
+                        eyebrow: nil,
                         title: "Links",
                         message: "Add the web and social places seekers can use to check your work. This is optional."
                     )
@@ -1068,7 +1075,7 @@ private struct TaskerCreateFlowView: View {
             VStack(spacing: 18) {
                 CategoryServiceDetailsSection(
                     title: "Details",
-                    eyebrow: "Tasker setup",
+                    eyebrow: nil,
                     message: "Set your pricing and service range with clean, explicit terms.",
                     bio: $categoryBio,
                     rateType: $rateType,
@@ -1094,7 +1101,7 @@ private struct TaskerCreateFlowView: View {
             VStack(spacing: 18) {
                 PatchworkSurfaceCard {
                     PatchworkSectionIntro(
-                        eyebrow: "Tasker setup",
+                        eyebrow: nil,
                         title: "Portfolio",
                         message: "Add up to 10 photos. Pick one 4:3 cover image for your Profile Card."
                     )
@@ -1124,7 +1131,7 @@ private struct TaskerCreateFlowView: View {
             PatchworkSurfaceCard {
                 VStack(alignment: .leading, spacing: 18) {
                     PatchworkSectionIntro(
-                        eyebrow: "Tasker setup",
+                        eyebrow: nil,
                         title: "Profile Card review",
                         message: "Preview how your card appears in Discover, then create your profile."
                     )
@@ -1135,7 +1142,6 @@ private struct TaskerCreateFlowView: View {
                     onboardingSummaryRow("Primary social", value: normalizedLinks(socialLinks).first ?? "None")
                     onboardingSummaryRow("Rate", value: reviewRateSummary)
                     onboardingSummaryRow("Radius", value: "\(serviceRadius) km")
-                    onboardingSummaryRow("Portfolio", value: "\(portfolioPhotos.count)/10")
 
                     Button {
                         acceptedTerms.toggle()
@@ -2281,6 +2287,8 @@ private struct TaskerCategoryPortfolioEditor: View {
                         portfolioPhotos.isEmpty ? "Add portfolio photos" : "Add more photos",
                         systemImage: "photo.on.rectangle"
                     )
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(PatchworkSecondaryButtonStyle())
