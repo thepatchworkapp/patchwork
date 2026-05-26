@@ -687,6 +687,46 @@ final class PatchworkTests: XCTestCase {
         }
     }
 
+    func testFetchConvexAuthRefreshInvalidatesSessionOnGenericUnauthorizedAuthRequestFailure() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let invalidationMessage = LockedBox<String?>(nil)
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"error\":\"Authentication request failed.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            authToken: "existing-token",
+            betterAuthCookie: "session=abc",
+            onAuthSessionInvalidated: { message in
+                invalidationMessage.set(message)
+            }
+        )
+
+        do {
+            _ = try await client.fetchConvexJWT()
+            XCTFail("Expected refresh to fail")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Your session expired. Sign in again.")
+            XCTAssertEqual(invalidationMessage.get(), "Your session expired. Sign in again.")
+        }
+    }
+
     func testQueryDoesNotInvalidateSessionOnBusinessErrorThatMentionsToken() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -1077,6 +1117,56 @@ final class PatchworkTests: XCTestCase {
                 headerFields: ["Content-Type": "application/json"]
             )!
             return (response, Data("{\"error\":\"Unauthorized\"}".utf8))
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
+
+        XCTAssertFalse(restored)
+        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertEqual(store.errorMessage, "Your session expired. Sign in again.")
+        XCTAssertNil(persistence.session)
+    }
+
+    @MainActor
+    func testRestoreClearsSessionWhenRefreshReturnsGenericUnauthorized() async {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "expired-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try! XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try! XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"error\":\"Authentication request failed.\"}".utf8))
         }
 
         let store = SessionStore(

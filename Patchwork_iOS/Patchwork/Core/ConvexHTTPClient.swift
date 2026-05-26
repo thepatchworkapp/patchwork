@@ -193,6 +193,10 @@ struct ConvexHTTPClient {
 
             let message = Self.errorMessage(from: data) ?? "Authentication request failed."
             lastErrorMessage = message
+            if httpResponse.statusCode == 401 {
+                await notifyAuthSessionInvalidated()
+                throw PatchworkError.server(Self.sessionExpiredMessage)
+            }
             if httpResponse.statusCode == 403,
                message.localizedCaseInsensitiveContains("invalid origin") {
                 continue
