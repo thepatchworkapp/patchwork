@@ -555,9 +555,9 @@ final class PatchworkUITests: XCTestCase {
 
         let messageField = app.textFields["Message"]
         focusForTyping(messageField)
-        let doneButton = app.buttons["Done"]
-        XCTAssertTrue(doneButton.waitForExistence(timeout: 5))
-        doneButton.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.keyboards.buttons["Done"].exists)
+        app.swipeDown()
         XCTAssertFalse(app.keyboards.firstMatch.waitForExistence(timeout: 2))
 
         XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
