@@ -139,6 +139,44 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "80")
     }
 
+    func testRenderableChatMessagesMergeCachedMessagesAndSinceDeltas() throws {
+        try store.apply(
+            delta: .init(messages: [
+                message(serverMessageId: "message-1", content: "Cached", createdAt: 100),
+            ], cursor: "100"),
+            conversationId: "conversation-1"
+        )
+
+        XCTAssertEqual(try store.chatMessages(conversationId: "conversation-1").map(\.content), ["Cached"])
+
+        try store.apply(
+            messagesSince: MessagesSinceResponse(
+                messages: [
+                    ChatMessage(
+                        id: "message-2",
+                        conversationId: "conversation-1",
+                        senderId: "tasker-1",
+                        type: "text",
+                        content: "Fresh",
+                        proposalId: nil,
+                        proposal: nil,
+                        createdAt: 150,
+                        updatedAt: 150,
+                        clientMessageId: nil,
+                        localStatus: nil
+                    ),
+                ],
+                hasMore: false,
+                latestCursor: 150,
+                latestMessageAt: 150,
+                latestProposalUpdatedAt: nil
+            ),
+            conversationId: "conversation-1"
+        )
+
+        XCTAssertEqual(try store.chatMessages(conversationId: "conversation-1").map(\.content), ["Cached", "Fresh"])
+    }
+
     private func conversation(newestCursor: String? = nil, updatedAt: Int) -> LocalConversation.Snapshot {
         LocalConversation.Snapshot(
             id: "conversation-1",

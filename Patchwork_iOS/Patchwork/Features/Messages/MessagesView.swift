@@ -48,8 +48,8 @@ struct MessagesView: View {
                         ScrollView {
                             LazyVStack(spacing: 14) {
                                 ForEach(filteredConversations) { conversation in
-                                    NavigationLink {
-                                        ChatView(conversationId: conversation.id)
+                                    Button {
+                                        conversationRoute = ConversationRoute(id: conversation.id)
                                     } label: {
                                         conversationRow(conversation)
                                     }
@@ -341,11 +341,13 @@ struct ChatView: View {
 
     let conversationId: ConvexID
 
+    @AppStorage("Patchwork.dismissedAcceptedProposalIds") private var dismissedAcceptedProposalIdsStorage = ""
     @State private var messages: [ChatMessage] = []
     @State private var cursor: String?
     @State private var canLoadMore = false
     @State private var isLoading = false
     @State private var text = ""
+    @FocusState private var isComposerFocused: Bool
 
     @State private var conversation: ConversationDetail?
     @State private var job: JobDetail?
@@ -356,7 +358,6 @@ struct ChatView: View {
     @State private var safetyFeedbackMessage: SubscriptionFeedbackMessage?
     @State private var calendarFeedbackMessage: SubscriptionFeedbackMessage?
     @State private var isAddingToCalendar = false
-    @State private var dismissedAcceptedProposalIds: Set<ConvexID> = []
 
     @State private var showProposalForm = false
     @State private var counteringProposal: ProposalPayload?
@@ -408,7 +409,7 @@ struct ChatView: View {
                         isAddingToCalendar: isAddingToCalendar,
                         onAddToCalendar: { Task { await addAcceptedProposalToCalendar() } },
                         onDismiss: {
-                            dismissedAcceptedProposalIds.insert(acceptedProposalForBanner.id)
+                            dismissAcceptedProposalBanner(id: acceptedProposalForBanner.id)
                         }
                     )
                         .padding(.horizontal, 20)
@@ -435,9 +436,11 @@ struct ChatView: View {
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
-                    .onTapGesture {
-                        PatchworkKeyboard.dismiss()
-                    }
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded {
+                        isComposerFocused = false
+                    })
+                    .accessibilityIdentifier("Chat.messageScroll")
                     .onChange(of: messages.last?.id) { _, lastMessageID in
                         guard let lastMessageID else { return }
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -460,6 +463,7 @@ struct ChatView: View {
 
                 ChatComposerBar(
                     text: $text,
+                    isFocused: $isComposerFocused,
                     isDisabled: isConversationBlocked,
                     onSend: { Task { await send() } }
                 )
@@ -471,8 +475,9 @@ struct ChatView: View {
         .toolbar(.hidden, for: .navigationBar)
         .accessibilityIdentifier("Chat.screen.\(conversationId)")
         .task(id: conversationId) {
-            await bootstrap()
+            reloadMessagesFromLocalStore(surfaceErrors: false)
             startRealtimeSubscription()
+            await bootstrap()
         }
         .onDisappear {
             realtimeChatClient.stopThreadSubscription(conversationId: conversationId)
@@ -699,6 +704,16 @@ struct ChatView: View {
         messages.reversed().compactMap(\.proposal).first { $0.status == "accepted" }
     }
 
+    private var dismissedAcceptedProposalIds: Set<ConvexID> {
+        Set(dismissedAcceptedProposalIdsStorage.split(separator: "\n").map(String.init))
+    }
+
+    private func dismissAcceptedProposalBanner(id: ConvexID) {
+        var dismissedIds = dismissedAcceptedProposalIds
+        dismissedIds.insert(id)
+        dismissedAcceptedProposalIdsStorage = dismissedIds.sorted().joined(separator: "\n")
+    }
+
     private var canShowCompleteButton: Bool {
         guard hasAcceptedProposal,
               let currentUser = appState.currentUser,
@@ -707,16 +722,15 @@ struct ChatView: View {
     }
 
     private func bootstrap() async {
-        await appState.refreshAuthedData(client: sessionStore.client)
+        if appState.currentUser == nil {
+            _ = await appState.refreshCurrentUser(client: sessionStore.client)
+        }
         await refreshConversationDetail(surfaceErrors: true)
         await loadSafetyStatus()
         await markRead(surfaceErrors: true)
         reloadMessagesFromLocalStore(surfaceErrors: false)
-        if messages.isEmpty {
-            await loadMessages(loadMore: false, surfaceErrors: true)
-        } else {
-            await syncMessagesSince(surfaceErrors: true)
-        }
+        await loadMessages(loadMore: false, surfaceErrors: true)
+        await syncMessagesSince(surfaceErrors: false)
         await refreshJobState(surfaceErrors: true)
     }
 
@@ -732,7 +746,6 @@ struct ChatView: View {
             conversation = try await PatchworkAPI(client: sessionStore.client).conversations.get(
                 conversationId: conversationId
             )
-            appState.selectedConversation = conversation
         } catch {
             if surfaceErrors {
                 appState.presentError(error, prefix: "Failed to load conversation")
@@ -882,7 +895,9 @@ struct ChatView: View {
 
     private func reloadMessagesFromLocalStore(surfaceErrors: Bool) {
         do {
-            messages = try chatLocalStore.chatMessages(conversationId: conversationId)
+            let cachedMessages = try chatLocalStore.chatMessages(conversationId: conversationId)
+            guard cachedMessages != messages else { return }
+            messages = cachedMessages
         } catch {
             guard surfaceErrors else {
                 return
@@ -913,6 +928,7 @@ struct ChatView: View {
             )
             reloadMessagesFromLocalStore(surfaceErrors: true)
             text = ""
+            isComposerFocused = false
             _ = try await sessionStore.client.mutation(
                 "messages:sendMessage",
                 args: [
@@ -1611,6 +1627,7 @@ private struct ChatActionBar: View {
 
 private struct ChatComposerBar: View {
     @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
     let isDisabled: Bool
     let onSend: () -> Void
 
@@ -1624,6 +1641,7 @@ private struct ChatComposerBar: View {
                 .padding(.vertical, 12)
                 .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .disabled(isDisabled)
+                .focused($isFocused)
                 .accessibilityLabel("Message")
                 .accessibilityIdentifier("Chat.messageField")
 
@@ -1647,7 +1665,6 @@ private struct ChatComposerBar: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
-        .patchworkKeyboardDismissToolbar(isPresented: !isDisabled)
     }
 }
 
@@ -1929,7 +1946,6 @@ private struct ProposalFormSheet: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
-        .patchworkKeyboardDismissToolbar()
         .onAppear(perform: initializePickerDefaults)
     }
 
@@ -2038,6 +2054,5 @@ private struct ReviewFormSheet: View {
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
         }
-        .patchworkKeyboardDismissToolbar()
     }
 }
