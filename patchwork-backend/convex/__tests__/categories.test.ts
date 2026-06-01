@@ -75,6 +75,59 @@ describe("categories", () => {
     expect(category?.group).toBe("Home Services");
   });
 
+  test("seedCategories includes clear arts and music taxonomy entries", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const expectedCategories = [
+      {
+        slug: "guitar-lessons",
+        name: "Guitar Lessons",
+        emoji: "🎸",
+        group: "Tech & Professional",
+      },
+      {
+        slug: "piano-lessons",
+        name: "Piano Lessons",
+        emoji: "🎹",
+        group: "Tech & Professional",
+      },
+      {
+        slug: "art-lessons",
+        name: "Art Lessons",
+        emoji: "🎨",
+        group: "Tech & Professional",
+      },
+      {
+        slug: "graphic-design",
+        name: "Graphic Design",
+        emoji: "🖼️",
+        group: "Events & Creative",
+      },
+      {
+        slug: "muralists",
+        name: "Muralists",
+        emoji: "🖌️",
+        group: "Events & Creative",
+      },
+      {
+        slug: "illustrators",
+        name: "Illustrators",
+        emoji: "✏️",
+        group: "Events & Creative",
+      },
+    ];
+
+    for (const expected of expectedCategories) {
+      const category = await t.query(api.categories.getCategoryBySlug, {
+        slug: expected.slug,
+      });
+
+      expect(category).toMatchObject(expected);
+    }
+  });
+
   test("getCategoryBySlug returns null for non-existent slug", async () => {
     const t = convexTest(schema, modules);
     

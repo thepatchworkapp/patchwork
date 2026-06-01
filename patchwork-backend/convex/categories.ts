@@ -71,7 +71,9 @@ const ALL_CATEGORIES: {
   { name: "Computer Repair", emoji: "🖥️", group: "Tech & Professional", sortOrder: 72 },
   { name: "Tutoring", emoji: "📚", group: "Tech & Professional", sortOrder: 73 },
   { name: "Music Lessons", emoji: "🎓", group: "Tech & Professional", sortOrder: 74 },
-  { name: "Art Lessons", emoji: "🎸", group: "Tech & Professional", sortOrder: 75 },
+  { name: "Guitar Lessons", emoji: "🎸", group: "Tech & Professional", sortOrder: 75 },
+  { name: "Piano Lessons", emoji: "🎹", group: "Tech & Professional", sortOrder: 76 },
+  { name: "Art Lessons", emoji: "🎨", group: "Tech & Professional", sortOrder: 77 },
 
   // Automotive
   { name: "Auto Repair", emoji: "🚗", group: "Automotive", sortOrder: 80 },
@@ -86,6 +88,9 @@ const ALL_CATEGORIES: {
   { name: "Catering", emoji: "🍽️", group: "Events & Creative", sortOrder: 93 },
   { name: "DJ Services", emoji: "🎤", group: "Events & Creative", sortOrder: 94 },
   { name: "Entertainment", emoji: "🎭", group: "Events & Creative", sortOrder: 95 },
+  { name: "Graphic Design", emoji: "🖼️", group: "Events & Creative", sortOrder: 96 },
+  { name: "Muralists", emoji: "🖌️", group: "Events & Creative", sortOrder: 97 },
+  { name: "Illustrators", emoji: "✏️", group: "Events & Creative", sortOrder: 98 },
 
   // Repair & Appliances
   { name: "Appliance Repair", emoji: "🔧", group: "Repair & Appliances", sortOrder: 100 },
