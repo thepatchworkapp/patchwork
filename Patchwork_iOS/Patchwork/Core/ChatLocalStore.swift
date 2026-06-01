@@ -10,17 +10,23 @@ final class ChatLocalStore {
         let messages: [LocalMessage.Snapshot]
         let proposals: [LocalProposal.Snapshot]
         let cursor: String?
+        let latestMessageId: ConvexID?
+        let lastSyncedAt: Int?
 
         init(
             conversation: LocalConversation.Snapshot? = nil,
             messages: [LocalMessage.Snapshot] = [],
             proposals: [LocalProposal.Snapshot] = [],
-            cursor: String? = nil
+            cursor: String? = nil,
+            latestMessageId: ConvexID? = nil,
+            lastSyncedAt: Int? = nil
         ) {
             self.conversation = conversation
             self.messages = messages
             self.proposals = proposals
             self.cursor = cursor
+            self.latestMessageId = latestMessageId
+            self.lastSyncedAt = lastSyncedAt
         }
     }
 
@@ -55,7 +61,12 @@ final class ChatLocalStore {
         }
 
         if let cursor = delta.cursor {
-            updateCursor(cursor, conversationId: conversationId)
+            updateCursor(
+                cursor,
+                conversationId: conversationId,
+                latestMessageId: delta.latestMessageId,
+                lastSyncedAt: delta.lastSyncedAt ?? nowMillis()
+            )
         }
 
         try context.save()
@@ -86,7 +97,8 @@ final class ChatLocalStore {
                     explicitCursor: threadDelta.latestCursor,
                     latestMessageAt: threadDelta.latestMessageAt,
                     latestProposalUpdatedAt: threadDelta.latestProposalUpdatedAt
-                )
+                ),
+                latestMessageId: threadDelta.latestMessageId
             ),
             conversationId: conversationId
         )
@@ -106,7 +118,8 @@ final class ChatLocalStore {
                     explicitCursor: response.latestCursor,
                     latestMessageAt: response.latestMessageAt,
                     latestProposalUpdatedAt: response.latestProposalUpdatedAt
-                )
+                ),
+                latestMessageId: response.latestMessageId
             ),
             conversationId: conversationId
         )
@@ -278,9 +291,16 @@ final class ChatLocalStore {
         }
     }
 
-    private func updateCursor(_ cursor: String, conversationId: ConvexID) {
+    private func updateCursor(
+        _ cursor: String,
+        conversationId: ConvexID,
+        latestMessageId: ConvexID?,
+        lastSyncedAt: Int
+    ) {
         if let conversation = try? context.fetch(FetchDescriptor<LocalConversation>()).first(where: { $0.id == conversationId }) {
             conversation.newestCursor = Self.newestCursor(conversation.newestCursor, cursor)
+            conversation.lastMessageId = latestMessageId ?? conversation.lastMessageId
+            conversation.lastSyncedAt = max(conversation.lastSyncedAt, lastSyncedAt)
         }
     }
 
@@ -336,16 +356,38 @@ extension LocalConversation.Snapshot {
             seekerId: conversation.seekerId,
             taskerId: conversation.taskerId,
             jobId: conversation.jobId,
-            lastMessageAt: nil,
-            lastMessagePreview: nil,
-            seekerUnreadCount: nil,
-            taskerUnreadCount: nil,
+            lastMessageAt: conversation.lastMessageAt,
+            lastMessageId: conversation.lastMessageId,
+            lastMessagePreview: conversation.lastMessagePreview,
+            lastMessageSenderId: conversation.lastMessageSenderId,
+            seekerUnreadCount: conversation.seekerUnreadCount,
+            taskerUnreadCount: conversation.taskerUnreadCount,
+            seekerLastReadAt: conversation.seekerLastReadAt,
+            taskerLastReadAt: conversation.taskerLastReadAt,
             participantName: conversation.participantName,
             participantPhotoUrl: conversation.participantPhotoUrl,
             newestCursor: updatedAt > 0 ? String(updatedAt) : nil,
+            lastSyncedAt: updatedAt > 0 ? updatedAt : nil,
             updatedAt: updatedAt
         )
     }
+}
+
+private func max(_ lhs: Int?, _ rhs: Int?) -> Int? {
+    switch (lhs, rhs) {
+    case let (lhs?, rhs?):
+        return Swift.max(lhs, rhs)
+    case let (lhs?, nil):
+        return lhs
+    case let (nil, rhs?):
+        return rhs
+    case (nil, nil):
+        return nil
+    }
+}
+
+private func nowMillis() -> Int {
+    Int(Date().timeIntervalSince1970 * 1000)
 }
 
 extension LocalMessage.Snapshot {

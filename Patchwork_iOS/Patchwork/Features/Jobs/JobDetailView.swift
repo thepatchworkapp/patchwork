@@ -17,18 +17,22 @@ struct JobDetailView: View {
         ZStack {
             PatchworkBackdrop(tint: PatchworkTheme.brandBright)
 
-            VStack(spacing: 0) {
-                PatchworkTopBar(
-                    title: "Job Detail",
-                    onBack: { dismiss() },
-                    backButtonAccessibilityIdentifier: "JobDetail.backButton"
-                )
-
-                content
-            }
+            content
         }
         .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Job Detail")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Back", systemImage: "chevron.left") {
+                    dismiss()
+                }
+                .labelStyle(.iconOnly)
+                .accessibilityLabel("Back")
+                .accessibilityIdentifier("JobDetail.backButton")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let detail, detail.status == "completed" && canReview {
                 PatchworkSurfaceCard {

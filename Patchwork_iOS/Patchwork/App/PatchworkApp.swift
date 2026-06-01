@@ -20,7 +20,13 @@ final class PatchworkAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound, .badge]
+        let notificationConversationId = PatchworkNotificationCenter.conversationId(from: notification)
+        PatchworkNotificationCenter.postForegroundConversationNotification(conversationId: notificationConversationId)
+        if let notificationConversationId,
+           PatchworkNotificationCenter.isActiveConversation(notificationConversationId) {
+            return [.badge]
+        }
+        return [.banner, .sound, .badge]
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -34,6 +40,11 @@ final class PatchworkAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
 }
 
 enum PatchworkNotificationCenter {
+    static let foregroundConversationNotification = Notification.Name("Patchwork.foregroundConversationNotification")
+    static let conversationIdUserInfoKey = "conversationId"
+
+    @MainActor private static var activeConversationId: ConvexID?
+
     @MainActor
     @discardableResult
     static func requestAuthorizationAndRegister() async -> Bool {
@@ -48,6 +59,35 @@ enum PatchworkNotificationCenter {
         } catch {
             return false
         }
+    }
+
+    @MainActor
+    static func setActiveConversation(_ conversationId: ConvexID?) {
+        activeConversationId = conversationId
+    }
+
+    @MainActor
+    static func isActiveConversation(_ conversationId: ConvexID) -> Bool {
+        activeConversationId == conversationId
+    }
+
+    static func conversationId(from notification: UNNotification) -> ConvexID? {
+        notification.request.content.userInfo["conversationId"] as? String
+    }
+
+    @MainActor
+    static func postForegroundConversationNotification(conversationId: ConvexID?) {
+        let userInfo: [String: Any]
+        if let conversationId {
+            userInfo = [conversationIdUserInfoKey: conversationId]
+        } else {
+            userInfo = [:]
+        }
+        NotificationCenter.default.post(
+            name: foregroundConversationNotification,
+            object: nil,
+            userInfo: userInfo
+        )
     }
 
     @MainActor

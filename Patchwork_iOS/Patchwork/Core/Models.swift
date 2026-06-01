@@ -262,9 +262,13 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
     let taskerId: ConvexID
     let jobId: ConvexID?
     let lastMessageAt: Int?
+    let lastMessageId: ConvexID?
     let lastMessagePreview: String?
+    let lastMessageSenderId: ConvexID?
     let seekerUnreadCount: Int?
     let taskerUnreadCount: Int?
+    let seekerLastReadAt: Int?
+    let taskerLastReadAt: Int?
     let participantName: String?
     let participantPhotoUrl: String?
     let participantImage: RemoteImageAsset?
@@ -275,9 +279,13 @@ struct ConversationSummary: Identifiable, Codable, Hashable {
         case taskerId
         case jobId
         case lastMessageAt
+        case lastMessageId
         case lastMessagePreview
+        case lastMessageSenderId
         case seekerUnreadCount
         case taskerUnreadCount
+        case seekerLastReadAt
+        case taskerLastReadAt
         case participantName
         case participantPhotoUrl
         case participantImage
@@ -289,6 +297,14 @@ struct ConversationDetail: Identifiable, Codable, Hashable {
     let seekerId: ConvexID
     let taskerId: ConvexID
     let jobId: ConvexID?
+    let lastMessageAt: Int?
+    let lastMessageId: ConvexID?
+    let lastMessagePreview: String?
+    let lastMessageSenderId: ConvexID?
+    let seekerUnreadCount: Int?
+    let taskerUnreadCount: Int?
+    let seekerLastReadAt: Int?
+    let taskerLastReadAt: Int?
     let participantName: String?
     let participantPhotoUrl: String?
     let participantImage: RemoteImageAsset?
@@ -298,6 +314,14 @@ struct ConversationDetail: Identifiable, Codable, Hashable {
         case seekerId
         case taskerId
         case jobId
+        case lastMessageAt
+        case lastMessageId
+        case lastMessagePreview
+        case lastMessageSenderId
+        case seekerUnreadCount
+        case taskerUnreadCount
+        case seekerLastReadAt
+        case taskerLastReadAt
         case participantName
         case participantPhotoUrl
         case participantImage
@@ -397,6 +421,7 @@ struct MessagesSinceResponse: Decodable {
     let messages: [ChatMessage]
     let hasMore: Bool
     let latestCursor: Int?
+    let latestMessageId: ConvexID?
     let latestMessageAt: Int?
     let latestProposalUpdatedAt: Int?
 }
@@ -405,6 +430,7 @@ struct ThreadDelta: Decodable {
     let conversation: ConversationDetail?
     let messages: [ChatMessage]
     let latestCursor: Int?
+    let latestMessageId: ConvexID?
     let latestProposal: ProposalPayload?
     let latestMessageAt: Int?
     let latestProposalUpdatedAt: Int?

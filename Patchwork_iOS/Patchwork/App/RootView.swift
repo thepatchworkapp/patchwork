@@ -141,6 +141,9 @@ struct RootView: View {
             await registerPushTokenIfNeeded()
             await refreshUnreadBadgeCount()
         }
+        .onReceive(NotificationCenter.default.publisher(for: PatchworkNotificationCenter.foregroundConversationNotification)) { notification in
+            handleForegroundConversationNotification(notification)
+        }
     }
 
     private var shouldShowForegroundRefreshLoading: Bool {
@@ -473,6 +476,29 @@ struct RootView: View {
             PatchworkNotificationCenter.updateAppBadge(unreadCount)
         } catch {
             print("[Notifications] Failed to refresh badge count: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleForegroundConversationNotification(_ notification: Notification) {
+        guard sessionStore.isAuthenticated,
+              appState.currentUser != nil else {
+            return
+        }
+
+        let conversationId = notification.userInfo?[PatchworkNotificationCenter.conversationIdUserInfoKey] as? ConvexID
+        Task { @MainActor in
+            if let conversationId,
+               PatchworkNotificationCenter.isActiveConversation(conversationId) {
+                await refreshUnreadBadgeCount()
+                return
+            }
+
+            await appState.refreshConversations(
+                client: sessionStore.client,
+                role: appState.conversationRole,
+                surfaceErrors: false
+            )
+            await refreshUnreadBadgeCount()
         }
     }
 

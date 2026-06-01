@@ -348,6 +348,7 @@ struct ChatView: View {
     @Environment(RealtimeChatClient.self) private var realtimeChatClient
     @Environment(ChatLocalStore.self) private var chatLocalStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let conversationId: ConvexID
 
@@ -485,11 +486,23 @@ struct ChatView: View {
         .toolbar(.hidden, for: .navigationBar)
         .accessibilityIdentifier("Chat.screen.\(conversationId)")
         .task(id: conversationId) {
+            PatchworkNotificationCenter.setActiveConversation(conversationId)
             reloadMessagesFromLocalStore(surfaceErrors: false)
             startRealtimeSubscription()
             await bootstrap()
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else {
+                return
+            }
+            PatchworkNotificationCenter.setActiveConversation(conversationId)
+            startRealtimeSubscription()
+            Task { await syncMessagesSince(surfaceErrors: false) }
+        }
         .onDisappear {
+            if PatchworkNotificationCenter.isActiveConversation(conversationId) {
+                PatchworkNotificationCenter.setActiveConversation(nil)
+            }
             realtimeChatClient.stopThreadSubscription(conversationId: conversationId)
         }
         .sheet(isPresented: $showProposalForm) {
@@ -888,6 +901,9 @@ struct ChatView: View {
                 } catch {
                     appState.presentError(error)
                 }
+            },
+            onReconnect: {
+                Task { await syncMessagesSince(surfaceErrors: false) }
             }
         )
     }

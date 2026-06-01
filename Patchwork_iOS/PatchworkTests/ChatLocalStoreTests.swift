@@ -226,6 +226,7 @@ final class ChatLocalStoreTests: XCTestCase {
                 ],
                 hasMore: false,
                 latestCursor: 150,
+                latestMessageId: "message-2",
                 latestMessageAt: 150,
                 latestProposalUpdatedAt: nil
             ),
@@ -235,19 +236,72 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.chatMessages(conversationId: "conversation-1").map(\.content), ["Cached", "Fresh"])
     }
 
-    private func conversation(newestCursor: String? = nil, updatedAt: Int) -> LocalConversation.Snapshot {
+    func testConversationCacheKeepsMessageReadAndSyncFields() throws {
+        try store.apply(
+            delta: .init(
+                conversation: conversation(
+                    lastMessageAt: 100,
+                    lastMessageId: "message-1",
+                    lastMessagePreview: "Cached",
+                    lastMessageSenderId: "seeker-1",
+                    seekerUnreadCount: 2,
+                    taskerUnreadCount: 3,
+                    seekerLastReadAt: 80,
+                    taskerLastReadAt: 90,
+                    newestCursor: "100",
+                    lastSyncedAt: 100,
+                    updatedAt: 100
+                ),
+                cursor: "120",
+                latestMessageId: "message-2",
+                lastSyncedAt: 120
+            ),
+            conversationId: "conversation-1"
+        )
+
+        let cached = try XCTUnwrap(store.conversations().first)
+        XCTAssertEqual(cached.lastMessageAt, 100)
+        XCTAssertEqual(cached.lastMessageId, "message-2")
+        XCTAssertEqual(cached.lastMessagePreview, "Cached")
+        XCTAssertEqual(cached.lastMessageSenderId, "seeker-1")
+        XCTAssertEqual(cached.seekerUnreadCount, 2)
+        XCTAssertEqual(cached.taskerUnreadCount, 3)
+        XCTAssertEqual(cached.seekerLastReadAt, 80)
+        XCTAssertEqual(cached.taskerLastReadAt, 90)
+        XCTAssertEqual(cached.newestCursor, "120")
+        XCTAssertEqual(cached.lastSyncedAt, 120)
+    }
+
+    private func conversation(
+        lastMessageAt: Int? = nil,
+        lastMessageId: ConvexID? = nil,
+        lastMessagePreview: String? = nil,
+        lastMessageSenderId: ConvexID? = nil,
+        seekerUnreadCount: Int? = nil,
+        taskerUnreadCount: Int? = nil,
+        seekerLastReadAt: Int? = nil,
+        taskerLastReadAt: Int? = nil,
+        newestCursor: String? = nil,
+        lastSyncedAt: Int? = nil,
+        updatedAt: Int
+    ) -> LocalConversation.Snapshot {
         LocalConversation.Snapshot(
             id: "conversation-1",
             seekerId: "seeker-1",
             taskerId: "tasker-1",
             jobId: nil,
-            lastMessageAt: nil,
-            lastMessagePreview: nil,
-            seekerUnreadCount: nil,
-            taskerUnreadCount: nil,
+            lastMessageAt: lastMessageAt,
+            lastMessageId: lastMessageId,
+            lastMessagePreview: lastMessagePreview,
+            lastMessageSenderId: lastMessageSenderId,
+            seekerUnreadCount: seekerUnreadCount,
+            taskerUnreadCount: taskerUnreadCount,
+            seekerLastReadAt: seekerLastReadAt,
+            taskerLastReadAt: taskerLastReadAt,
             participantName: "Taylor",
             participantPhotoUrl: nil,
             newestCursor: newestCursor,
+            lastSyncedAt: lastSyncedAt,
             updatedAt: updatedAt
         )
     }

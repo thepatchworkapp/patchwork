@@ -96,6 +96,7 @@ final class RealtimeChatClient {
         let limit: Int
         let currentCursor: @MainActor () -> Int
         let onUpdate: @MainActor (ThreadDelta) -> Void
+        let onReconnect: @MainActor () -> Void
         let onError: @MainActor (String) -> Void
     }
 
@@ -124,6 +125,7 @@ final class RealtimeChatClient {
         limit: Int = 100,
         currentCursor: @escaping @MainActor () -> Int,
         onUpdate: @escaping @MainActor (ThreadDelta) -> Void,
+        onReconnect: @escaping @MainActor () -> Void = {},
         onError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         let currentCursorProvider: @MainActor () -> Int = {
@@ -134,6 +136,7 @@ final class RealtimeChatClient {
             limit: limit,
             currentCursor: currentCursorProvider,
             onUpdate: onUpdate,
+            onReconnect: onReconnect,
             onError: onError
         )
         activeThreadSubscription = subscription
@@ -158,6 +161,7 @@ final class RealtimeChatClient {
             return
         }
         restartActiveSubscription()
+        activeThreadSubscription?.onReconnect()
     }
 
     private func restartActiveSubscription() {
@@ -170,6 +174,7 @@ final class RealtimeChatClient {
     private func startSubscription(_ subscription: ActiveThreadSubscription) {
         subscriptionTask?.cancel()
         subscriptionTask = Task { [client, subscription] in
+            var shouldCatchUpOnReconnect = false
             while !Task.isCancelled {
                 let authResult = await client.loginFromCache()
                 guard !Task.isCancelled else {
@@ -177,8 +182,13 @@ final class RealtimeChatClient {
                 }
                 guard case .success = authResult else {
                     subscription.onError("Realtime chat authentication failed.")
+                    shouldCatchUpOnReconnect = true
                     try? await Task.sleep(for: .seconds(2))
                     continue
+                }
+                if shouldCatchUpOnReconnect {
+                    subscription.onReconnect()
+                    shouldCatchUpOnReconnect = false
                 }
                 let afterCreatedAt = subscription.currentCursor()
 
@@ -201,6 +211,7 @@ final class RealtimeChatClient {
                 } catch {
                     guard !Task.isCancelled else { return }
                     subscription.onError(error.localizedDescription)
+                    shouldCatchUpOnReconnect = true
                     try? await Task.sleep(for: .seconds(2))
                 }
             }
@@ -212,6 +223,7 @@ private struct RealtimeThreadDelta: Decodable {
     let conversation: ConversationDetail?
     let messages: [RealtimeChatMessage]
     let latestCursor: RealtimeInteger?
+    let latestMessageId: ConvexID?
     let latestProposal: RealtimeProposalPayload?
     let latestMessageAt: RealtimeInteger?
     let latestProposalUpdatedAt: RealtimeInteger?
@@ -222,6 +234,7 @@ private struct RealtimeThreadDelta: Decodable {
             conversation: conversation,
             messages: messages.map(\.appModel),
             latestCursor: latestCursor?.value,
+            latestMessageId: latestMessageId,
             latestProposal: latestProposal?.appModel,
             latestMessageAt: latestMessageAt?.value,
             latestProposalUpdatedAt: latestProposalUpdatedAt?.value,
