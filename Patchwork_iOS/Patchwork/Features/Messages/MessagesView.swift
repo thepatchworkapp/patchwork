@@ -488,16 +488,18 @@ struct ChatView: View {
         .task(id: conversationId) {
             PatchworkNotificationCenter.setActiveConversation(conversationId)
             reloadMessagesFromLocalStore(surfaceErrors: false)
-            startRealtimeSubscription()
             await bootstrap()
+            startRealtimeSubscription()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else {
                 return
             }
             PatchworkNotificationCenter.setActiveConversation(conversationId)
-            startRealtimeSubscription()
-            Task { await syncMessagesSince(surfaceErrors: false) }
+            Task {
+                await syncMessagesSince(surfaceErrors: false)
+                startRealtimeSubscription()
+            }
         }
         .onDisappear {
             if PatchworkNotificationCenter.isActiveConversation(conversationId) {
@@ -842,53 +844,62 @@ struct ChatView: View {
         }
     }
 
-    private func syncMessagesSince(surfaceErrors: Bool) async {
+    @discardableResult
+    private func syncMessagesSince(surfaceErrors: Bool, fallbackToLatestPage: Bool = true) async -> Bool {
         do {
-            let cursor = try chatLocalStore.newestCursor(for: conversationId)
-            let since = Int(cursor ?? "0") ?? 0
-            var nextSince = since
+            var nextCursor = try chatLocalStore.syncCursor(for: conversationId)
             var hasMore = true
 
             while hasMore {
+                var args: [String: Any] = [
+                    "conversationId": conversationId,
+                    "afterCreatedAt": nextCursor.createdAt,
+                    "limit": 100,
+                ]
+                if let afterMessageId = nextCursor.afterMessageId {
+                    args["afterMessageId"] = afterMessageId
+                }
+
                 let result: MessagesSinceResponse = try await sessionStore.client.query(
                     "messages:listMessagesSince",
-                    args: [
-                        "conversationId": conversationId,
-                        "afterCreatedAt": nextSince,
-                        "limit": 100,
-                    ]
+                    args: args
                 )
-                let nextCursor = try chatLocalStore.apply(messagesSince: result, conversationId: conversationId)
+                _ = try chatLocalStore.apply(messagesSince: result, conversationId: conversationId)
                 reloadMessagesFromLocalStore(surfaceErrors: surfaceErrors)
                 hasMore = result.hasMore
-                let updatedSince = Int(nextCursor ?? String(nextSince)) ?? nextSince
-                guard updatedSince > nextSince else {
+                let updatedCursor = try chatLocalStore.syncCursor(for: conversationId)
+                guard ChatLocalStore.syncCursorPrecedes(nextCursor, updatedCursor) else {
                     break
                 }
-                nextSince = updatedSince
+                nextCursor = updatedCursor
             }
+            return true
         } catch {
+            print("[Chat] Failed to sync messages since cursor for \(conversationId): \(error.localizedDescription)")
+            if fallbackToLatestPage {
+                await loadMessages(loadMore: false, surfaceErrors: false)
+            }
             guard surfaceErrors else {
-                return
+                return false
             }
             appState.presentError(error)
+            return false
         }
     }
 
     private func startRealtimeSubscription() {
-        let currentCursor = (try? chatLocalStore.newestCursor(for: conversationId))
-            .flatMap { Int($0) } ?? 0
         realtimeChatClient.subscribeToThread(
             conversationId: conversationId,
-            afterCreatedAt: currentCursor,
             currentCursor: {
-                (try? chatLocalStore.newestCursor(for: conversationId))
-                    .flatMap { Int($0) } ?? currentCursor
+                (try? chatLocalStore.syncCursor(for: conversationId)) ?? .start
             },
             onUpdate: { delta in
                 do {
                     try chatLocalStore.apply(threadDelta: delta, conversationId: conversationId)
                     reloadMessagesFromLocalStore(surfaceErrors: false)
+                    if delta.hasMore == true {
+                        Task { await syncMessagesSince(surfaceErrors: false) }
+                    }
                     if delta.messages.contains(where: { $0.senderId != appState.currentUser?.id }) {
                         Task { await markRead(surfaceErrors: false) }
                     }
@@ -903,6 +914,10 @@ struct ChatView: View {
                 }
             },
             onReconnect: {
+                Task { await syncMessagesSince(surfaceErrors: false) }
+            },
+            onError: { message in
+                print("[Chat] Realtime thread subscription failed for \(conversationId): \(message)")
                 Task { await syncMessagesSince(surfaceErrors: false) }
             }
         )
@@ -968,6 +983,9 @@ struct ChatView: View {
                 ]
             ) as ConvexID
             await syncMessagesSince(surfaceErrors: false)
+            if (try? chatLocalStore.hasPendingOptimisticMessage(clientMessageId: clientMessageId)) == true {
+                await loadMessages(loadMore: false, surfaceErrors: false)
+            }
             await markRead()
         } catch {
             try? chatLocalStore.markMessageFailed(clientMessageId: clientMessageId)

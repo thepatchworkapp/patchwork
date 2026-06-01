@@ -197,6 +197,24 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "80")
     }
 
+    func testSyncCursorIncludesLatestServerMessageIdAtTimestampBoundary() throws {
+        try store.apply(
+            delta: .init(
+                messages: [
+                    message(serverMessageId: "message-1", createdAt: 100),
+                    message(serverMessageId: "message-2", createdAt: 100),
+                ],
+                cursor: "100"
+            ),
+            conversationId: "conversation-1"
+        )
+
+        XCTAssertEqual(
+            try store.syncCursor(for: "conversation-1"),
+            ChatLocalStore.SyncCursor(createdAt: 100, afterMessageId: "message-2")
+        )
+    }
+
     func testNewestCursorStaysBeforeSendingOptimisticMessageUntilReconciled() throws {
         try store.apply(
             delta: .init(
@@ -218,6 +236,11 @@ final class ChatLocalStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "199")
+        XCTAssertEqual(
+            try store.syncCursor(for: "conversation-1"),
+            ChatLocalStore.SyncCursor(createdAt: 199, afterMessageId: nil)
+        )
+        XCTAssertTrue(try store.hasPendingOptimisticMessage(clientMessageId: "client-message-1"))
 
         try store.apply(
             messagesSince: MessagesSinceResponse(
@@ -251,6 +274,7 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(messages.first?.localStatus, "synced")
         XCTAssertEqual(messages.first?.isOptimistic, false)
         XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "201")
+        XCTAssertFalse(try store.hasPendingOptimisticMessage(clientMessageId: "client-message-1"))
     }
 
     func testRenderableChatMessagesMergeCachedMessagesAndSinceDeltas() throws {

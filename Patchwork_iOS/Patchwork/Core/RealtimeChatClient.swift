@@ -94,7 +94,7 @@ final class RealtimeChatClient {
     private struct ActiveThreadSubscription {
         let conversationId: ConvexID
         let limit: Int
-        let currentCursor: @MainActor () -> Int
+        let currentCursor: @MainActor () -> ChatLocalStore.SyncCursor
         let onUpdate: @MainActor (ThreadDelta) -> Void
         let onReconnect: @MainActor () -> Void
         let onError: @MainActor (String) -> Void
@@ -121,20 +121,16 @@ final class RealtimeChatClient {
 
     func subscribeToThread(
         conversationId: ConvexID,
-        afterCreatedAt: Int,
         limit: Int = 100,
-        currentCursor: @escaping @MainActor () -> Int,
+        currentCursor: @escaping @MainActor () -> ChatLocalStore.SyncCursor,
         onUpdate: @escaping @MainActor (ThreadDelta) -> Void,
         onReconnect: @escaping @MainActor () -> Void = {},
         onError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
-        let currentCursorProvider: @MainActor () -> Int = {
-            max(afterCreatedAt, currentCursor())
-        }
         let subscription = ActiveThreadSubscription(
             conversationId: conversationId,
             limit: limit,
-            currentCursor: currentCursorProvider,
+            currentCursor: currentCursor,
             onUpdate: onUpdate,
             onReconnect: onReconnect,
             onError: onError
@@ -190,16 +186,20 @@ final class RealtimeChatClient {
                     subscription.onReconnect()
                     shouldCatchUpOnReconnect = false
                 }
-                let afterCreatedAt = subscription.currentCursor()
+                let cursor = subscription.currentCursor()
+                var args: [String: (any ConvexEncodable)?] = [
+                    "conversationId": subscription.conversationId,
+                    "afterCreatedAt": Double(cursor.createdAt),
+                    "limit": Double(subscription.limit),
+                ]
+                if let afterMessageId = cursor.afterMessageId {
+                    args["afterMessageId"] = afterMessageId
+                }
 
                 do {
                     let updates = client.subscribe(
                         to: "messages:watchThread",
-                        with: [
-                            "conversationId": subscription.conversationId,
-                            "afterCreatedAt": Double(afterCreatedAt),
-                            "limit": Double(subscription.limit),
-                        ],
+                        with: args,
                         yielding: RealtimeThreadDelta.self
                     )
                     .values
@@ -220,7 +220,7 @@ final class RealtimeChatClient {
 }
 
 private struct RealtimeThreadDelta: Decodable {
-    let conversation: ConversationDetail?
+    let conversation: RealtimeConversationDetail?
     let messages: [RealtimeChatMessage]
     let latestCursor: RealtimeInteger?
     let latestMessageId: ConvexID?
@@ -231,7 +231,7 @@ private struct RealtimeThreadDelta: Decodable {
 
     var appModel: ThreadDelta {
         ThreadDelta(
-            conversation: conversation,
+            conversation: conversation?.appModel,
             messages: messages.map(\.appModel),
             latestCursor: latestCursor?.value,
             latestMessageId: latestMessageId,
@@ -239,6 +239,81 @@ private struct RealtimeThreadDelta: Decodable {
             latestMessageAt: latestMessageAt?.value,
             latestProposalUpdatedAt: latestProposalUpdatedAt?.value,
             hasMore: hasMore
+        )
+    }
+}
+
+private struct RealtimeConversationDetail: Decodable {
+    let id: ConvexID
+    let seekerId: ConvexID
+    let taskerId: ConvexID
+    let jobId: ConvexID?
+    let lastMessageAt: Int?
+    let lastMessageId: ConvexID?
+    let lastMessagePreview: String?
+    let lastMessageSenderId: ConvexID?
+    let seekerUnreadCount: Int?
+    let taskerUnreadCount: Int?
+    let seekerLastReadAt: Int?
+    let taskerLastReadAt: Int?
+    let participantName: String?
+    let participantPhotoUrl: String?
+    let participantImage: RemoteImageAsset?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case seekerId
+        case taskerId
+        case jobId
+        case lastMessageAt
+        case lastMessageId
+        case lastMessagePreview
+        case lastMessageSenderId
+        case seekerUnreadCount
+        case taskerUnreadCount
+        case seekerLastReadAt
+        case taskerLastReadAt
+        case participantName
+        case participantPhotoUrl
+        case participantImage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(ConvexID.self, forKey: .id)
+        seekerId = try container.decode(ConvexID.self, forKey: .seekerId)
+        taskerId = try container.decode(ConvexID.self, forKey: .taskerId)
+        jobId = try container.decodeIfPresent(ConvexID.self, forKey: .jobId)
+        lastMessageAt = try container.decodeRealtimeIntegerIfPresent(forKey: .lastMessageAt)
+        lastMessageId = try container.decodeIfPresent(ConvexID.self, forKey: .lastMessageId)
+        lastMessagePreview = try container.decodeIfPresent(String.self, forKey: .lastMessagePreview)
+        lastMessageSenderId = try container.decodeIfPresent(ConvexID.self, forKey: .lastMessageSenderId)
+        seekerUnreadCount = try container.decodeRealtimeIntegerIfPresent(forKey: .seekerUnreadCount)
+        taskerUnreadCount = try container.decodeRealtimeIntegerIfPresent(forKey: .taskerUnreadCount)
+        seekerLastReadAt = try container.decodeRealtimeIntegerIfPresent(forKey: .seekerLastReadAt)
+        taskerLastReadAt = try container.decodeRealtimeIntegerIfPresent(forKey: .taskerLastReadAt)
+        participantName = try container.decodeIfPresent(String.self, forKey: .participantName)
+        participantPhotoUrl = try container.decodeIfPresent(String.self, forKey: .participantPhotoUrl)
+        participantImage = try? container.decodeIfPresent(RemoteImageAsset.self, forKey: .participantImage)
+    }
+
+    var appModel: ConversationDetail {
+        ConversationDetail(
+            id: id,
+            seekerId: seekerId,
+            taskerId: taskerId,
+            jobId: jobId,
+            lastMessageAt: lastMessageAt,
+            lastMessageId: lastMessageId,
+            lastMessagePreview: lastMessagePreview,
+            lastMessageSenderId: lastMessageSenderId,
+            seekerUnreadCount: seekerUnreadCount,
+            taskerUnreadCount: taskerUnreadCount,
+            seekerLastReadAt: seekerLastReadAt,
+            taskerLastReadAt: taskerLastReadAt,
+            participantName: participantName,
+            participantPhotoUrl: participantPhotoUrl,
+            participantImage: participantImage
         )
     }
 }
@@ -374,3 +449,17 @@ private struct RealtimeInteger: Decodable {
         case integer = "$integer"
     }
 }
+
+private extension KeyedDecodingContainer {
+    func decodeRealtimeIntegerIfPresent(forKey key: Key) throws -> Int? {
+        try decodeIfPresent(RealtimeInteger.self, forKey: key)?.value
+    }
+}
+
+#if DEBUG
+enum RealtimeChatClientTesting {
+    static func decodeThreadDelta(from data: Data) throws -> ThreadDelta {
+        try JSONDecoder().decode(RealtimeThreadDelta.self, from: data).appModel
+    }
+}
+#endif

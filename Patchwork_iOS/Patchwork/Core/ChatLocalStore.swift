@@ -5,6 +5,13 @@ import SwiftData
 @MainActor
 @Observable
 final class ChatLocalStore {
+    struct SyncCursor: Equatable {
+        let createdAt: Int
+        let afterMessageId: ConvexID?
+
+        static let start = SyncCursor(createdAt: 0, afterMessageId: nil)
+    }
+
     struct Delta {
         let conversation: LocalConversation.Snapshot?
         let messages: [LocalMessage.Snapshot]
@@ -219,34 +226,32 @@ final class ChatLocalStore {
     }
 
     func newestCursor(for conversationId: ConvexID) throws -> String? {
+        let cursor = try syncCursor(for: conversationId)
+        return cursor.createdAt > 0 ? String(cursor.createdAt) : nil
+    }
+
+    func syncCursor(for conversationId: ConvexID) throws -> SyncCursor {
         let storedCursor = try context.fetch(FetchDescriptor<LocalConversation>())
             .first { $0.id == conversationId }?
             .newestCursor
         let cachedMessages = try messages(conversationId: conversationId)
-        let newestMessageCursor = cachedMessages
+        let newestMessage = cachedMessages
             .filter { !$0.isOptimistic }
-            .map { String($0.createdAt) }
-            .max(by: Self.cursorPrecedes)
-        let resolvedCursor = Self.newestCursor(storedCursor, newestMessageCursor)
+            .max(by: Self.messagePrecedes)
+        let resolvedCursor = resolvedSyncCursor(
+            storedCursor: storedCursor,
+            newestMessage: newestMessage
+        )
 
-        guard let oldestSendingCreatedAt = cachedMessages
-            .filter({ $0.isOptimistic && $0.serverMessageId == nil && $0.localStatus == "sending" })
+        guard let oldestPendingOptimisticCreatedAt = cachedMessages
+            .filter({ $0.isOptimistic && $0.serverMessageId == nil && $0.localStatus != "failed" })
             .map(\.createdAt)
             .min() else {
             return resolvedCursor
         }
 
-        let retryFromCreatedAt: Int
-        guard let resolvedCursor else {
-            return String(max(0, oldestSendingCreatedAt - 1))
-        }
-        if let resolvedCreatedAt = Int(resolvedCursor) {
-            retryFromCreatedAt = min(resolvedCreatedAt, oldestSendingCreatedAt)
-        } else {
-            let retryCursor = String(max(0, oldestSendingCreatedAt - 1))
-            return Self.cursorPrecedes(retryCursor, resolvedCursor) ? retryCursor : resolvedCursor
-        }
-        return String(max(0, retryFromCreatedAt - 1))
+        let retryFromCreatedAt = min(resolvedCursor.createdAt, oldestPendingOptimisticCreatedAt)
+        return SyncCursor(createdAt: max(0, retryFromCreatedAt - 1), afterMessageId: nil)
     }
 
     static func newestCursor(_ lhs: String?, _ rhs: String?) -> String? {
@@ -269,6 +274,33 @@ final class ChatLocalStore {
         return lhs < rhs
     }
 
+    static func syncCursorPrecedes(_ lhs: SyncCursor, _ rhs: SyncCursor) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+
+        switch (lhs.afterMessageId, rhs.afterMessageId) {
+        case let (lhs?, rhs?):
+            return lhs < rhs
+        case (nil, nil):
+            return false
+        case (nil, _?):
+            return true
+        case (_?, nil):
+            return false
+        }
+    }
+
+    func hasPendingOptimisticMessage(clientMessageId: String) throws -> Bool {
+        try context.fetch(FetchDescriptor<LocalMessage>())
+            .contains {
+                $0.clientMessageId == clientMessageId
+                    && $0.isOptimistic
+                    && $0.serverMessageId == nil
+                    && $0.localStatus != "failed"
+            }
+    }
+
     private func cursor(explicitCursor: Int?, latestMessageAt: Int?, latestProposalUpdatedAt: Int?) -> String? {
         guard let latest = latestCursor(
             explicitCursor: explicitCursor,
@@ -283,6 +315,30 @@ final class ChatLocalStore {
     private func latestCursor(explicitCursor: Int?, latestMessageAt: Int?, latestProposalUpdatedAt: Int?) -> Int? {
         let latest = max(explicitCursor ?? 0, max(latestMessageAt ?? 0, latestProposalUpdatedAt ?? 0))
         return latest > 0 ? latest : nil
+    }
+
+    private func resolvedSyncCursor(storedCursor: String?, newestMessage: LocalMessage.Snapshot?) -> SyncCursor {
+        let storedCreatedAt = storedCursor.flatMap(Int.init) ?? 0
+        guard let newestMessage else {
+            return SyncCursor(createdAt: storedCreatedAt, afterMessageId: nil)
+        }
+
+        if newestMessage.createdAt > storedCreatedAt {
+            return SyncCursor(createdAt: newestMessage.createdAt, afterMessageId: newestMessage.serverMessageId)
+        }
+
+        if newestMessage.createdAt == storedCreatedAt {
+            return SyncCursor(createdAt: storedCreatedAt, afterMessageId: newestMessage.serverMessageId)
+        }
+
+        return SyncCursor(createdAt: storedCreatedAt, afterMessageId: nil)
+    }
+
+    private static func messagePrecedes(_ lhs: LocalMessage.Snapshot, _ rhs: LocalMessage.Snapshot) -> Bool {
+        if lhs.createdAt != rhs.createdAt {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return (lhs.serverMessageId ?? lhs.id) < (rhs.serverMessageId ?? rhs.id)
     }
 
     private func upsert(conversation snapshot: LocalConversation.Snapshot) {
