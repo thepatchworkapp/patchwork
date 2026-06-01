@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 import * as conversationsModule from "../conversations";
 import * as usersModule from "../users";
@@ -58,6 +58,22 @@ async function createConversation(t: ReturnType<typeof convexTest>, suffix: stri
   });
 
   return { asSeeker, asTasker, seekerId, taskerId, conversationId };
+}
+
+async function setConversationMessageTimes(
+  t: ReturnType<typeof convexTest>,
+  conversationId: any,
+  createdAt: number
+) {
+  await t.run(async (ctx) => {
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .collect();
+    for (const message of messages) {
+      await ctx.db.patch(message._id, { createdAt, updatedAt: createdAt });
+    }
+  });
 }
 
 describe("messages", () => {
@@ -825,11 +841,11 @@ describe("messages", () => {
     expect(delta.latestCursor).toBe(1001);
   });
 
-  test("watchThread returns message deltas and latest proposal update", async () => {
+  test("listMessagesSince hydrates proposal payloads for proposal messages", async () => {
     const t = convexTest(schema, modules);
     const { asSeeker, asTasker, conversationId } = await createConversation(
       t,
-      "watch_thread"
+      "since_proposal_hydration"
     );
 
     const proposalId = await asTasker.mutation((api as any).proposals.sendProposal, {
@@ -841,36 +857,249 @@ describe("messages", () => {
       notes: "I can do it",
     });
 
+    const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      since: 0,
+      limit: 10,
+    });
+    const proposalMessage = delta.messages.find(
+      (message: any) => message.type === "proposal"
+    );
+
+    expect(proposalMessage?.proposalId).toBe(proposalId);
+    expect(proposalMessage?.proposal?._id).toBe(proposalId);
+    expect(proposalMessage?.proposal?.clientProposalId).toBe("ios-proposal-1");
+    expect(proposalMessage?.proposal?.status).toBe("pending");
+    expect(delta.latestMessageAt).toBe(delta.latestCursor);
+  });
+
+  test("watchThread emits text message deltas after the cursor", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "watch_text");
+
+    const oldMessageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Already cached",
+    });
     const messageId = await asSeeker.mutation(api.messages.sendMessage, {
       conversationId,
-      content: "Can you start earlier?",
+      content: "New realtime message",
     });
 
     await t.run(async (ctx) => {
-      await ctx.db.patch(proposalId, { updatedAt: 3000 });
-      const existingMessages = await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
-        .collect();
-      for (const message of existingMessages) {
-        if (message._id !== messageId) {
-          await ctx.db.patch(message._id, { createdAt: 2000, updatedAt: 2000 });
-        }
-      }
-      await ctx.db.patch(messageId, { createdAt: 3500, updatedAt: 3500 });
+      await ctx.db.patch(oldMessageId, { createdAt: 1000, updatedAt: 1000 });
+      await ctx.db.patch(messageId, { createdAt: 2000, updatedAt: 2000 });
     });
 
     const watched = await asSeeker.query((api as any).messages.watchThread, {
       conversationId,
-      since: 2500,
+      since: 1000,
       limit: 10,
     });
 
-    expect(watched.messages.some((message: any) => message._id === messageId)).toBe(
-      true
+    expect(watched.messages.map((message: any) => message._id)).toStrictEqual([
+      messageId,
+    ]);
+    expect(watched.latestMessageAt).toBe(2000);
+    expect(watched.latestProposalUpdatedAt).toBeNull();
+    expect(watched.latestCursor).toBe(2000);
+  });
+
+  test("watchThread emits proposal messages and latestProposal when proposals are sent", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, asTasker, conversationId } = await createConversation(
+      t,
+      "watch_proposal_sent"
     );
+
+    const oldMessageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Before realtime cursor",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(oldMessageId, { createdAt: 1000, updatedAt: 1000 });
+    });
+
+    const proposalId = await asTasker.mutation((api as any).proposals.sendProposal, {
+      conversationId,
+      clientProposalId: "ios-proposal-2",
+      rate: 8800,
+      rateType: "flat",
+      startDateTime: "2026-02-16T10:00:00Z",
+      notes: "I can do it tomorrow",
+    });
+
+    const watched = await asSeeker.query((api as any).messages.watchThread, {
+      conversationId,
+      since: 1000,
+      limit: 10,
+    });
+    const proposalMessage = watched.messages.find(
+      (message: any) => message.type === "proposal"
+    );
+
+    expect(proposalMessage?.proposalId).toBe(proposalId);
+    expect(proposalMessage?.proposal?.status).toBe("pending");
     expect(watched.latestProposal?._id).toBe(proposalId);
-    expect(watched.latestProposal?.clientProposalId).toBe("ios-proposal-1");
-    expect(watched.latestCursor).toBe(3500);
+    expect(watched.latestProposal?.clientProposalId).toBe("ios-proposal-2");
+    expect(watched.latestProposalUpdatedAt).toBe(watched.latestProposal?.updatedAt);
+    expect(watched.latestCursor).toBeGreaterThan(1000);
+  });
+
+  test("watchThread reflects proposal status updates after accept and decline", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.categories.seedCategories);
+    const accepted = await createConversation(t, "watch_accept");
+    const acceptedProposalId = await accepted.asTasker.mutation(
+      (api as any).proposals.sendProposal,
+      {
+        conversationId: accepted.conversationId,
+        clientProposalId: "ios-proposal-accept",
+        rate: 7500,
+        rateType: "flat",
+        startDateTime: "2026-02-17T10:00:00Z",
+      }
+    );
+    await setConversationMessageTimes(t, accepted.conversationId, 1000);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(acceptedProposalId, { createdAt: 1000, updatedAt: 1000 });
+    });
+
+    await accepted.asSeeker.mutation((api as any).proposals.acceptProposal, {
+      proposalId: acceptedProposalId,
+    });
+    const acceptedWatch = await accepted.asTasker.query(
+      (api as any).messages.watchThread,
+      {
+        conversationId: accepted.conversationId,
+        since: 1000,
+        limit: 10,
+      }
+    );
+
+    expect(acceptedWatch.latestProposal?._id).toBe(acceptedProposalId);
+    expect(acceptedWatch.latestProposal?.status).toBe("accepted");
+    expect(
+      acceptedWatch.messages.some(
+        (message: any) => message.proposal?._id === acceptedProposalId &&
+          message.proposal.status === "accepted"
+      )
+    ).toBe(true);
+
+    const declined = await createConversation(t, "watch_decline");
+    const declinedProposalId = await declined.asTasker.mutation(
+      (api as any).proposals.sendProposal,
+      {
+        conversationId: declined.conversationId,
+        clientProposalId: "ios-proposal-decline",
+        rate: 6500,
+        rateType: "flat",
+        startDateTime: "2026-02-18T10:00:00Z",
+      }
+    );
+    await setConversationMessageTimes(t, declined.conversationId, 1000);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(declinedProposalId, { createdAt: 1000, updatedAt: 1000 });
+    });
+
+    await declined.asSeeker.mutation((api as any).proposals.declineProposal, {
+      proposalId: declinedProposalId,
+    });
+    const declinedWatch = await declined.asTasker.query(
+      (api as any).messages.watchThread,
+      {
+        conversationId: declined.conversationId,
+        since: 1000,
+        limit: 10,
+      }
+    );
+
+    expect(declinedWatch.latestProposal?._id).toBe(declinedProposalId);
+    expect(declinedWatch.latestProposal?.status).toBe("declined");
+    expect(
+      declinedWatch.messages.some(
+        (message: any) => message.proposal?._id === declinedProposalId &&
+          message.proposal.status === "declined"
+      )
+    ).toBe(true);
+  });
+
+  test("watchThread reflects proposal status updates after counter", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, asTasker, conversationId } = await createConversation(
+      t,
+      "watch_counter"
+    );
+
+    const originalProposalId = await asTasker.mutation(
+      (api as any).proposals.sendProposal,
+      {
+        conversationId,
+        clientProposalId: "ios-proposal-original",
+        rate: 7500,
+        rateType: "flat",
+        startDateTime: "2026-02-19T10:00:00Z",
+      }
+    );
+    await setConversationMessageTimes(t, conversationId, 1000);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(originalProposalId, { createdAt: 1000, updatedAt: 1000 });
+    });
+
+    const counterProposalId = await asSeeker.mutation(
+      (api as any).proposals.counterProposal,
+      {
+        proposalId: originalProposalId,
+        clientProposalId: "ios-proposal-counter",
+        rate: 7000,
+        rateType: "flat",
+        startDateTime: "2026-02-20T10:00:00Z",
+      }
+    );
+    const watched = await asTasker.query((api as any).messages.watchThread, {
+      conversationId,
+      since: 1000,
+      limit: 10,
+    });
+
+    expect(
+      watched.messages.some(
+        (message: any) => message.proposal?._id === originalProposalId &&
+          message.proposal.status === "countered"
+      )
+    ).toBe(true);
+    expect(
+      watched.messages.some(
+        (message: any) => message.proposal?._id === counterProposalId &&
+          message.proposal.previousProposalId === originalProposalId &&
+          message.proposal.status === "pending"
+      )
+    ).toBe(true);
+    expect(watched.latestProposalUpdatedAt).toBeGreaterThan(1000);
+  });
+
+  test("watchThread does not return full history when the cursor is current", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "watch_current");
+
+    const messageId = await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Already synchronized",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(messageId, { createdAt: 1000, updatedAt: 1000 });
+    });
+
+    const watched = await asSeeker.query((api as any).messages.watchThread, {
+      conversationId,
+      since: 1000,
+      limit: 10,
+    });
+
+    expect(watched.messages).toStrictEqual([]);
+    expect(watched.latestProposal).toBeNull();
+    expect(watched.latestMessageAt).toBeNull();
+    expect(watched.latestProposalUpdatedAt).toBeNull();
+    expect(watched.latestCursor).toBe(1000);
   });
 });

@@ -307,12 +307,15 @@ export const messagesDeltaValidator = v.object({
   messages: v.array(messageWithProposalValidator),
   hasMore: v.boolean(),
   latestCursor: v.number(),
+  latestMessageAt: v.union(v.number(), v.null()),
 });
 
 export const threadWatchValidator = v.object({
   messages: v.array(messageWithProposalValidator),
   hasMore: v.boolean(),
   latestCursor: v.number(),
+  latestMessageAt: v.union(v.number(), v.null()),
+  latestProposalUpdatedAt: v.union(v.number(), v.null()),
   latestProposal: v.union(proposalPayloadValidator, v.null()),
 });
 

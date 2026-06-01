@@ -194,7 +194,12 @@ export const listMessagesSince = query({
   },
   returns: messagesDeltaValidator,
   handler: async (ctx, args) => {
-    const empty = { messages: [], hasMore: false, latestCursor: args.since };
+    const empty = {
+      messages: [],
+      hasMore: false,
+      latestCursor: args.since,
+      latestMessageAt: null,
+    };
     const isParticipant = await isConversationParticipant(ctx, args.conversationId);
     if (!isParticipant) return empty;
 
@@ -214,6 +219,7 @@ export const listMessagesSince = query({
       messages: hydrated,
       hasMore: rows.length > limit,
       latestCursor: hydrated.at(-1)?.createdAt ?? args.since,
+      latestMessageAt: hydrated.at(-1)?.createdAt ?? null,
     };
   },
 });
@@ -230,6 +236,8 @@ export const watchThread = query({
       messages: [],
       hasMore: false,
       latestCursor: args.since,
+      latestMessageAt: null,
+      latestProposalUpdatedAt: null,
       latestProposal: null,
     };
     const isParticipant = await isConversationParticipant(ctx, args.conversationId);
@@ -261,6 +269,8 @@ export const watchThread = query({
         hydrated.at(-1)?.createdAt ?? args.since,
         latestProposal?.updatedAt ?? args.since
       ),
+      latestMessageAt: hydrated.at(-1)?.createdAt ?? null,
+      latestProposalUpdatedAt: latestProposal?.updatedAt ?? null,
       latestProposal: latestProposal ? serializeProposal(latestProposal) : null,
     };
   },
