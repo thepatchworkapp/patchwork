@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct JobDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
 
@@ -13,94 +14,36 @@ struct JobDetailView: View {
     @State private var isShowingReviewComposer = false
 
     var body: some View {
-        Group {
-            if isLoading {
-                ZStack {
-                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brandBright)
 
-                    PatchworkLoadingCard(
-                        title: "Loading job...",
-                        message: "Fetching the latest job details and review status."
-                    )
-                    .padding(.horizontal, 20)
-                }
-                .accessibilityIdentifier("JobDetail.loading")
-            } else if let detail {
-                ZStack {
-                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
+            VStack(spacing: 0) {
+                PatchworkTopBar(
+                    title: "Job Detail",
+                    onBack: { dismiss() },
+                    backButtonAccessibilityIdentifier: "JobDetail.backButton"
+                )
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            PatchworkSectionIntro(
-                                eyebrow: "Job",
-                                title: "Job detail",
-                                message: "Review scope, dates, and completion status with the same high-trust bordered treatment as the rest of the app."
-                            )
-
-                            JobHeaderCard(detail: detail)
-
-                            PatchworkSurfaceCard {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Description")
-                                        .font(.patchworkCardTitle)
-                                        .foregroundStyle(PatchworkTheme.textPrimary)
-                                        .accessibilityAddTraits(.isHeader)
-                                    Text(detail.notes?.isEmpty == false ? detail.notes ?? "" : detail.description)
-                                        .font(.patchworkBody)
-                                        .foregroundStyle(PatchworkTheme.textSecondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .accessibilityElement(children: .combine)
-
-                            JobMetaGrid(detail: detail)
-
-                            if canShowCompleteButton(detail: detail) {
-                                Button(isCompleting ? "Completing..." : "Complete Job") {
-                                    Task { await completeJob() }
-                                }
-                                .buttonStyle(PatchworkPrimaryButtonStyle())
-                                .disabled(isCompleting)
-                                .accessibilityIdentifier("JobDetail.completeButton")
-                                .accessibilityLabel("Complete job")
-                                .accessibilityHint("Marks this job as complete")
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                    }
-                    .scrollIndicators(.hidden)
-                }
-                .safeAreaInset(edge: .bottom) {
-                    if detail.status == "completed" && canReview {
-                        PatchworkSurfaceCard {
-                            Button("Leave Review") {
-                                isShowingReviewComposer = true
-                            }
-                            .buttonStyle(PatchworkPrimaryButtonStyle())
-                            .accessibilityIdentifier("JobDetail.leaveReviewButton")
-                            .accessibilityHint("Opens the review composer")
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .padding(.bottom, 12)
-                    }
-                }
-            } else {
-                ZStack {
-                    PatchworkBackdrop(tint: PatchworkTheme.brandBright)
-
-                    PatchworkEmptyStateCard(
-                        systemImage: "doc.text.magnifyingglass",
-                        title: "Job not found",
-                        message: "This job is unavailable or has already been removed."
-                    )
-                    .padding(.horizontal, 20)
-                }
-                .accessibilityIdentifier("JobDetail.notFound")
+                content
             }
         }
-        .navigationTitle("Job Detail")
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .bottom) {
+            if let detail, detail.status == "completed" && canReview {
+                PatchworkSurfaceCard {
+                    Button("Leave Review") {
+                        isShowingReviewComposer = true
+                    }
+                    .buttonStyle(PatchworkPrimaryButtonStyle())
+                    .accessibilityIdentifier("JobDetail.leaveReviewButton")
+                    .accessibilityHint("Opens the review composer")
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+            }
+        }
         .task(id: jobId) {
             await load()
         }
@@ -112,6 +55,70 @@ struct JobDetailView: View {
                 return
             }
             Task { await load() }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            PatchworkLoadingCard(
+                title: "Loading job...",
+                message: "Fetching the latest job details and review status."
+            )
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("JobDetail.loading")
+        } else if let detail {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    PatchworkSectionIntro(
+                        eyebrow: "Job",
+                        title: "Job detail",
+                        message: "Review scope, dates, and completion status with the same high-trust bordered treatment as the rest of the app."
+                    )
+
+                    JobHeaderCard(detail: detail)
+
+                    PatchworkSurfaceCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Description")
+                                .font(.patchworkCardTitle)
+                                .foregroundStyle(PatchworkTheme.textPrimary)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(detail.notes?.isEmpty == false ? detail.notes ?? "" : detail.description)
+                                .font(.patchworkBody)
+                                .foregroundStyle(PatchworkTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    JobMetaGrid(detail: detail)
+
+                    if canShowCompleteButton(detail: detail) {
+                        Button(isCompleting ? "Completing..." : "Complete Job") {
+                            Task { await completeJob() }
+                        }
+                        .buttonStyle(PatchworkPrimaryButtonStyle())
+                        .disabled(isCompleting)
+                        .accessibilityIdentifier("JobDetail.completeButton")
+                        .accessibilityLabel("Complete job")
+                        .accessibilityHint("Marks this job as complete")
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+            }
+            .scrollIndicators(.hidden)
+        } else {
+            PatchworkEmptyStateCard(
+                systemImage: "doc.text.magnifyingglass",
+                title: "Job not found",
+                message: "This job is unavailable or has already been removed."
+            )
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("JobDetail.notFound")
         }
     }
 
