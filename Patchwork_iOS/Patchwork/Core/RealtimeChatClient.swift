@@ -7,14 +7,24 @@ struct PatchworkConvexAuthSession: Sendable {
     let token: String
 }
 
-private final class PatchworkConvexAuthProvider: AuthProvider {
+final class ConvexRealtimeSessionBridge: AuthProvider {
     typealias T = PatchworkConvexAuthSession
 
     private weak var sessionStore: SessionStore?
+    private let lock = NSLock()
+    private var idTokenHandler: (@Sendable (String?) -> Void)?
+    private var tokenChangeHandler: (@Sendable (String?) -> Void)?
+    private var tokenListenerID: UUID?
 
     @MainActor
     init(sessionStore: SessionStore) {
         self.sessionStore = sessionStore
+    }
+
+    func setTokenChangeHandler(_ handler: @escaping @Sendable (String?) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        tokenChangeHandler = handler
     }
 
     func login(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> PatchworkConvexAuthSession {
@@ -22,10 +32,12 @@ private final class PatchworkConvexAuthProvider: AuthProvider {
     }
 
     func loginFromCache(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> PatchworkConvexAuthSession {
+        storeIdTokenHandler(onIdToken)
         guard let sessionStore else {
             onIdToken(nil)
             throw PatchworkError.missingToken
         }
+        await registerTokenListenerIfNeeded(sessionStore: sessionStore)
 
         let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: false)
         let token = await MainActor.run { sessionStore.token }
@@ -46,46 +58,137 @@ private final class PatchworkConvexAuthProvider: AuthProvider {
     func extractIdToken(from authResult: PatchworkConvexAuthSession) -> String {
         authResult.token
     }
+
+    private func storeIdTokenHandler(_ handler: @Sendable @escaping (String?) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        idTokenHandler = handler
+    }
+
+    @MainActor
+    private func registerTokenListenerIfNeeded(sessionStore: SessionStore) {
+        guard tokenListenerID == nil else {
+            return
+        }
+        tokenListenerID = sessionStore.addConvexAuthTokenListener { [weak self] token in
+            self?.pushUpdatedToken(token)
+        }
+    }
+
+    private func pushUpdatedToken(_ token: String?) {
+        let handler: (@Sendable (String?) -> Void)?
+        let changeHandler: (@Sendable (String?) -> Void)?
+        lock.lock()
+        handler = idTokenHandler
+        changeHandler = tokenChangeHandler
+        lock.unlock()
+
+        handler?(token)
+        changeHandler?(token)
+    }
 }
 
 @MainActor
 @Observable
 final class RealtimeChatClient {
+    private struct ActiveThreadSubscription {
+        let conversationId: ConvexID
+        let limit: Int
+        let currentCursor: @MainActor () -> Int
+        let onUpdate: @MainActor (ThreadDelta) -> Void
+        let onError: @MainActor (String) -> Void
+    }
+
+    private let authBridge: ConvexRealtimeSessionBridge
     private let client: ConvexClientWithAuth<PatchworkConvexAuthSession>
+    private var activeThreadSubscription: ActiveThreadSubscription?
     private var subscriptionTask: Task<Void, Never>?
 
     init(sessionStore: SessionStore) {
-        let authProvider = PatchworkConvexAuthProvider(sessionStore: sessionStore)
+        let authProvider = ConvexRealtimeSessionBridge(sessionStore: sessionStore)
+        authBridge = authProvider
         client = ConvexClientWithAuth(
             deploymentUrl: AppConfig.convexCloudURL.absoluteString,
             authProvider: authProvider
         )
+        authProvider.setTokenChangeHandler { [weak self] token in
+            Task { @MainActor in
+                self?.handleSessionTokenChange(token)
+            }
+        }
     }
 
     func subscribeToThread(
         conversationId: ConvexID,
         afterCreatedAt: Int,
         limit: Int = 100,
+        currentCursor: @escaping @MainActor () -> Int,
         onUpdate: @escaping @MainActor (ThreadDelta) -> Void,
         onError: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        let currentCursorProvider: @MainActor () -> Int = {
+            max(afterCreatedAt, currentCursor())
+        }
+        let subscription = ActiveThreadSubscription(
+            conversationId: conversationId,
+            limit: limit,
+            currentCursor: currentCursorProvider,
+            onUpdate: onUpdate,
+            onError: onError
+        )
+        activeThreadSubscription = subscription
+        startSubscription(subscription)
+    }
+
+    func stopThreadSubscription(conversationId: ConvexID? = nil) {
+        guard conversationId == nil || activeThreadSubscription?.conversationId == conversationId else {
+            return
+        }
         subscriptionTask?.cancel()
-        subscriptionTask = Task { [client] in
+        subscriptionTask = nil
+        activeThreadSubscription = nil
+    }
+
+    private func handleSessionTokenChange(_ token: String?) {
+        guard activeThreadSubscription != nil else {
+            return
+        }
+        guard let token, !token.isEmpty else {
+            stopThreadSubscription()
+            return
+        }
+        restartActiveSubscription()
+    }
+
+    private func restartActiveSubscription() {
+        guard let activeThreadSubscription else {
+            return
+        }
+        startSubscription(activeThreadSubscription)
+    }
+
+    private func startSubscription(_ subscription: ActiveThreadSubscription) {
+        subscriptionTask?.cancel()
+        subscriptionTask = Task { [client, subscription] in
             while !Task.isCancelled {
                 let authResult = await client.loginFromCache()
+                guard !Task.isCancelled else {
+                    return
+                }
                 guard case .success = authResult else {
-                    onError("Realtime chat authentication failed.")
+                    subscription.onError("Realtime chat authentication failed.")
                     try? await Task.sleep(for: .seconds(2))
                     continue
                 }
+                let afterCreatedAt = subscription.currentCursor()
 
                 do {
                     let updates = client.subscribe(
                         to: "messages:watchThread",
                         with: [
-                            "conversationId": conversationId,
+                            "conversationId": subscription.conversationId,
                             "afterCreatedAt": Double(afterCreatedAt),
-                            "limit": Double(limit),
+                            "limit": Double(subscription.limit),
                         ],
                         yielding: RealtimeThreadDelta.self
                     )
@@ -93,20 +196,15 @@ final class RealtimeChatClient {
 
                     for try await update in updates {
                         guard !Task.isCancelled else { return }
-                        onUpdate(update.appModel)
+                        subscription.onUpdate(update.appModel)
                     }
                 } catch {
                     guard !Task.isCancelled else { return }
-                    onError(error.localizedDescription)
+                    subscription.onError(error.localizedDescription)
                     try? await Task.sleep(for: .seconds(2))
                 }
             }
         }
-    }
-
-    func stopThreadSubscription(conversationId: ConvexID? = nil) {
-        subscriptionTask?.cancel()
-        subscriptionTask = nil
     }
 }
 

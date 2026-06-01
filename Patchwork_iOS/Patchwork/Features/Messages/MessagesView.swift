@@ -868,6 +868,10 @@ struct ChatView: View {
         realtimeChatClient.subscribeToThread(
             conversationId: conversationId,
             afterCreatedAt: currentCursor,
+            currentCursor: {
+                (try? chatLocalStore.newestCursor(for: conversationId))
+                    .flatMap { Int($0) } ?? currentCursor
+            },
             onUpdate: { delta in
                 do {
                     try chatLocalStore.apply(threadDelta: delta, conversationId: conversationId)

@@ -1331,6 +1331,121 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testSessionStoreNotifiesRealtimeAuthListenersWhenHTTPTokenRefreshes() async {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "expired-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let observedTokens = LockedArrayBox<String?>()
+        var refreshCallback: (@Sendable (String) async -> Void)?
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                refreshCallback = onAuthTokenRefresh
+                return ConvexHTTPClient(
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+        store.addConvexAuthTokenListener { token in
+            observedTokens.append(token)
+        }
+
+        _ = store.client
+        await refreshCallback?("fresh-token")
+
+        XCTAssertEqual(observedTokens.get(), ["fresh-token"])
+        XCTAssertEqual(store.token, "fresh-token")
+        XCTAssertEqual(persistence.session?.convexAuthToken, "fresh-token")
+    }
+
+    @MainActor
+    func testSessionStoreNotifiesRealtimeAuthListenersWhenSessionInvalidates() async {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "expired-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let observedTokens = LockedArrayBox<String?>()
+        var invalidationCallback: (@Sendable (String) async -> Void)?
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                invalidationCallback = onAuthSessionInvalidated
+                return ConvexHTTPClient(
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+        store.addConvexAuthTokenListener { token in
+            observedTokens.append(token)
+        }
+
+        _ = store.client
+        await invalidationCallback?("Your session expired. Sign in again.")
+
+        XCTAssertEqual(observedTokens.get(), [nil])
+        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertNil(store.token)
+        XCTAssertNil(persistence.session)
+    }
+
+    @MainActor
+    func testConvexRealtimeSessionBridgePushesStoreTokenRefreshToConvexCallback() async throws {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "initial-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                convexAuthTokenRefreshedAt: Date()
+            )
+        )
+        let observedTokens = LockedArrayBox<String?>()
+        var refreshCallback: (@Sendable (String) async -> Void)?
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                refreshCallback = onAuthTokenRefresh
+                return ConvexHTTPClient(
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+        let bridge = ConvexRealtimeSessionBridge(sessionStore: store)
+
+        let authSession = try await bridge.loginFromCache { token in
+            observedTokens.append(token)
+        }
+        _ = store.client
+        await refreshCallback?("fresh-token")
+
+        XCTAssertEqual(authSession.token, "initial-token")
+        XCTAssertEqual(observedTokens.get(), ["initial-token", "fresh-token"])
+    }
+
+    @MainActor
     func testSuccessfulOTPLoginIgnoresStaleInvalidationCallback() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(

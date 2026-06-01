@@ -127,6 +127,7 @@ final class SessionStore {
     private(set) var recentEmails: [String]
     var emailForOTP = ""
     private var authSessionGeneration = 0
+    private var convexAuthTokenListeners: [UUID: @Sendable (String?) -> Void] = [:]
 
     init(
         sessionPersistence: SessionPersisting = KeychainSessionPersistence(),
@@ -192,6 +193,17 @@ final class SessionStore {
         Self.appReviewEmails.contains(
             emailForOTP.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         )
+    }
+
+    @discardableResult
+    func addConvexAuthTokenListener(_ listener: @escaping @Sendable (String?) -> Void) -> UUID {
+        let id = UUID()
+        convexAuthTokenListeners[id] = listener
+        return id
+    }
+
+    func removeConvexAuthTokenListener(_ id: UUID) {
+        convexAuthTokenListeners[id] = nil
     }
 
     func sendOTP() async {
@@ -360,6 +372,7 @@ final class SessionStore {
     }
 
     private func persistSession(_ session: StoredSession?, startsNewAuthSession: Bool = false) {
+        let previousToken = token
         if startsNewAuthSession {
             authSessionGeneration &+= 1
         }
@@ -373,6 +386,9 @@ final class SessionStore {
             launchedWithPersistedSession = false
         }
         sessionPersistence.saveSession(session)
+        if previousToken != token || startsNewAuthSession || session == nil {
+            notifyConvexAuthTokenListeners(token)
+        }
     }
 
     private func storeRefreshedConvexToken(_ refreshedToken: String, generation: Int) {
@@ -415,6 +431,12 @@ final class SessionStore {
         self.errorMessage = errorMessage
         emailForOTP = ""
         persistSession(nil)
+    }
+
+    private func notifyConvexAuthTokenListeners(_ token: String?) {
+        for listener in convexAuthTokenListeners.values {
+            listener(token)
+        }
     }
 
     private var currentSessionRefreshDate: Date? {
