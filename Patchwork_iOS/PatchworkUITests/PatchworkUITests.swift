@@ -833,8 +833,24 @@ final class PatchworkUITests: XCTestCase {
             : app.buttons["ProfileSetup.notificationsSkipButton"]
         XCTAssertTrue(notificationsButton.waitForExistence(timeout: 10))
         notificationsButton.tap()
+        if finishWithNotificationsAllow {
+            acceptSystemNotificationPromptIfNeeded()
+        }
 
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
+    }
+
+    private func acceptSystemNotificationPromptIfNeeded() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allowButtons = [
+            springboard.buttons["Allow"],
+            springboard.buttons["Allow Notifications"]
+        ]
+
+        for button in allowButtons where button.waitForExistence(timeout: 5) {
+            button.tap()
+            return
+        }
     }
 
     private func openProfileTab() {
@@ -929,28 +945,32 @@ final class PatchworkUITests: XCTestCase {
 
         app.buttons["TaskerOnboarding1.continueButton"].tap()
 
-        let bioField = app.textViews["TaskerOnboarding2.bioField"]
+        let linksContinue = app.buttons["TaskerOnboarding2.continueButton"]
+        XCTAssertTrue(linksContinue.waitForExistence(timeout: 10))
+        linksContinue.tap()
+
+        let bioField = app.textViews["TaskerOnboarding3.bioField"]
         XCTAssertTrue(bioField.waitForExistence(timeout: 10))
         replaceText(in: bioField, with: categoryBio)
 
-        let hourlyRateField = app.textFields["TaskerOnboarding2.hourlyRateField"]
+        let hourlyRateField = app.textFields["TaskerOnboarding3.hourlyRateField"]
         XCTAssertTrue(hourlyRateField.waitForExistence(timeout: 10))
         replaceText(in: hourlyRateField, with: hourlyRate)
 
-        app.buttons["TaskerOnboarding2.continueButton"].tap()
+        app.buttons["TaskerOnboarding3.continueButton"].tap()
 
-        let portfolioContinue = app.buttons["TaskerOnboarding3.continueButton"]
+        let portfolioContinue = app.buttons["TaskerOnboarding4.continueButton"]
         XCTAssertTrue(portfolioContinue.waitForExistence(timeout: 10))
         portfolioContinue.tap()
 
-        let profileCardPreview = identifiedElement("TaskerOnboarding4.discoverCardPreview")
+        let profileCardPreview = identifiedElement("TaskerOnboarding5.discoverCardPreview")
         XCTAssertTrue(profileCardPreview.waitForExistence(timeout: 10))
 
-        let termsToggle = app.buttons["TaskerOnboarding4.acceptTermsToggle"]
+        let termsToggle = app.buttons["TaskerOnboarding5.acceptTermsToggle"]
         XCTAssertTrue(termsToggle.waitForExistence(timeout: 10))
         termsToggle.tap()
 
-        app.buttons["TaskerOnboarding4.completeButton"].tap()
+        app.buttons["TaskerOnboarding5.completeButton"].tap()
     }
 
     private func backgroundAndRestoreApp() {

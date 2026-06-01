@@ -1442,7 +1442,7 @@ private struct TaskerCreateFlowView: View {
         .shadow(color: PatchworkTheme.brand.opacity(0.1), radius: 24, y: 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Profile card preview")
-        .accessibilityIdentifier("TaskerOnboarding4.discoverCardPreview")
+        .accessibilityIdentifier("TaskerOnboarding5.discoverCardPreview")
     }
 
     private func switchTaskerPhotoToAccount() {
