@@ -4,6 +4,7 @@ struct ProfileSidebarMenu: View {
     let userName: String?
     let onClose: () -> Void
     let onOpenFavourites: () -> Void
+    let onOpenNotifications: () -> Void
     let onOpenBlocked: () -> Void
 
     var body: some View {
@@ -68,6 +69,43 @@ struct ProfileSidebarMenu: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("Profile.sidebarFavouritesButton")
             .accessibilityLabel("Open favourites")
+
+            Button(action: onOpenNotifications) {
+                HStack(spacing: 12) {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(PatchworkTheme.brand)
+                        .frame(width: 42, height: 42)
+                        .background(PatchworkTheme.brandSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notifications")
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+                        Text("System settings")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PatchworkTheme.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                .padding(16)
+                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(PatchworkTheme.stroke, lineWidth: 1)
+                )
+                .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Profile.sidebarNotificationsButton")
+            .accessibilityLabel("Open notification settings")
 
             Button(action: onOpenBlocked) {
                 HStack(spacing: 12) {

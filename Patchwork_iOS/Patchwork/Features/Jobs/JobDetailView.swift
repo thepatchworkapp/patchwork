@@ -3,7 +3,6 @@ import SwiftUI
 struct JobDetailView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
-    @Environment(\.dismiss) private var dismiss
 
     let jobId: ConvexID
 
@@ -102,18 +101,6 @@ struct JobDetailView: View {
             }
         }
         .navigationTitle("Job Detail")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Label("Back", systemImage: "chevron.left")
-                        .labelStyle(.titleAndIcon)
-                }
-                .accessibilityIdentifier("JobDetail.backButton")
-                .accessibilityLabel("Back")
-            }
-        }
         .task(id: jobId) {
             await load()
         }
@@ -247,7 +234,7 @@ private struct JobMetaGrid: View {
 
     private var currencyRate: String {
         let dollars = Double(detail.rate) / 100
-        return dollars.formatted(.currency(code: "USD"))
+        return dollars.formatted(.currency(code: "CAD"))
     }
 
     private var createdDate: String {

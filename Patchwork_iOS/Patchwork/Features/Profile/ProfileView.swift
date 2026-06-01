@@ -17,6 +17,7 @@ struct ProfileView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(\.openURL) private var openURL
 
     @State private var isSidebarPresented = false
     @State private var activeDestination: ProfileSidebarDestination?
@@ -78,6 +79,9 @@ struct ProfileView: View {
                     onOpenFavourites: {
                         openDestination(.favourites)
                     },
+                    onOpenNotifications: {
+                        openNotificationSettings()
+                    },
                     onOpenBlocked: {
                         openDestination(.blocked)
                     }
@@ -126,6 +130,14 @@ struct ProfileView: View {
                 activeDestination = destination
             }
         }
+    }
+
+    private func openNotificationSettings() {
+        closeSidebar()
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        openURL(settingsURL)
     }
 
     private func closeActiveDestination() {
@@ -1076,7 +1088,7 @@ private struct TaskerCreateFlowView: View {
                 CategoryServiceDetailsSection(
                     title: "Details",
                     eyebrow: nil,
-                    message: "Set your pricing and service range with clean, explicit terms.",
+                    message: "Add a bio or description of your skills and services.",
                     bio: $categoryBio,
                     rateType: $rateType,
                     hourlyRate: $hourlyRate,
@@ -1522,7 +1534,7 @@ private struct TaskerCreateFlowView: View {
     private func formattedPrice(_ value: String, suffix: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = Double(trimmed) ?? 0
-        return "\(amount.formatted(.currency(code: "USD")))\(suffix)"
+        return "\(amount.formatted(.currency(code: "CAD")))\(suffix)"
     }
 }
 

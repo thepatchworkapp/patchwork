@@ -5,7 +5,6 @@ import UIKit
 struct ProfileAccountSection: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
-    @Environment(\.openURL) private var openURL
 
     let user: CurrentUser?
     let taskerProfile: TaskerProfileSelf?
@@ -197,17 +196,6 @@ struct ProfileAccountSection: View {
                 ) {
                     isShowingProfileEditor = true
                 }
-
-                Divider()
-                    .padding(.leading, 66)
-
-                preTaskerSettingsRow(
-                    title: "Notifications",
-                    systemImage: "bell.fill",
-                    accessibilityIdentifier: "Profile.notificationsRow"
-                ) {
-                    openNotificationSettings()
-                }
             }
         }
     }
@@ -275,13 +263,6 @@ struct ProfileAccountSection: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(accessibilityIdentifier)
-    }
-
-    private func openNotificationSettings() {
-        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
-            return
-        }
-        openURL(settingsURL)
     }
 
     private var avatarFallback: some View {

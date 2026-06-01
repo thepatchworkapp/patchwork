@@ -323,7 +323,7 @@ struct ProfileTaskerSection: View {
         case "expired":
             return "Expired"
         default:
-            return "None"
+            return "Click to Activate"
         }
     }
 
