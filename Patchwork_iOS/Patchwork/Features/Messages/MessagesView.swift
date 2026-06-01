@@ -841,7 +841,7 @@ struct ChatView: View {
                     "messages:listMessagesSince",
                     args: [
                         "conversationId": conversationId,
-                        "since": nextSince,
+                        "afterCreatedAt": nextSince,
                         "limit": 100,
                     ]
                 )

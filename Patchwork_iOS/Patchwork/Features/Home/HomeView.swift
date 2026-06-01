@@ -199,12 +199,6 @@ struct HomeView: View {
                                 handleSpotlightSwipeEnd(value)
                             }
                     )
-
-                Text("\(currentCardIndex + 1) of \(visibleTaskers.count)")
-                    .font(.subheadline)
-                    .foregroundStyle(PatchworkTheme.textSecondary)
-                    .padding(.top, 14)
-                    .accessibilityLabel("Profile \(currentCardIndex + 1) of \(visibleTaskers.count)")
             }
 
             Spacer(minLength: 0)

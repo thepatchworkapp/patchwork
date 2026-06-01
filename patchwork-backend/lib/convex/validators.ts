@@ -303,32 +303,6 @@ export const messagesPageValidator = v.object({
   continueCursor: v.string(),
 });
 
-export const messagesDeltaValidator = v.object({
-  messages: v.array(messageWithProposalValidator),
-  hasMore: v.boolean(),
-  latestCursor: v.number(),
-  latestMessageAt: v.union(v.number(), v.null()),
-});
-
-export const threadWatchValidator = v.object({
-  messages: v.array(messageWithProposalValidator),
-  hasMore: v.boolean(),
-  latestCursor: v.number(),
-  latestMessageAt: v.union(v.number(), v.null()),
-  latestProposalUpdatedAt: v.union(v.number(), v.null()),
-  latestProposal: v.union(proposalPayloadValidator, v.null()),
-});
-
-export const reviewDocValidator = v.object({
-  _id: v.id("reviews"),
-  jobId: v.id("jobs"),
-  reviewerId: v.id("users"),
-  revieweeId: v.id("users"),
-  rating: v.number(),
-  text: v.string(),
-  createdAt: v.number(),
-});
-
 export const conversationValidator = v.object({
   _id: v.id("conversations"),
   _creationTime: v.number(),
@@ -355,6 +329,35 @@ export const conversationValidator = v.object({
   participantName: v.union(v.string(), v.null()),
   participantPhotoUrl: v.union(v.string(), v.null()),
   participantImage: v.union(imageAssetValidator, v.null()),
+});
+
+export const messagesDeltaValidator = v.object({
+  messages: v.array(messageWithProposalValidator),
+  hasMore: v.boolean(),
+  latestCursor: v.number(),
+  latestMessageId: v.union(v.id("messages"), v.null()),
+  latestMessageAt: v.union(v.number(), v.null()),
+});
+
+export const threadWatchValidator = v.object({
+  conversation: v.union(conversationValidator, v.null()),
+  messages: v.array(messageWithProposalValidator),
+  hasMore: v.boolean(),
+  latestCursor: v.number(),
+  latestMessageId: v.union(v.id("messages"), v.null()),
+  latestMessageAt: v.union(v.number(), v.null()),
+  latestProposalUpdatedAt: v.union(v.number(), v.null()),
+  latestProposal: v.union(proposalPayloadValidator, v.null()),
+});
+
+export const reviewDocValidator = v.object({
+  _id: v.id("reviews"),
+  jobId: v.id("jobs"),
+  reviewerId: v.id("users"),
+  revieweeId: v.id("users"),
+  rating: v.number(),
+  text: v.string(),
+  createdAt: v.number(),
 });
 
 export const locationUpdateResultValidator = v.object({

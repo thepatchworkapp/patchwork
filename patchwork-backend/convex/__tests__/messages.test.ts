@@ -777,13 +777,14 @@ describe("messages", () => {
 
     const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
       conversationId,
-      since: 1000,
+      afterCreatedAt: 1000,
       limit: 10,
     });
     expect(delta.messages.map((message: any) => message._id)).toStrictEqual([
       secondMessageId,
     ]);
     expect(delta.latestCursor).toBe(2000);
+    expect(delta.latestMessageId).toBe(secondMessageId);
     expect(delta.hasMore).toBe(false);
 
     const asStranger = t.withIdentity({
@@ -797,11 +798,47 @@ describe("messages", () => {
     });
     const unauthorized = await asStranger.query((api as any).messages.listMessagesSince, {
       conversationId,
-      since: 0,
+      afterCreatedAt: 0,
       limit: 10,
     });
     expect(unauthorized.messages).toHaveLength(0);
     expect(unauthorized.latestCursor).toBe(0);
+    expect(unauthorized.latestMessageId).toBeNull();
+  });
+
+  test("listMessagesSince uses afterMessageId for same-time cursor boundaries", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, conversationId } = await createConversation(t, "same_time_cursor");
+
+    const messageIds = [];
+    for (let i = 1; i <= 3; i++) {
+      messageIds.push(
+        await asSeeker.mutation(api.messages.sendMessage, {
+          conversationId,
+          content: `Same time ${i}`,
+        })
+      );
+    }
+    await t.run(async (ctx) => {
+      for (const messageId of messageIds) {
+        await ctx.db.patch(messageId, { createdAt: 1000, updatedAt: 1000 });
+      }
+    });
+
+    const orderedIds = [...messageIds].sort();
+    const boundaryId = orderedIds[0];
+    const expectedIds = orderedIds.slice(1);
+    const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      afterCreatedAt: 1000,
+      afterMessageId: boundaryId,
+      limit: 10,
+    });
+
+    expect(delta.messages.map((message: any) => message._id).sort()).toStrictEqual(
+      expectedIds
+    );
+    expect(delta.latestMessageId).toBe(expectedIds.at(-1));
   });
 
   test("listMessagesSince respects limit and hasMore", async () => {
@@ -829,7 +866,7 @@ describe("messages", () => {
 
     const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
       conversationId,
-      since: 999,
+      afterCreatedAt: 999,
       limit: 2,
     });
 
@@ -839,6 +876,7 @@ describe("messages", () => {
     ]);
     expect(delta.hasMore).toBe(true);
     expect(delta.latestCursor).toBe(1001);
+    expect(delta.latestMessageId).toBe(messageIds[1]);
   });
 
   test("listMessagesSince hydrates proposal payloads for proposal messages", async () => {
@@ -859,7 +897,7 @@ describe("messages", () => {
 
     const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
       conversationId,
-      since: 0,
+      afterCreatedAt: 0,
       limit: 10,
     });
     const proposalMessage = delta.messages.find(
@@ -893,14 +931,17 @@ describe("messages", () => {
 
     const watched = await asSeeker.query((api as any).messages.watchThread, {
       conversationId,
-      since: 1000,
+      afterCreatedAt: 1000,
       limit: 10,
     });
 
     expect(watched.messages.map((message: any) => message._id)).toStrictEqual([
       messageId,
     ]);
+    expect(watched.conversation?._id).toBe(conversationId);
+    expect(watched.conversation?.participantName).toBe("Tasker watch_text");
     expect(watched.latestMessageAt).toBe(2000);
+    expect(watched.latestMessageId).toBe(messageId);
     expect(watched.latestProposalUpdatedAt).toBeNull();
     expect(watched.latestCursor).toBe(2000);
   });
@@ -931,7 +972,7 @@ describe("messages", () => {
 
     const watched = await asSeeker.query((api as any).messages.watchThread, {
       conversationId,
-      since: 1000,
+      afterCreatedAt: 1000,
       limit: 10,
     });
     const proposalMessage = watched.messages.find(
@@ -972,7 +1013,7 @@ describe("messages", () => {
       (api as any).messages.watchThread,
       {
         conversationId: accepted.conversationId,
-        since: 1000,
+        afterCreatedAt: 1000,
         limit: 10,
       }
     );
@@ -1009,7 +1050,7 @@ describe("messages", () => {
       (api as any).messages.watchThread,
       {
         conversationId: declined.conversationId,
-        since: 1000,
+        afterCreatedAt: 1000,
         limit: 10,
       }
     );
@@ -1058,7 +1099,7 @@ describe("messages", () => {
     );
     const watched = await asTasker.query((api as any).messages.watchThread, {
       conversationId,
-      since: 1000,
+      afterCreatedAt: 1000,
       limit: 10,
     });
 
@@ -1092,7 +1133,7 @@ describe("messages", () => {
 
     const watched = await asSeeker.query((api as any).messages.watchThread, {
       conversationId,
-      since: 1000,
+      afterCreatedAt: 1000,
       limit: 10,
     });
 

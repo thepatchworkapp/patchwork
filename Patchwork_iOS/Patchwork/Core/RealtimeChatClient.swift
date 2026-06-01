@@ -84,7 +84,7 @@ final class RealtimeChatClient {
                         to: "messages:watchThread",
                         with: [
                             "conversationId": conversationId,
-                            "since": Double(afterCreatedAt),
+                            "afterCreatedAt": Double(afterCreatedAt),
                             "limit": Double(limit),
                         ],
                         yielding: RealtimeThreadDelta.self

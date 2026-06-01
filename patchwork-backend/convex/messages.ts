@@ -8,6 +8,10 @@ import {
   threadWatchValidator,
 } from "../lib/convex/validators";
 import { getAppUserOrNull, requireAppUser } from "./authHelpers";
+import {
+  getTaskerProfileImageAssetDto,
+  getUserPhotoImageAssetDto,
+} from "./imageAssetHelpers";
 import { assertUsersCanMessage } from "./moderation";
 import { Doc } from "./_generated/dataModel";
 
@@ -189,37 +193,48 @@ export const listMessages = query({
 export const listMessagesSince = query({
   args: {
     conversationId: v.id("conversations"),
-    since: v.number(),
+    afterCreatedAt: v.optional(v.number()),
+    afterMessageId: v.optional(v.id("messages")),
+    since: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
   returns: messagesDeltaValidator,
   handler: async (ctx, args) => {
+    const cursor = messageCursor(args);
     const empty = {
       messages: [],
       hasMore: false,
-      latestCursor: args.since,
+      latestCursor: cursor.afterCreatedAt,
+      latestMessageId: null,
       latestMessageAt: null,
     };
-    const isParticipant = await isConversationParticipant(ctx, args.conversationId);
-    if (!isParticipant) return empty;
+    const participant = await getParticipantConversation(ctx, args.conversationId);
+    if (!participant) return empty;
 
     const limit = normalizeRealtimeLimit(args.limit);
     const rows = await ctx.db
       .query("messages")
-      .withIndex("by_conversation_time", (q) =>
-        q.eq("conversationId", args.conversationId).gt("createdAt", args.since)
-      )
+      .withIndex("by_conversation_time", (q) => {
+        const scoped = q.eq("conversationId", args.conversationId);
+        return cursor.afterMessageId
+          ? scoped.gte("createdAt", cursor.afterCreatedAt)
+          : scoped.gt("createdAt", cursor.afterCreatedAt);
+      })
       .order("asc")
-      .take(limit + 1);
+      .take(limit + 101);
 
-    const messages = rows.slice(0, limit);
+    const filteredRows = rows.filter((message) => isMessageAfterCursor(message, cursor));
+    const messages = filteredRows.slice(0, limit);
     const hydrated = await hydrateMessages(ctx, messages);
+    const latestMessage = messages.at(-1);
+    const latestMessageId = latestMessageIdAtCursor(messages);
 
     return {
       messages: hydrated,
-      hasMore: rows.length > limit,
-      latestCursor: hydrated.at(-1)?.createdAt ?? args.since,
-      latestMessageAt: hydrated.at(-1)?.createdAt ?? null,
+      hasMore: filteredRows.length > limit,
+      latestCursor: latestMessage?.createdAt ?? cursor.afterCreatedAt,
+      latestMessageId,
+      latestMessageAt: latestMessage?.createdAt ?? null,
     };
   },
 });
@@ -227,49 +242,67 @@ export const listMessagesSince = query({
 export const watchThread = query({
   args: {
     conversationId: v.id("conversations"),
-    since: v.number(),
+    afterCreatedAt: v.optional(v.number()),
+    afterMessageId: v.optional(v.id("messages")),
+    since: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
   returns: threadWatchValidator,
   handler: async (ctx, args) => {
+    const cursor = messageCursor(args);
     const empty = {
+      conversation: null,
       messages: [],
       hasMore: false,
-      latestCursor: args.since,
+      latestCursor: cursor.afterCreatedAt,
+      latestMessageId: null,
       latestMessageAt: null,
       latestProposalUpdatedAt: null,
       latestProposal: null,
     };
-    const isParticipant = await isConversationParticipant(ctx, args.conversationId);
-    if (!isParticipant) return empty;
+    const participant = await getParticipantConversation(ctx, args.conversationId);
+    if (!participant) return empty;
 
     const limit = normalizeRealtimeLimit(args.limit);
     const rows = await ctx.db
       .query("messages")
-      .withIndex("by_conversation_time", (q) =>
-        q.eq("conversationId", args.conversationId).gt("createdAt", args.since)
-      )
+      .withIndex("by_conversation_time", (q) => {
+        const scoped = q.eq("conversationId", args.conversationId);
+        return cursor.afterMessageId
+          ? scoped.gte("createdAt", cursor.afterCreatedAt)
+          : scoped.gt("createdAt", cursor.afterCreatedAt);
+      })
       .order("asc")
-      .take(limit + 1);
-    const messages = rows.slice(0, limit);
+      .take(limit + 101);
+    const filteredRows = rows.filter((message) => isMessageAfterCursor(message, cursor));
+    const messages = filteredRows.slice(0, limit);
     const hydrated = await hydrateMessages(ctx, messages);
+    const latestMessage = messages.at(-1);
+    const latestMessageId = latestMessageIdAtCursor(messages);
 
     const latestProposal = await ctx.db
       .query("proposals")
       .withIndex("by_conversation_updatedAt", (q) =>
-        q.eq("conversationId", args.conversationId).gt("updatedAt", args.since)
+        q.eq("conversationId", args.conversationId).gt("updatedAt", cursor.afterCreatedAt)
       )
       .order("desc")
       .first();
+    const conversation = await serializeConversationForUser(
+      ctx,
+      participant.conversation,
+      participant.user._id
+    );
 
     return {
+      conversation,
       messages: hydrated,
-      hasMore: rows.length > limit,
+      hasMore: filteredRows.length > limit,
       latestCursor: Math.max(
-        hydrated.at(-1)?.createdAt ?? args.since,
-        latestProposal?.updatedAt ?? args.since
+        latestMessage?.createdAt ?? cursor.afterCreatedAt,
+        latestProposal?.updatedAt ?? cursor.afterCreatedAt
       ),
-      latestMessageAt: hydrated.at(-1)?.createdAt ?? null,
+      latestMessageId,
+      latestMessageAt: latestMessage?.createdAt ?? null,
       latestProposalUpdatedAt: latestProposal?.updatedAt ?? null,
       latestProposal: latestProposal ? serializeProposal(latestProposal) : null,
     };
@@ -344,19 +377,101 @@ function normalizeRealtimeLimit(limit: number | undefined) {
   return Math.min(limit, 100);
 }
 
-async function isConversationParticipant(
+function messageCursor(args: {
+  afterCreatedAt?: number;
+  afterMessageId?: Doc<"messages">["_id"];
+  since?: number;
+}) {
+  return {
+    afterCreatedAt: args.afterCreatedAt ?? args.since ?? 0,
+    afterMessageId: args.afterMessageId,
+  };
+}
+
+function isMessageAfterCursor(
+  message: Doc<"messages">,
+  cursor: ReturnType<typeof messageCursor>
+) {
+  if (message.createdAt > cursor.afterCreatedAt) return true;
+  if (message.createdAt < cursor.afterCreatedAt) return false;
+  if (!cursor.afterMessageId) return false;
+  return String(message._id) > String(cursor.afterMessageId);
+}
+
+function latestMessageIdAtCursor(messages: Doc<"messages">[]) {
+  const latestCreatedAt = messages.at(-1)?.createdAt;
+  if (latestCreatedAt === undefined) return null;
+  return messages
+    .filter((message) => message.createdAt === latestCreatedAt)
+    .map((message) => String(message._id))
+    .sort()
+    .at(-1) as Doc<"messages">["_id"];
+}
+
+async function getParticipantConversation(
   ctx: any,
   conversationId: Doc<"conversations">["_id"]
 ) {
   const session = await getAppUserOrNull(ctx);
-  if (!session) return false;
+  if (!session) return null;
 
   const conversation = await ctx.db.get(conversationId);
-  return Boolean(
-    conversation &&
-      (conversation.seekerId === session.user._id ||
-        conversation.taskerId === session.user._id)
-  );
+  if (
+    !conversation ||
+    (conversation.seekerId !== session.user._id &&
+      conversation.taskerId !== session.user._id)
+  ) {
+    return null;
+  }
+  return { user: session.user, conversation };
+}
+
+async function serializeConversationForUser(
+  ctx: any,
+  conversation: Doc<"conversations">,
+  userId: Doc<"users">["_id"]
+) {
+  const [seeker, tasker] = await Promise.all([
+    ctx.db.get(conversation.seekerId),
+    ctx.db.get(conversation.taskerId),
+  ]);
+  const taskerProfile = tasker
+    ? await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_userId", (q: any) => q.eq("userId", tasker._id))
+      .unique()
+    : null;
+
+  const seekerPhotoUrl = seeker?.photo ? await ctx.storage.getUrl(seeker.photo) : null;
+  const taskerPhotoUrl = tasker?.photo ? await ctx.storage.getUrl(tasker.photo) : null;
+  const seekerImage = seeker ? await getUserPhotoImageAssetDto(ctx, seeker, true) : null;
+  const taskerImage = tasker
+    ? taskerProfile
+      ? await getTaskerProfileImageAssetDto(ctx, tasker, taskerProfile, true)
+      : await getUserPhotoImageAssetDto(ctx, tasker, true)
+    : null;
+  const participantName = conversation.seekerId === userId
+    ? tasker?.name ?? "Tasker"
+    : seeker?.name ?? "Seeker";
+  const participantPhotoUrl = conversation.seekerId === userId
+    ? taskerPhotoUrl
+    : seekerPhotoUrl;
+  const participantImage = conversation.seekerId === userId
+    ? taskerImage
+    : seekerImage;
+
+  return {
+    ...conversation,
+    seekerName: seeker?.name ?? "Seeker",
+    taskerName: tasker?.name ?? "Tasker",
+    seekerPhotoUrl,
+    taskerPhotoUrl,
+    seekerImage,
+    taskerImage,
+    participantName,
+    participantPhotoUrl,
+    participantImage,
+  };
 }
 
 async function hydrateMessages(ctx: any, messages: Doc<"messages">[]) {
