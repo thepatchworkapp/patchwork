@@ -147,28 +147,23 @@ struct RootView: View {
     }
 
     private var shouldShowForegroundRefreshLoading: Bool {
-        isForegroundRefreshPending
-            && appState.currentUser == nil
-            && !preserveAuthenticatedRouteDuringForegroundRefresh
+        rootLoadingPolicy.shouldShowForegroundRefreshLoading
     }
 
     private var shouldShowSessionRestoreLoading: Bool {
-        (sessionStore.isRestoringSession || sessionStore.needsSessionRestore)
-            && !preserveAuthenticatedRouteDuringForegroundRefresh
+        rootLoadingPolicy.shouldShowSessionRestoreLoading
     }
 
-    private var preserveAuthenticatedRouteDuringForegroundRefresh: Bool {
-        guard isForegroundRefreshPending,
-              sessionStore.isAuthenticated,
-              appState.isBootstrapped else {
-            return false
-        }
-
-        if appState.currentUser != nil {
-            return true
-        }
-
-        return !sessionStore.launchedWithPersistedSession
+    private var rootLoadingPolicy: RootLoadingPolicy {
+        RootLoadingPolicy(
+            isAuthenticated: sessionStore.isAuthenticated,
+            isRestoringSession: sessionStore.isRestoringSession,
+            needsSessionRestore: sessionStore.needsSessionRestore,
+            isForegroundRefreshPending: isForegroundRefreshPending,
+            isBootstrapped: appState.isBootstrapped,
+            hasCurrentUser: appState.currentUser != nil,
+            launchedWithPersistedSession: sessionStore.launchedWithPersistedSession
+        )
     }
 
     private var periodicSessionRefreshKey: String {
@@ -659,6 +654,39 @@ struct RootView: View {
     private var shouldWaitForPersistedCurrentUserResolution: Bool {
         sessionStore.launchedWithPersistedSession
             && !appState.hasConfirmedMissingCurrentUser
+    }
+}
+
+struct RootLoadingPolicy: Equatable {
+    var isAuthenticated: Bool
+    var isRestoringSession: Bool
+    var needsSessionRestore: Bool
+    var isForegroundRefreshPending: Bool
+    var isBootstrapped: Bool
+    var hasCurrentUser: Bool
+    var launchedWithPersistedSession: Bool
+
+    var shouldShowForegroundRefreshLoading: Bool {
+        isForegroundRefreshPending
+            && !hasCurrentUser
+            && !preservesAuthenticatedRouteDuringRefresh
+    }
+
+    var shouldShowSessionRestoreLoading: Bool {
+        (isRestoringSession || needsSessionRestore)
+            && !preservesAuthenticatedRouteDuringRefresh
+    }
+
+    private var preservesAuthenticatedRouteDuringRefresh: Bool {
+        guard isAuthenticated, isBootstrapped else {
+            return false
+        }
+
+        if hasCurrentUser {
+            return true
+        }
+
+        return isForegroundRefreshPending && !launchedWithPersistedSession
     }
 }
 

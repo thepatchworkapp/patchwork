@@ -8,6 +8,64 @@ final class PatchworkTests: XCTestCase {
         super.tearDown()
     }
 
+    func testRootLoadingPolicyPreservesBootstrappedCurrentUserDuringSessionRestore() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: true,
+            needsSessionRestore: false,
+            isForegroundRefreshPending: false,
+            isBootstrapped: true,
+            hasCurrentUser: true,
+            launchedWithPersistedSession: true
+        )
+
+        XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
+        XCTAssertFalse(policy.shouldShowForegroundRefreshLoading)
+    }
+
+    func testRootLoadingPolicyPreservesBootstrappedCurrentUserDuringNeededSessionRestore() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: false,
+            needsSessionRestore: true,
+            isForegroundRefreshPending: false,
+            isBootstrapped: true,
+            hasCurrentUser: true,
+            launchedWithPersistedSession: true
+        )
+
+        XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
+    }
+
+    func testRootLoadingPolicyWaitsForPersistedSessionWithoutCurrentUser() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: true,
+            needsSessionRestore: false,
+            isForegroundRefreshPending: false,
+            isBootstrapped: true,
+            hasCurrentUser: false,
+            launchedWithPersistedSession: true
+        )
+
+        XCTAssertTrue(policy.shouldShowSessionRestoreLoading)
+    }
+
+    func testRootLoadingPolicyPreservesForegroundRefreshForFreshAuthenticatedRoute() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: true,
+            needsSessionRestore: false,
+            isForegroundRefreshPending: true,
+            isBootstrapped: true,
+            hasCurrentUser: false,
+            launchedWithPersistedSession: false
+        )
+
+        XCTAssertFalse(policy.shouldShowForegroundRefreshLoading)
+        XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
+    }
+
     func testVerifyOTPPropagatesBetterAuthCookieToConvexTokenRequest() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
