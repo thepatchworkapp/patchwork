@@ -102,6 +102,64 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(proposals.first?.isOptimistic, false)
     }
 
+    func testOptimisticProposalMessageReconcilesByClientProposalId() throws {
+        let optimistic = message(
+            serverMessageId: nil,
+            type: "proposal",
+            content: "Proposal sent",
+            clientProposalId: "client-proposal-1",
+            createdAt: 100,
+            updatedAt: 100,
+            isOptimistic: true,
+            localStatus: "sending"
+        )
+        try store.upsertOptimisticMessage(optimistic)
+
+        let confirmed = message(
+            serverMessageId: "message-1",
+            type: "proposal",
+            content: "Proposal sent",
+            clientProposalId: "client-proposal-1",
+            createdAt: 105,
+            updatedAt: 90,
+            isOptimistic: false
+        )
+        try store.apply(delta: .init(messages: [confirmed]), conversationId: "conversation-1")
+
+        let messages = try store.messages(conversationId: "conversation-1")
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.serverMessageId, "message-1")
+        XCTAssertEqual(messages.first?.clientProposalId, "client-proposal-1")
+        XCTAssertEqual(messages.first?.localStatus, "synced")
+        XCTAssertEqual(messages.first?.isOptimistic, false)
+    }
+
+    func testProposalMessageFailureIsMarkedByClientProposalId() throws {
+        try store.upsertOptimisticMessage(
+            message(
+                serverMessageId: nil,
+                type: "proposal",
+                content: "Proposal sent",
+                clientProposalId: "client-proposal-1",
+                createdAt: 100,
+                isOptimistic: true,
+                localStatus: "sending"
+            )
+        )
+
+        try store.markProposalMessageFailed(clientProposalId: "client-proposal-1")
+
+        var message = try XCTUnwrap(store.messages(conversationId: "conversation-1").first)
+        XCTAssertEqual(message.localStatus, "failed")
+        XCTAssertEqual(message.isOptimistic, true)
+
+        try store.markProposalMessageSending(clientProposalId: "client-proposal-1")
+
+        message = try XCTUnwrap(store.messages(conversationId: "conversation-1").first)
+        XCTAssertEqual(message.localStatus, "sending")
+        XCTAssertEqual(message.isOptimistic, true)
+    }
+
     func testStaleMessageAndProposalDeltasAreIgnored() throws {
         try store.apply(
             delta: .init(
@@ -197,20 +255,26 @@ final class ChatLocalStoreTests: XCTestCase {
     private func message(
         serverMessageId: ConvexID? = "message-1",
         clientMessageId: String? = nil,
+        type: String = "text",
         content: String = "Hello",
+        clientProposalId: String? = nil,
         createdAt: Int,
         updatedAt: Int? = nil,
-        isOptimistic: Bool = false
+        isOptimistic: Bool = false,
+        localStatus: String = "synced"
     ) -> LocalMessage.Snapshot {
         LocalMessage.Snapshot(
             conversationId: "conversation-1",
             serverMessageId: serverMessageId,
             clientMessageId: clientMessageId,
             senderId: "seeker-1",
+            type: type,
             content: content,
+            clientProposalId: clientProposalId,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            isOptimistic: isOptimistic
+            isOptimistic: isOptimistic,
+            localStatus: localStatus
         )
     }
 

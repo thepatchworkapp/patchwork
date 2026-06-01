@@ -130,6 +130,28 @@ final class ChatLocalStore {
         try context.save()
     }
 
+    func markProposalMessageFailed(clientProposalId: String) throws {
+        guard let message = try context.fetch(FetchDescriptor<LocalMessage>())
+            .first(where: { $0.clientProposalId == clientProposalId }) else {
+            return
+        }
+        message.isOptimistic = true
+        message.localStatus = "failed"
+        message.updatedAt = max(message.updatedAt, Int(Date().timeIntervalSince1970 * 1000))
+        try context.save()
+    }
+
+    func markProposalMessageSending(clientProposalId: String) throws {
+        guard let message = try context.fetch(FetchDescriptor<LocalMessage>())
+            .first(where: { $0.clientProposalId == clientProposalId }) else {
+            return
+        }
+        message.isOptimistic = true
+        message.localStatus = "sending"
+        message.updatedAt = max(message.updatedAt, Int(Date().timeIntervalSince1970 * 1000))
+        try context.save()
+    }
+
     @discardableResult
     func upsertOptimisticProposal(_ snapshot: LocalProposal.Snapshot) throws -> LocalProposal.Snapshot {
         upsert(proposal: snapshot)
@@ -284,6 +306,10 @@ final class ChatLocalStore {
         }
         if let clientMessageId = snapshot.clientMessageId,
            let message = messages.first(where: { $0.clientMessageId == clientMessageId }) {
+            return message
+        }
+        if let clientProposalId = snapshot.clientProposalId,
+           let message = messages.first(where: { $0.clientProposalId == clientProposalId }) {
             return message
         }
         return messages.first { $0.id == snapshot.id }

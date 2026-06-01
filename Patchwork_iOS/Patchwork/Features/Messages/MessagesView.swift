@@ -199,9 +199,19 @@ struct MessagesView: View {
         return PatchworkEmptyStateCard(
             systemImage: isSearchEmptyState ? "magnifyingglass" : "bubble.left.and.bubble.right.fill",
             title: isSearchEmptyState ? "No matching conversations" : "No conversations yet",
-            message: isSearchEmptyState ? "Try searching for a different name or message preview." : "Start a conversation from discovery or respond to a seeker to see your inbox come to life."
+            message: emptyStateMessage(isSearchEmptyState: isSearchEmptyState)
         )
         .frame(maxWidth: .infinity)
+    }
+
+    private func emptyStateMessage(isSearchEmptyState: Bool) -> String {
+        if isSearchEmptyState {
+            return "Try searching for a different name or message preview."
+        }
+        if activeRole == "tasker" {
+            return "New seeker questions, proposals, and job updates will appear here."
+        }
+        return "Start a conversation from discovery to see your inbox come to life."
     }
 
     private func conversationRow(_ conversation: ConversationSummary) -> some View {
@@ -1013,44 +1023,125 @@ struct ChatView: View {
         guard let rateNumber = Double(proposalRate),
               !proposalDate.isEmpty,
               !proposalTime.isEmpty else { return }
+        guard let currentUserId = appState.currentUser?.id,
+              let receiverId = otherUserId else { return }
 
         let cents = Int((rateNumber * 100).rounded())
         guard let startDateTime = ProposalDateTimeCodec.encode(date: proposalDate, time: proposalTime) else {
             appState.lastError = "Enter a valid proposal date and time."
             return
         }
+        let originalProposalId = counteringProposal?.id
+        let notes = proposalNotes
+        let clientProposalId = UUID().uuidString
+        let now = Int(Date().timeIntervalSince1970 * 1000)
         do {
-            let clientProposalId = UUID().uuidString
-            if let original = counteringProposal {
-                _ = try await sessionStore.client.mutation(
-                    "proposals:counterProposal",
-                    args: [
-                        "proposalId": original.id,
-                        "clientProposalId": clientProposalId,
-                        "rate": cents,
-                        "rateType": proposalRateType,
-                        "startDateTime": startDateTime,
-                        "notes": proposalNotes,
-                    ]
-                ) as ConvexID
-            } else {
-                _ = try await sessionStore.client.mutation(
-                    "proposals:sendProposal",
-                    args: [
-                        "conversationId": conversationId,
-                        "clientProposalId": clientProposalId,
-                        "rate": cents,
-                        "rateType": proposalRateType,
-                        "startDateTime": startDateTime,
-                        "notes": proposalNotes,
-                    ]
-                ) as ConvexID
-            }
+            try insertOptimisticProposalPreview(
+                clientProposalId: clientProposalId,
+                senderId: currentUserId,
+                receiverId: receiverId,
+                rate: cents,
+                rateType: proposalRateType,
+                startDateTime: startDateTime,
+                notes: notes,
+                previousProposalId: originalProposalId,
+                createdAt: now
+            )
+            reloadMessagesFromLocalStore(surfaceErrors: true)
             showProposalForm = false
             counteringProposal = nil
+
+            try await sendProposalMutation(
+                originalProposalId: originalProposalId,
+                clientProposalId: clientProposalId,
+                rate: cents,
+                rateType: proposalRateType,
+                startDateTime: startDateTime,
+                notes: notes
+            )
             await syncMessagesSince(surfaceErrors: false)
         } catch {
+            try? chatLocalStore.markProposalMessageFailed(clientProposalId: clientProposalId)
+            reloadMessagesFromLocalStore(surfaceErrors: false)
             appState.presentError(error)
+        }
+    }
+
+    private func insertOptimisticProposalPreview(
+        clientProposalId: String,
+        senderId: ConvexID,
+        receiverId: ConvexID,
+        rate: Int,
+        rateType: String,
+        startDateTime: String,
+        notes: String,
+        previousProposalId: ConvexID?,
+        createdAt: Int
+    ) throws {
+        try chatLocalStore.upsertOptimisticProposal(
+            LocalProposal.Snapshot(
+                conversationId: conversationId,
+                clientProposalId: clientProposalId,
+                senderId: senderId,
+                receiverId: receiverId,
+                rate: rate,
+                rateType: rateType,
+                startDateTime: startDateTime,
+                notes: notes,
+                status: "pending",
+                previousProposalId: previousProposalId,
+                createdAt: createdAt,
+                updatedAt: createdAt,
+                isOptimistic: true
+            )
+        )
+        try chatLocalStore.upsertOptimisticMessage(
+            LocalMessage.Snapshot(
+                conversationId: conversationId,
+                senderId: senderId,
+                type: "proposal",
+                content: previousProposalId == nil ? "Proposal sent" : "Counter proposal sent",
+                clientProposalId: clientProposalId,
+                createdAt: createdAt,
+                updatedAt: createdAt,
+                isOptimistic: true,
+                localStatus: "sending"
+            )
+        )
+    }
+
+    private func sendProposalMutation(
+        originalProposalId: ConvexID?,
+        clientProposalId: String,
+        rate: Int,
+        rateType: String,
+        startDateTime: String,
+        notes: String
+    ) async throws {
+        if let originalProposalId {
+            _ = try await sessionStore.client.mutation(
+                "proposals:counterProposal",
+                args: [
+                    "proposalId": originalProposalId,
+                    "clientProposalId": clientProposalId,
+                    "rate": rate,
+                    "rateType": rateType,
+                    "startDateTime": startDateTime,
+                    "notes": notes,
+                ]
+            ) as ConvexID
+        } else {
+            _ = try await sessionStore.client.mutation(
+                "proposals:sendProposal",
+                args: [
+                    "conversationId": conversationId,
+                    "clientProposalId": clientProposalId,
+                    "rate": rate,
+                    "rateType": rateType,
+                    "startDateTime": startDateTime,
+                    "notes": notes,
+                ]
+            ) as ConvexID
         }
     }
 
@@ -1174,12 +1265,14 @@ struct ChatView: View {
             ProposalMessageCard(
                 proposal: proposal,
                 isMine: isMyMessage(message),
+                localStatus: message.localStatus,
                 onAccept: { Task { await accept(proposal: proposal) } },
                 onDecline: { Task { await decline(proposal: proposal) } },
                 onCounter: {
                     primeCounterForm(proposal)
                     showProposalForm = true
-                }
+                },
+                onRetry: { Task { await retryProposal(message: message) } }
             )
         } else if message.type == "system" {
             Text(message.content)
@@ -1202,6 +1295,30 @@ struct ChatView: View {
         guard message.localStatus == "failed" else { return }
         text = message.content
         await send()
+    }
+
+    private func retryProposal(message: ChatMessage) async {
+        guard message.localStatus == "failed",
+              let proposal = message.proposal,
+              let clientProposalId = proposal.clientProposalId else { return }
+
+        do {
+            try chatLocalStore.markProposalMessageSending(clientProposalId: clientProposalId)
+            reloadMessagesFromLocalStore(surfaceErrors: false)
+            try await sendProposalMutation(
+                originalProposalId: proposal.previousProposalId,
+                clientProposalId: clientProposalId,
+                rate: proposal.rate,
+                rateType: proposal.rateType,
+                startDateTime: proposal.startDateTime,
+                notes: proposal.notes ?? ""
+            )
+            await syncMessagesSince(surfaceErrors: false)
+        } catch {
+            try? chatLocalStore.markProposalMessageFailed(clientProposalId: clientProposalId)
+            reloadMessagesFromLocalStore(surfaceErrors: false)
+            appState.presentError(error)
+        }
     }
 
     private func timeLabel(_ millis: Int) -> String {
@@ -1238,9 +1355,11 @@ private struct ProposalMessageCard: View {
 
     let proposal: ProposalPayload
     let isMine: Bool
+    let localStatus: String?
     let onAccept: () -> Void
     let onDecline: () -> Void
     let onCounter: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1280,6 +1399,18 @@ private struct ProposalMessageCard: View {
                         .buttonStyle(PatchworkPrimaryButtonStyle())
                 }
                 .accessibilityIdentifier("Chat.proposalActions")
+            }
+
+            if localStatus == "sending" {
+                Text("Sending...")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+            } else if localStatus == "failed" {
+                Button("Failed - Retry", action: onRetry)
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.danger)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("Chat.proposal.retryButton")
             }
         }
         .padding(16)
@@ -1332,8 +1463,7 @@ private struct ProposalMessageCard: View {
     }
 
     private var rateLabel: String {
-        let amount = (Double(proposal.rate) / 100).formatted(.number.precision(.fractionLength(2)))
-        return "$\(amount)/\(proposal.rateType)"
+        "\(PatchworkCurrency.formatted(cents: proposal.rate))/\(proposal.rateType)"
     }
 
     private var scheduleLabel: String {
@@ -1562,7 +1692,7 @@ private enum PatchworkCalendarWriter {
            !participantName.isEmpty {
             lines.append("Conversation: \(participantName)")
         }
-        let amount = (Double(proposal.rate) / 100).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        let amount = PatchworkCurrency.formatted(cents: proposal.rate)
         lines.append("Rate: \(amount) \(proposal.rateType)")
         if let notes = proposal.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
             lines.append("")
