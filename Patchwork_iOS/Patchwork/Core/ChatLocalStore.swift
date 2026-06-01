@@ -222,11 +222,31 @@ final class ChatLocalStore {
         let storedCursor = try context.fetch(FetchDescriptor<LocalConversation>())
             .first { $0.id == conversationId }?
             .newestCursor
-        let newestMessageCursor = try messages(conversationId: conversationId)
+        let cachedMessages = try messages(conversationId: conversationId)
+        let newestMessageCursor = cachedMessages
             .filter { !$0.isOptimistic }
             .map { String($0.createdAt) }
             .max(by: Self.cursorPrecedes)
-        return Self.newestCursor(storedCursor, newestMessageCursor)
+        let resolvedCursor = Self.newestCursor(storedCursor, newestMessageCursor)
+
+        guard let oldestSendingCreatedAt = cachedMessages
+            .filter({ $0.isOptimistic && $0.serverMessageId == nil && $0.localStatus == "sending" })
+            .map(\.createdAt)
+            .min() else {
+            return resolvedCursor
+        }
+
+        let retryFromCreatedAt: Int
+        guard let resolvedCursor else {
+            return String(max(0, oldestSendingCreatedAt - 1))
+        }
+        if let resolvedCreatedAt = Int(resolvedCursor) {
+            retryFromCreatedAt = min(resolvedCreatedAt, oldestSendingCreatedAt)
+        } else {
+            let retryCursor = String(max(0, oldestSendingCreatedAt - 1))
+            return Self.cursorPrecedes(retryCursor, resolvedCursor) ? retryCursor : resolvedCursor
+        }
+        return String(max(0, retryFromCreatedAt - 1))
     }
 
     static func newestCursor(_ lhs: String?, _ rhs: String?) -> String? {

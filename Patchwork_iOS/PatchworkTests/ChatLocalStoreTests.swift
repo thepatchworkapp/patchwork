@@ -197,6 +197,62 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "80")
     }
 
+    func testNewestCursorStaysBeforeSendingOptimisticMessageUntilReconciled() throws {
+        try store.apply(
+            delta: .init(
+                conversation: conversation(newestCursor: "200", updatedAt: 200),
+                cursor: "200"
+            ),
+            conversationId: "conversation-1"
+        )
+        try store.upsertOptimisticMessage(
+            message(
+                serverMessageId: nil,
+                clientMessageId: "client-message-1",
+                content: "Pending",
+                createdAt: 250,
+                updatedAt: 250,
+                isOptimistic: true,
+                localStatus: "sending"
+            )
+        )
+
+        XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "199")
+
+        try store.apply(
+            messagesSince: MessagesSinceResponse(
+                messages: [
+                    ChatMessage(
+                        id: "message-1",
+                        conversationId: "conversation-1",
+                        senderId: "seeker-1",
+                        type: "text",
+                        content: "Pending",
+                        proposalId: nil,
+                        proposal: nil,
+                        createdAt: 201,
+                        updatedAt: 201,
+                        clientMessageId: "client-message-1",
+                        localStatus: nil
+                    ),
+                ],
+                hasMore: false,
+                latestCursor: 201,
+                latestMessageId: "message-1",
+                latestMessageAt: 201,
+                latestProposalUpdatedAt: nil
+            ),
+            conversationId: "conversation-1"
+        )
+
+        let messages = try store.messages(conversationId: "conversation-1")
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.serverMessageId, "message-1")
+        XCTAssertEqual(messages.first?.localStatus, "synced")
+        XCTAssertEqual(messages.first?.isOptimistic, false)
+        XCTAssertEqual(try store.newestCursor(for: "conversation-1"), "201")
+    }
+
     func testRenderableChatMessagesMergeCachedMessagesAndSinceDeltas() throws {
         try store.apply(
             delta: .init(messages: [
