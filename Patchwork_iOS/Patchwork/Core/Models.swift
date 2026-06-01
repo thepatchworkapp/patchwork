@@ -2,6 +2,18 @@ import Foundation
 
 typealias ConvexID = String
 
+enum PatchworkCurrency {
+    static let code = "CAD"
+
+    static func formatted(cents: Int) -> String {
+        formatted(dollars: Double(cents) / 100)
+    }
+
+    static func formatted(dollars: Double) -> String {
+        dollars.formatted(.currency(code: code))
+    }
+}
+
 struct RemoteImageVariant: Codable, Hashable {
     let url: String?
     let width: Int?

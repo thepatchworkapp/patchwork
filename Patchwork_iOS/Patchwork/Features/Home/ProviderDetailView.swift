@@ -526,12 +526,10 @@ struct ProviderDetailView: View {
     private func rateLabel(for profile: TaskerCategoryProfile?) -> String? {
         guard let profile else { return nil }
         if profile.rateType == "hourly", let hourlyRate = profile.hourlyRate {
-            let amount = Double(hourlyRate) / 100
-            return "\(amount.formatted(.currency(code: "USD")))/hr"
+            return "\(PatchworkCurrency.formatted(cents: hourlyRate))/hr"
         }
         if let fixedRate = profile.fixedRate {
-            let amount = Double(fixedRate) / 100
-            return "\(amount.formatted(.currency(code: "USD"))) flat"
+            return "\(PatchworkCurrency.formatted(cents: fixedRate)) flat"
         }
         return nil
     }

@@ -265,8 +265,7 @@ struct JobsView: View {
         guard let rate = job.rate else {
             return "Rate unavailable"
         }
-        let dollars = Double(rate) / 100
-        let base = dollars.formatted(.currency(code: "USD"))
+        let base = PatchworkCurrency.formatted(cents: rate)
         return job.rateType == "hourly" ? "\(base)/hr" : base
     }
 

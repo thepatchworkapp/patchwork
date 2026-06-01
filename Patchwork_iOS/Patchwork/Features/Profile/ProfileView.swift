@@ -1990,9 +1990,9 @@ private struct TaskerProfileManageView: View {
         let rateTypeLabel = category.rateType.capitalized
         let priceLabel: String
         if category.rateType == "hourly", let hourlyRate = category.hourlyRate {
-            priceLabel = "$\((Double(hourlyRate) / 100).formatted(.number.precision(.fractionLength(2))))/hr"
+            priceLabel = "\(PatchworkCurrency.formatted(cents: hourlyRate))/hr"
         } else if let fixedRate = category.fixedRate {
-            priceLabel = "$\((Double(fixedRate) / 100).formatted(.number.precision(.fractionLength(2))))"
+            priceLabel = PatchworkCurrency.formatted(cents: fixedRate)
         } else {
             priceLabel = "Rate unavailable"
         }
