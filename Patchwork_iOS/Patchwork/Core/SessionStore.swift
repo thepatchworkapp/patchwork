@@ -124,6 +124,7 @@ final class SessionStore {
     private(set) var cachedCurrentUser: CurrentUser?
     private(set) var launchedWithPersistedSession = false
     private(set) var hasAttemptedSessionRestore = false
+    private(set) var hasTerminalSessionRestoreFailure = false
     private(set) var isLoading = false
     private(set) var isRestoringSession = false
     private(set) var errorMessage: String?
@@ -300,8 +301,15 @@ final class SessionStore {
             )
             return true
         } catch {
+            let shouldClearSession = shouldClearSessionAfterRestoreFailure(error)
             if token != nil {
+                hasTerminalSessionRestoreFailure = shouldClearSession
                 return true
+            }
+
+            if shouldClearSession {
+                clearSession(errorMessage: nil)
+                return false
             }
 
             errorMessage = restoreFailureMessage(for: error)
@@ -360,6 +368,14 @@ final class SessionStore {
         )
     }
 
+    func shouldClearSessionAfterCredentialFailure(_ error: Error) -> Bool {
+        shouldClearSessionAfterRestoreFailure(error)
+    }
+
+    func clearInvalidPersistedCredential() {
+        clearSession(errorMessage: nil)
+    }
+
     private func unauthenticatedClient() -> ConvexHTTPClient {
         clientBuilder(nil, nil, nil, nil, nil, nil)
     }
@@ -400,6 +416,7 @@ final class SessionStore {
         if startsNewAuthSession {
             authSessionGeneration &+= 1
         }
+        hasTerminalSessionRestoreFailure = false
         token = sessionToPersist?.convexAuthToken
         betterAuthCookie = sessionToPersist?.betterAuthCookie
         betterAuthSessionToken = sessionToPersist?.betterAuthSessionToken
@@ -487,11 +504,7 @@ final class SessionStore {
             return true
         }
 
-        guard let refreshedAt = currentSessionRefreshDate else {
-            return false
-        }
-
-        return now.timeIntervalSince(refreshedAt) >= Self.maximumTokenRefreshAge
+        return false
     }
 
     private func recordRecentEmail(_ email: String) {
@@ -545,9 +558,47 @@ final class SessionStore {
     }
 
     private static let proactiveRefreshLeeway: TimeInterval = 60 * 5
-    private static let maximumTokenRefreshAge: TimeInterval = 60 * 60 * 6
     private static let maximumRecentEmailCount = 3
     private static let sessionRefreshRetryMessage = "We couldn't refresh your session. We'll keep trying."
+
+    private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
+        if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
+            if statusCode == 401 {
+                return true
+            }
+            if statusCode == 403,
+               !message.localizedCaseInsensitiveContains("invalid origin") {
+                return true
+            }
+            return isTerminalCredentialFailure(message)
+        }
+
+        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isTerminalCredentialFailure(description)
+    }
+
+    private func isTerminalCredentialFailure(_ description: String) -> Bool {
+        let normalized = description
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let terminalPhrases = [
+            "unauthorized",
+            "forbidden",
+            "not authenticated",
+            "authentication expired",
+            "session expired",
+            "expired session",
+            "invalid session",
+            "session is invalid",
+            "token expired",
+            "expired token",
+            "invalid token",
+            "token is invalid",
+            "invalid jwt",
+            "jwt expired",
+        ]
+        return terminalPhrases.contains { normalized.contains($0) }
+    }
 
     private func restoreFailureMessage(for error: Error) -> String {
         if case PatchworkError.authRefreshFailed = error {

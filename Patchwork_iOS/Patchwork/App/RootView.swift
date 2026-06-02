@@ -12,7 +12,8 @@ struct RootView: View {
     @State private var locationPromptCompletedForSession = false
     @State private var locationPromptSessionUserId: ConvexID?
     @State private var isForegroundRefreshPending = false
-    @State private var isRetryingAuthenticatedSessionRecovery = false
+    @State private var isResolvingPersistedMissingCurrentUser = false
+    @State private var attemptedPersistedMissingCurrentUserValidationKey: String?
     @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 #if DEBUG
     @State private var didApplyVisualPreview = false
@@ -46,18 +47,14 @@ struct RootView: View {
                         .task {
                             applyCachedCurrentUserIfNeeded()
                             await appState.loadBootstrapData(client: sessionStore.client)
+                            if clearInvalidPersistedCredentialIfNeeded() {
+                                return
+                            }
                             storeCurrentUserSnapshotIfAvailable()
                         }
                 } else if appState.currentUser == nil {
-                    if appState.hasFailedCurrentUserRefreshWithoutPrevious {
-                        AuthenticatedSessionRecoveryView(
-                            isRetrying: isRetryingAuthenticatedSessionRecovery,
-                            message: sessionRecoveryMessage,
-                            onRetry: {
-                                await retryAuthenticatedSessionRecovery()
-                            }
-                        )
-                    } else if shouldShowPersistedCurrentUserResolutionLoading {
+                    if shouldShowPersistedCurrentUserResolutionLoading
+                        || shouldShowPersistedMissingCurrentUserValidationLoading {
                         PatchworkBrandLoadingCard()
                     } else {
                         ProfileSetupView()
@@ -98,6 +95,9 @@ struct RootView: View {
             applyCachedCurrentUserIfNeeded()
             await restoreSessionAndRefreshIfNeeded(forceRefresh: false)
         }
+        .task(id: persistedMissingCurrentUserValidationKey) {
+            await validatePersistedMissingCurrentUserIfNeeded(validationKey: persistedMissingCurrentUserValidationKey)
+        }
         .task(id: revenueCatIdentityKey) {
             let userID = sessionStore.isAuthenticated ? appState.currentUser?.id : nil
             await revenueCatManager.syncIdentity(
@@ -128,6 +128,8 @@ struct RootView: View {
                 locationPromptCompletedForSession = false
                 locationPromptSessionUserId = nil
                 isForegroundRefreshPending = false
+                isResolvingPersistedMissingCurrentUser = false
+                attemptedPersistedMissingCurrentUserValidationKey = nil
             }
         }
         .onChange(of: appState.currentUser?.id) { _, newUserId in
@@ -667,6 +669,9 @@ struct RootView: View {
 
         if appState.isBootstrapped {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+            if clearInvalidPersistedCredentialIfNeeded() {
+                return
+            }
             storeCurrentUserSnapshotIfAvailable()
         }
     }
@@ -675,35 +680,103 @@ struct RootView: View {
         rootLoadingPolicy.shouldShowPersistedCurrentUserResolutionLoading
     }
 
-    private var sessionRecoveryMessage: String {
-        let message = sessionStore.errorMessage?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let message, !message.isEmpty {
-            return message
-        }
-        return "We couldn't load your account. Your session is still saved."
+    private var shouldShowPersistedMissingCurrentUserValidationLoading: Bool {
+        isResolvingPersistedMissingCurrentUser
+            || persistedMissingCurrentUserValidationKey != nil
     }
 
-    private func retryAuthenticatedSessionRecovery() async {
+    private var persistedMissingCurrentUserValidationKey: String? {
         guard sessionStore.isAuthenticated,
-              !isRetryingAuthenticatedSessionRecovery else {
+              sessionStore.launchedWithPersistedSession,
+              hasPersistedRefreshCredential,
+              appState.isBootstrapped,
+              appState.currentUser == nil,
+              sessionStore.cachedCurrentUser == nil,
+              appState.hasConfirmedMissingCurrentUser || appState.hasFailedCurrentUserRefreshWithoutPrevious else {
+            return nil
+        }
+
+        let currentUserFailureRequiresClear = appState.currentUserRefreshFailure.map {
+            sessionStore.shouldClearSessionAfterCredentialFailure($0)
+        } ?? false
+
+        guard sessionStore.hasTerminalSessionRestoreFailure
+                || currentUserFailureRequiresClear
+                || !sessionStore.hasAttemptedSessionRestore else {
+            return nil
+        }
+
+        return [
+            sessionStore.betterAuthSessionToken ?? "no-session-token",
+            sessionStore.betterAuthCookie ?? "no-cookie",
+            sessionStore.token ?? "no-convex-token",
+        ].joined(separator: "|")
+    }
+
+    private var hasPersistedRefreshCredential: Bool {
+        if let betterAuthCookie = sessionStore.betterAuthCookie, !betterAuthCookie.isEmpty {
+            return true
+        }
+        if let betterAuthSessionToken = sessionStore.betterAuthSessionToken, !betterAuthSessionToken.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    private func validatePersistedMissingCurrentUserIfNeeded(validationKey: String?) async {
+        guard let validationKey,
+              attemptedPersistedMissingCurrentUserValidationKey != validationKey else {
             return
         }
 
-        isRetryingAuthenticatedSessionRecovery = true
-        defer { isRetryingAuthenticatedSessionRecovery = false }
+        attemptedPersistedMissingCurrentUserValidationKey = validationKey
+        isResolvingPersistedMissingCurrentUser = true
+        defer { isResolvingPersistedMissingCurrentUser = false }
+
+        if clearInvalidPersistedCredentialIfNeeded() {
+            return
+        }
+
+        guard !sessionStore.hasAttemptedSessionRestore else {
+            return
+        }
 
         let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: true)
         guard restored else {
+            if !sessionStore.isAuthenticated {
+                appState.resetForSignedOutSession()
+            }
             return
         }
 
-        if appState.isBootstrapped {
-            await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
-        } else {
-            await appState.loadBootstrapData(client: sessionStore.client)
-        }
+        await appState.refreshAuthedData(
+            client: sessionStore.client,
+            surfaceErrors: false,
+            shouldRefreshCategories: false
+        )
         storeCurrentUserSnapshotIfAvailable()
+        _ = clearInvalidPersistedCredentialIfNeeded()
+    }
+
+    @discardableResult
+    private func clearInvalidPersistedCredentialIfNeeded() -> Bool {
+        guard sessionStore.isAuthenticated,
+              appState.currentUser == nil,
+              appState.hasConfirmedMissingCurrentUser || appState.hasFailedCurrentUserRefreshWithoutPrevious else {
+            return false
+        }
+
+        let currentUserFailureRequiresClear = appState.currentUserRefreshFailure.map {
+            sessionStore.shouldClearSessionAfterCredentialFailure($0)
+        } ?? false
+
+        guard sessionStore.hasTerminalSessionRestoreFailure || currentUserFailureRequiresClear else {
+            return false
+        }
+
+        sessionStore.clearInvalidPersistedCredential()
+        appState.resetForSignedOutSession()
+        return true
     }
 
     private func applyCachedCurrentUserIfNeeded() {
@@ -772,48 +845,6 @@ struct RootLoadingPolicy: Equatable {
         }
 
         return isForegroundRefreshPending && !launchedWithPersistedSession
-    }
-}
-
-private struct AuthenticatedSessionRecoveryView: View {
-    let isRetrying: Bool
-    let message: String
-    let onRetry: () async -> Void
-
-    var body: some View {
-        ZStack {
-            PatchworkBackdrop(tint: PatchworkTheme.brand)
-
-            VStack(spacing: 20) {
-                PatchworkAnimatedMark(size: 82)
-
-                VStack(spacing: 8) {
-                    Text("Session still saved")
-                        .font(.patchworkSectionTitle)
-                        .foregroundStyle(PatchworkTheme.textPrimary)
-                        .multilineTextAlignment(.center)
-
-                    Text(message)
-                        .font(.patchworkBody)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: PatchworkMetrics.emptyStateContentMaxWidth)
-
-                Button {
-                    Task {
-                        await onRetry()
-                    }
-                } label: {
-                    Label(isRetrying ? "Retrying..." : "Try again", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(PatchworkPrimaryButtonStyle())
-                .disabled(isRetrying)
-                .accessibilityIdentifier("SessionRecovery.retryButton")
-                .accessibilityLabel(isRetrying ? "Retrying session" : "Retry session")
-            }
-            .padding(.horizontal, 24)
-        }
     }
 }
 

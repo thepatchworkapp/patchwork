@@ -28,6 +28,7 @@ final class AppState {
     var currentUser: CurrentUser?
     private(set) var hasConfirmedMissingCurrentUser = false
     private(set) var hasFailedCurrentUserRefreshWithoutPrevious = false
+    private(set) var currentUserRefreshFailure: Error?
     var taskerProfile: TaskerProfileSelf?
 
     var activeCategorySlug: String?
@@ -158,23 +159,27 @@ final class AppState {
                     currentUser = previousCurrentUser
                     hasConfirmedMissingCurrentUser = false
                     hasFailedCurrentUserRefreshWithoutPrevious = false
+                    currentUserRefreshFailure = nil
                     return .preservedPrevious(previousCurrentUser)
                 }
 
                 currentUser = nil
                 hasConfirmedMissingCurrentUser = true
                 hasFailedCurrentUserRefreshWithoutPrevious = false
+                currentUserRefreshFailure = nil
                 return .missingWithoutPrevious
             }
 
             currentUser = fetchedCurrentUser
             hasConfirmedMissingCurrentUser = false
             hasFailedCurrentUserRefreshWithoutPrevious = false
+            currentUserRefreshFailure = nil
             return .user(fetchedCurrentUser)
         } catch {
             currentUser = previousCurrentUser
             hasConfirmedMissingCurrentUser = false
             hasFailedCurrentUserRefreshWithoutPrevious = previousCurrentUser == nil
+            currentUserRefreshFailure = previousCurrentUser == nil ? error : nil
             if surfaceErrors && previousCurrentUser == nil {
                 presentError(error, prefix: "Failed to refresh signed-in data")
             }
@@ -363,6 +368,7 @@ final class AppState {
         currentUser = nil
         hasConfirmedMissingCurrentUser = false
         hasFailedCurrentUserRefreshWithoutPrevious = false
+        currentUserRefreshFailure = nil
         taskerProfile = nil
         selectedTasker = nil
         selectedConversation = nil

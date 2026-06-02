@@ -947,13 +947,58 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testSessionStoreRefreshesAgedPersistedConvexToken() async throws {
+    func testSessionStoreKeepsAgedUnexpiredPersistedConvexTokenWithoutRefresh() async throws {
+        let existingToken = Self.makeJWT(expiration: Date().addingTimeInterval(60 * 60 * 24))
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
-                convexAuthToken: Self.makeJWT(expiration: Date().addingTimeInterval(60 * 60 * 24)),
+                convexAuthToken: existingToken,
                 betterAuthCookie: "session=abc",
                 betterAuthSessionToken: nil,
                 convexAuthTokenRefreshedAt: Date().addingTimeInterval(-7 * 60 * 60)
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTFail("Unexpired token should not refresh because of stored age, but requested \(request.url?.path ?? "")")
+            throw PatchworkError.invalidResponse
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: false)
+
+        XCTAssertTrue(restored)
+        XCTAssertEqual(store.token, existingToken)
+        XCTAssertEqual(persistence.session?.convexAuthToken, existingToken)
+        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+    }
+
+    @MainActor
+    func testSessionStoreRefreshesPersistedConvexTokenNearExpiry() async throws {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: Self.makeJWT(expiration: Date().addingTimeInterval(60)),
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                convexAuthTokenRefreshedAt: Date()
             )
         )
         let session = makeMockSession()
@@ -1329,11 +1374,12 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(store.errorMessage, "We couldn't refresh your session. We'll keep trying.")
         XCTAssertNil(store.token)
         XCTAssertTrue(store.hasAttemptedSessionRestore)
+        XCTAssertFalse(store.hasTerminalSessionRestoreFailure)
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
     }
 
     @MainActor
-    func testRestoreKeepsSessionWhenUnauthorizedRefreshFailsWithoutActiveToken() async throws {
+    func testRestoreClearsSessionWhenUnauthorizedRefreshFailsWithoutActiveToken() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
                 convexAuthToken: nil,
@@ -1378,12 +1424,12 @@ final class PatchworkTests: XCTestCase {
         let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
 
         XCTAssertFalse(restored)
-        XCTAssertTrue(store.isAuthenticated)
-        XCTAssertTrue(store.needsSessionRestore)
-        XCTAssertEqual(store.errorMessage, "We couldn't refresh your session. We'll keep trying.")
+        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertFalse(store.needsSessionRestore)
+        XCTAssertNil(store.errorMessage)
         XCTAssertNil(store.token)
-        XCTAssertTrue(store.hasAttemptedSessionRestore)
-        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+        XCTAssertFalse(store.hasTerminalSessionRestoreFailure)
+        XCTAssertNil(persistence.session)
     }
 
     @MainActor
@@ -1491,6 +1537,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(persistence.session?.convexAuthToken, existingToken)
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
         XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(store.hasTerminalSessionRestoreFailure)
     }
 
     @MainActor
@@ -1543,6 +1590,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(store.token, "expired-token")
         XCTAssertEqual(persistence.session?.convexAuthToken, "expired-token")
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+        XCTAssertTrue(store.hasTerminalSessionRestoreFailure)
     }
 
     @MainActor
@@ -1926,6 +1974,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertNil(appState.lastError)
         XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
         XCTAssertFalse(appState.hasFailedCurrentUserRefreshWithoutPrevious)
+        XCTAssertNil(appState.currentUserRefreshFailure)
     }
 
     @MainActor
@@ -1960,6 +2009,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertNil(appState.currentUser)
         XCTAssertTrue(appState.hasConfirmedMissingCurrentUser)
         XCTAssertFalse(appState.hasFailedCurrentUserRefreshWithoutPrevious)
+        XCTAssertNil(appState.currentUserRefreshFailure)
     }
 
     @MainActor
@@ -1994,6 +2044,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertNil(appState.currentUser)
         XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
         XCTAssertTrue(appState.hasFailedCurrentUserRefreshWithoutPrevious)
+        XCTAssertNotNil(appState.currentUserRefreshFailure)
     }
 
     @MainActor
