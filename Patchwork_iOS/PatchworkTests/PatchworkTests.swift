@@ -1249,6 +1249,61 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testRestorePreservesUsableJWTWhenRefreshIsUnauthorized() async throws {
+        let existingToken = Self.makeJWT(expiration: Date().addingTimeInterval(60 * 60))
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: existingToken,
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                convexAuthTokenRefreshedAt: Date()
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"error\":\"Unauthorized\"}".utf8))
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
+
+        XCTAssertTrue(restored)
+        XCTAssertTrue(store.isAuthenticated)
+        XCTAssertEqual(store.token, existingToken)
+        XCTAssertEqual(persistence.session?.convexAuthToken, existingToken)
+        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+        XCTAssertNil(store.errorMessage)
+    }
+
+    @MainActor
     func testRestoreClearsSessionWhenRefreshReturnsGenericUnauthorized() async {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
@@ -1424,6 +1479,53 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(observedTokens.get(), ["fresh-token"])
         XCTAssertEqual(store.token, "fresh-token")
         XCTAssertEqual(persistence.session?.convexAuthToken, "fresh-token")
+    }
+
+    @MainActor
+    func testSessionStoreIgnoresStaleInvalidationAfterHTTPTokenRefreshes() async {
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "expired-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil
+            )
+        )
+        let observedTokens = LockedArrayBox<String?>()
+        var refreshCallback: (@Sendable (String) async -> Void)?
+        var invalidationCallback: (@Sendable (String) async -> Void)?
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                if refreshCallback == nil {
+                    refreshCallback = onAuthTokenRefresh
+                }
+                if invalidationCallback == nil {
+                    invalidationCallback = onAuthSessionInvalidated
+                }
+                return ConvexHTTPClient(
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+        store.addConvexAuthTokenListener { token in
+            observedTokens.append(token)
+        }
+
+        _ = store.client
+        await refreshCallback?("fresh-token")
+        await invalidationCallback?("Your session expired. Sign in again.")
+
+        XCTAssertEqual(observedTokens.get(), ["fresh-token"])
+        XCTAssertTrue(store.isAuthenticated)
+        XCTAssertEqual(store.token, "fresh-token")
+        XCTAssertEqual(persistence.session?.convexAuthToken, "fresh-token")
+        XCTAssertNil(store.errorMessage)
     }
 
     @MainActor

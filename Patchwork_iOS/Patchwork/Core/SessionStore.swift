@@ -129,6 +129,13 @@ final class SessionStore {
     private var authSessionGeneration = 0
     private var convexAuthTokenListeners: [UUID: @Sendable (String?) -> Void] = [:]
 
+    private struct AuthSessionSnapshot: Equatable {
+        let generation: Int
+        let token: String?
+        let betterAuthCookie: String?
+        let betterAuthSessionToken: String?
+    }
+
     init(
         sessionPersistence: SessionPersisting = KeychainSessionPersistence(),
         recentEmailPersistence: RecentEmailPersisting = UserDefaultsRecentEmailPersistence(),
@@ -172,19 +179,19 @@ final class SessionStore {
     }
 
     var client: ConvexHTTPClient {
-        let clientAuthSessionGeneration = authSessionGeneration
+        let clientAuthSessionSnapshot = currentAuthSessionSnapshot
         return clientBuilder(
             token,
             betterAuthCookie,
             betterAuthSessionToken,
             { [weak self] refreshedToken in
-                await self?.storeRefreshedConvexToken(refreshedToken, generation: clientAuthSessionGeneration)
+                await self?.storeRefreshedConvexToken(refreshedToken, snapshot: clientAuthSessionSnapshot)
             },
             { [weak self] refreshedCookie in
-                await self?.storeRefreshedBetterAuthCookie(refreshedCookie, generation: clientAuthSessionGeneration)
+                await self?.storeRefreshedBetterAuthCookie(refreshedCookie, snapshot: clientAuthSessionSnapshot)
             },
             { [weak self] message in
-                await self?.invalidateSession(message: message, generation: clientAuthSessionGeneration)
+                await self?.invalidateSession(message: message, snapshot: clientAuthSessionSnapshot)
             }
         )
     }
@@ -335,8 +342,8 @@ final class SessionStore {
         errorMessage = nil
     }
 
-    private func invalidateSession(message: String, generation: Int) {
-        guard generation == authSessionGeneration else {
+    private func invalidateSession(message: String, snapshot: AuthSessionSnapshot) {
+        guard currentAuthSessionSnapshot == snapshot else {
             return
         }
         guard isAuthenticated else {
@@ -391,11 +398,12 @@ final class SessionStore {
         }
     }
 
-    private func storeRefreshedConvexToken(_ refreshedToken: String, generation: Int) {
-        guard generation == authSessionGeneration else {
-            return
-        }
-        guard hasRefreshCredential else {
+    private func storeRefreshedConvexToken(_ refreshedToken: String, snapshot: AuthSessionSnapshot) {
+        guard snapshot.generation == authSessionGeneration,
+              snapshot.token == token,
+              snapshot.betterAuthCookie == betterAuthCookie,
+              snapshot.betterAuthSessionToken == betterAuthSessionToken,
+              hasRefreshCredential else {
             return
         }
 
@@ -409,11 +417,9 @@ final class SessionStore {
         )
     }
 
-    private func storeRefreshedBetterAuthCookie(_ refreshedCookie: String, generation: Int) {
-        guard generation == authSessionGeneration else {
-            return
-        }
-        guard !refreshedCookie.isEmpty else {
+    private func storeRefreshedBetterAuthCookie(_ refreshedCookie: String, snapshot: AuthSessionSnapshot) {
+        guard currentAuthSessionSnapshot == snapshot,
+              !refreshedCookie.isEmpty else {
             return
         }
 
@@ -443,6 +449,15 @@ final class SessionStore {
         sessionPersistence.loadSession()?.convexAuthTokenRefreshedAt
     }
 
+    private var currentAuthSessionSnapshot: AuthSessionSnapshot {
+        AuthSessionSnapshot(
+            generation: authSessionGeneration,
+            token: token,
+            betterAuthCookie: betterAuthCookie,
+            betterAuthSessionToken: betterAuthSessionToken
+        )
+    }
+
     private func shouldRefreshStoredConvexToken(now: Date = Date()) -> Bool {
         guard token != nil else {
             return true
@@ -462,11 +477,11 @@ final class SessionStore {
 
     private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
         if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
-            if isAuthenticationFailure(message) {
-                return true
-            }
             if statusCode == 401 {
                 return !hasCurrentlyUsableConvexToken()
+            }
+            if isAuthenticationFailure(message) {
+                return true
             }
             return false
         }
