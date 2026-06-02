@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var locationPromptCompletedForSession = false
     @State private var locationPromptSessionUserId: ConvexID?
     @State private var isForegroundRefreshPending = false
+    @State private var isRetryingAuthenticatedSessionRecovery = false
     @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 #if DEBUG
     @State private var didApplyVisualPreview = false
@@ -43,10 +44,20 @@ struct RootView: View {
                 } else if !appState.isBootstrapped {
                     PatchworkBrandLoadingCard()
                         .task {
+                            applyCachedCurrentUserIfNeeded()
                             await appState.loadBootstrapData(client: sessionStore.client)
+                            storeCurrentUserSnapshotIfAvailable()
                         }
                 } else if appState.currentUser == nil {
-                    if shouldWaitForPersistedCurrentUserResolution {
+                    if appState.hasFailedCurrentUserRefreshWithoutPrevious {
+                        AuthenticatedSessionRecoveryView(
+                            isRetrying: isRetryingAuthenticatedSessionRecovery,
+                            message: sessionRecoveryMessage,
+                            onRetry: {
+                                await retryAuthenticatedSessionRecovery()
+                            }
+                        )
+                    } else if shouldShowPersistedCurrentUserResolutionLoading {
                         PatchworkBrandLoadingCard()
                     } else {
                         ProfileSetupView()
@@ -84,6 +95,7 @@ struct RootView: View {
             revenueCatManager.configureIfNeeded()
         }
         .task {
+            applyCachedCurrentUserIfNeeded()
             await restoreSessionAndRefreshIfNeeded(forceRefresh: false)
         }
         .task(id: revenueCatIdentityKey) {
@@ -122,6 +134,9 @@ struct RootView: View {
             locationPromptCompletedForSession = false
             locationPromptSessionUserId = newUserId
         }
+        .onChange(of: appState.currentUser) { _, currentUser in
+            sessionStore.storeCurrentUserSnapshot(currentUser)
+        }
         .task(id: locationRecoveryKey) {
             guard let locationRecoveryKey,
                   attemptedLocationRecoveryKey != locationRecoveryKey else {
@@ -159,10 +174,13 @@ struct RootView: View {
             isAuthenticated: sessionStore.isAuthenticated,
             isRestoringSession: sessionStore.isRestoringSession,
             needsSessionRestore: sessionStore.needsSessionRestore,
+            hasAttemptedSessionRestore: sessionStore.hasAttemptedSessionRestore,
             isForegroundRefreshPending: isForegroundRefreshPending,
             isBootstrapped: appState.isBootstrapped,
             hasCurrentUser: appState.currentUser != nil,
-            launchedWithPersistedSession: sessionStore.launchedWithPersistedSession
+            launchedWithPersistedSession: sessionStore.launchedWithPersistedSession,
+            hasConfirmedMissingCurrentUser: appState.hasConfirmedMissingCurrentUser,
+            hasFailedCurrentUserRefreshWithoutPrevious: appState.hasFailedCurrentUserRefreshWithoutPrevious
         )
     }
 
@@ -649,12 +667,61 @@ struct RootView: View {
 
         if appState.isBootstrapped {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+            storeCurrentUserSnapshotIfAvailable()
         }
     }
 
-    private var shouldWaitForPersistedCurrentUserResolution: Bool {
-        sessionStore.launchedWithPersistedSession
-            && !appState.hasConfirmedMissingCurrentUser
+    private var shouldShowPersistedCurrentUserResolutionLoading: Bool {
+        rootLoadingPolicy.shouldShowPersistedCurrentUserResolutionLoading
+    }
+
+    private var sessionRecoveryMessage: String {
+        let message = sessionStore.errorMessage?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let message, !message.isEmpty {
+            return message
+        }
+        return "We couldn't load your account. Your session is still saved."
+    }
+
+    private func retryAuthenticatedSessionRecovery() async {
+        guard sessionStore.isAuthenticated,
+              !isRetryingAuthenticatedSessionRecovery else {
+            return
+        }
+
+        isRetryingAuthenticatedSessionRecovery = true
+        defer { isRetryingAuthenticatedSessionRecovery = false }
+
+        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: true)
+        guard restored else {
+            return
+        }
+
+        if appState.isBootstrapped {
+            await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
+        } else {
+            await appState.loadBootstrapData(client: sessionStore.client)
+        }
+        storeCurrentUserSnapshotIfAvailable()
+    }
+
+    private func applyCachedCurrentUserIfNeeded() {
+        guard sessionStore.isAuthenticated,
+              appState.currentUser == nil,
+              let cachedCurrentUser = sessionStore.cachedCurrentUser else {
+            return
+        }
+
+        appState.currentUser = cachedCurrentUser
+    }
+
+    private func storeCurrentUserSnapshotIfAvailable() {
+        guard sessionStore.isAuthenticated else {
+            return
+        }
+
+        sessionStore.storeCurrentUserSnapshot(appState.currentUser)
     }
 }
 
@@ -662,10 +729,13 @@ struct RootLoadingPolicy: Equatable {
     var isAuthenticated: Bool
     var isRestoringSession: Bool
     var needsSessionRestore: Bool
+    var hasAttemptedSessionRestore = false
     var isForegroundRefreshPending: Bool
     var isBootstrapped: Bool
     var hasCurrentUser: Bool
     var launchedWithPersistedSession: Bool
+    var hasConfirmedMissingCurrentUser = false
+    var hasFailedCurrentUserRefreshWithoutPrevious = false
 
     var shouldShowForegroundRefreshLoading: Bool {
         isForegroundRefreshPending
@@ -674,8 +744,22 @@ struct RootLoadingPolicy: Equatable {
     }
 
     var shouldShowSessionRestoreLoading: Bool {
-        (isRestoringSession || needsSessionRestore)
+        (isRestoringSession || needsInitialSessionRestore)
             && !preservesAuthenticatedRouteDuringRefresh
+    }
+
+    var shouldShowPersistedCurrentUserResolutionLoading: Bool {
+        isAuthenticated
+            && isBootstrapped
+            && !hasCurrentUser
+            && launchedWithPersistedSession
+            && !needsSessionRestore
+            && !hasConfirmedMissingCurrentUser
+            && !hasFailedCurrentUserRefreshWithoutPrevious
+    }
+
+    private var needsInitialSessionRestore: Bool {
+        needsSessionRestore && !hasAttemptedSessionRestore
     }
 
     private var preservesAuthenticatedRouteDuringRefresh: Bool {
@@ -688,6 +772,48 @@ struct RootLoadingPolicy: Equatable {
         }
 
         return isForegroundRefreshPending && !launchedWithPersistedSession
+    }
+}
+
+private struct AuthenticatedSessionRecoveryView: View {
+    let isRetrying: Bool
+    let message: String
+    let onRetry: () async -> Void
+
+    var body: some View {
+        ZStack {
+            PatchworkBackdrop(tint: PatchworkTheme.brand)
+
+            VStack(spacing: 20) {
+                PatchworkAnimatedMark(size: 82)
+
+                VStack(spacing: 8) {
+                    Text("Session still saved")
+                        .font(.patchworkSectionTitle)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                        .multilineTextAlignment(.center)
+
+                    Text(message)
+                        .font(.patchworkBody)
+                        .foregroundStyle(PatchworkTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: PatchworkMetrics.emptyStateContentMaxWidth)
+
+                Button {
+                    Task {
+                        await onRetry()
+                    }
+                } label: {
+                    Label(isRetrying ? "Retrying..." : "Try again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(PatchworkPrimaryButtonStyle())
+                .disabled(isRetrying)
+                .accessibilityIdentifier("SessionRecovery.retryButton")
+                .accessibilityLabel(isRetrying ? "Retrying session" : "Retry session")
+            }
+            .padding(.horizontal, 24)
+        }
     }
 }
 

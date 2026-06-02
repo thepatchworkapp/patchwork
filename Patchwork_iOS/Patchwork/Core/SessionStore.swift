@@ -7,6 +7,7 @@ struct StoredSession: Codable, Equatable {
     var betterAuthCookie: String?
     var betterAuthSessionToken: String?
     var convexAuthTokenRefreshedAt: Date? = nil
+    var currentUser: CurrentUser? = nil
 
     var hasRefreshCredential: Bool {
         if let betterAuthCookie, !betterAuthCookie.isEmpty {
@@ -120,7 +121,9 @@ final class SessionStore {
     private(set) var token: String?
     private(set) var betterAuthCookie: String?
     private(set) var betterAuthSessionToken: String?
+    private(set) var cachedCurrentUser: CurrentUser?
     private(set) var launchedWithPersistedSession = false
+    private(set) var hasAttemptedSessionRestore = false
     private(set) var isLoading = false
     private(set) var isRestoringSession = false
     private(set) var errorMessage: String?
@@ -166,6 +169,7 @@ final class SessionStore {
             token = storedSession.convexAuthToken
             betterAuthCookie = storedSession.betterAuthCookie
             betterAuthSessionToken = storedSession.betterAuthSessionToken
+            cachedCurrentUser = storedSession.currentUser
             launchedWithPersistedSession = true
         }
     }
@@ -266,12 +270,14 @@ final class SessionStore {
     @discardableResult
     func restorePersistedSessionIfNeeded(forceRefresh: Bool = false) async -> Bool {
         guard hasRefreshCredential else {
+            hasAttemptedSessionRestore = false
             return token != nil
         }
         guard forceRefresh || token == nil || shouldRefreshStoredConvexToken() else {
             return true
         }
 
+        hasAttemptedSessionRestore = true
         isRestoringSession = true
         defer { isRestoringSession = false }
 
@@ -307,7 +313,9 @@ final class SessionStore {
         let sessionToInvalidate = StoredSession(
             convexAuthToken: token,
             betterAuthCookie: betterAuthCookie,
-            betterAuthSessionToken: betterAuthSessionToken
+            betterAuthSessionToken: betterAuthSessionToken,
+            convexAuthTokenRefreshedAt: currentSessionRefreshDate,
+            currentUser: cachedCurrentUser
         )
 
         clearSession(errorMessage: nil)
@@ -333,6 +341,23 @@ final class SessionStore {
     func selectRecentEmail(_ email: String) {
         emailForOTP = Self.normalizedEmail(email)
         errorMessage = nil
+    }
+
+    func storeCurrentUserSnapshot(_ user: CurrentUser?) {
+        cachedCurrentUser = user
+        guard token != nil || hasRefreshCredential else {
+            return
+        }
+
+        sessionPersistence.saveSession(
+            StoredSession(
+                convexAuthToken: token,
+                betterAuthCookie: betterAuthCookie,
+                betterAuthSessionToken: betterAuthSessionToken,
+                convexAuthTokenRefreshedAt: currentSessionRefreshDate,
+                currentUser: user
+            )
+        )
     }
 
     private func unauthenticatedClient() -> ConvexHTTPClient {
@@ -362,20 +387,32 @@ final class SessionStore {
 
     private func persistSession(_ session: StoredSession?, startsNewAuthSession: Bool = false) {
         let previousToken = token
+        let nextCachedCurrentUser = session?.currentUser ?? (startsNewAuthSession ? nil : cachedCurrentUser)
+        let sessionToPersist = session.map {
+            StoredSession(
+                convexAuthToken: $0.convexAuthToken,
+                betterAuthCookie: $0.betterAuthCookie,
+                betterAuthSessionToken: $0.betterAuthSessionToken,
+                convexAuthTokenRefreshedAt: $0.convexAuthTokenRefreshedAt,
+                currentUser: nextCachedCurrentUser
+            )
+        }
         if startsNewAuthSession {
             authSessionGeneration &+= 1
         }
-        token = session?.convexAuthToken
-        betterAuthCookie = session?.betterAuthCookie
-        betterAuthSessionToken = session?.betterAuthSessionToken
-        if session != nil {
+        token = sessionToPersist?.convexAuthToken
+        betterAuthCookie = sessionToPersist?.betterAuthCookie
+        betterAuthSessionToken = sessionToPersist?.betterAuthSessionToken
+        cachedCurrentUser = sessionToPersist?.currentUser
+        if sessionToPersist != nil {
             errorMessage = nil
         }
-        if session == nil {
+        if sessionToPersist == nil {
             launchedWithPersistedSession = false
+            hasAttemptedSessionRestore = false
         }
-        sessionPersistence.saveSession(session)
-        if previousToken != token || startsNewAuthSession || session == nil {
+        sessionPersistence.saveSession(sessionToPersist)
+        if previousToken != token || startsNewAuthSession || sessionToPersist == nil {
             notifyConvexAuthTokenListeners(token)
         }
     }

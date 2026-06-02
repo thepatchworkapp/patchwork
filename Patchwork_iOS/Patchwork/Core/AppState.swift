@@ -27,6 +27,7 @@ final class AppState {
     var jobs: [JobSummary] = []
     var currentUser: CurrentUser?
     private(set) var hasConfirmedMissingCurrentUser = false
+    private(set) var hasFailedCurrentUserRefreshWithoutPrevious = false
     var taskerProfile: TaskerProfileSelf?
 
     var activeCategorySlug: String?
@@ -156,20 +157,24 @@ final class AppState {
                 if let previousCurrentUser {
                     currentUser = previousCurrentUser
                     hasConfirmedMissingCurrentUser = false
+                    hasFailedCurrentUserRefreshWithoutPrevious = false
                     return .preservedPrevious(previousCurrentUser)
                 }
 
                 currentUser = nil
                 hasConfirmedMissingCurrentUser = true
+                hasFailedCurrentUserRefreshWithoutPrevious = false
                 return .missingWithoutPrevious
             }
 
             currentUser = fetchedCurrentUser
             hasConfirmedMissingCurrentUser = false
+            hasFailedCurrentUserRefreshWithoutPrevious = false
             return .user(fetchedCurrentUser)
         } catch {
             currentUser = previousCurrentUser
             hasConfirmedMissingCurrentUser = false
+            hasFailedCurrentUserRefreshWithoutPrevious = previousCurrentUser == nil
             if surfaceErrors && previousCurrentUser == nil {
                 presentError(error, prefix: "Failed to refresh signed-in data")
             }
@@ -357,6 +362,7 @@ final class AppState {
         jobs = []
         currentUser = nil
         hasConfirmedMissingCurrentUser = false
+        hasFailedCurrentUserRefreshWithoutPrevious = false
         taskerProfile = nil
         selectedTasker = nil
         selectedConversation = nil

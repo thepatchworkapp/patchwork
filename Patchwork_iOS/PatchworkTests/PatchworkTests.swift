@@ -13,10 +13,13 @@ final class PatchworkTests: XCTestCase {
             isAuthenticated: true,
             isRestoringSession: true,
             needsSessionRestore: false,
+            hasAttemptedSessionRestore: true,
             isForegroundRefreshPending: false,
             isBootstrapped: true,
             hasCurrentUser: true,
-            launchedWithPersistedSession: true
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
         )
 
         XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
@@ -28,10 +31,13 @@ final class PatchworkTests: XCTestCase {
             isAuthenticated: true,
             isRestoringSession: false,
             needsSessionRestore: true,
+            hasAttemptedSessionRestore: true,
             isForegroundRefreshPending: false,
             isBootstrapped: true,
             hasCurrentUser: true,
-            launchedWithPersistedSession: true
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
         )
 
         XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
@@ -42,10 +48,13 @@ final class PatchworkTests: XCTestCase {
             isAuthenticated: true,
             isRestoringSession: true,
             needsSessionRestore: false,
+            hasAttemptedSessionRestore: true,
             isForegroundRefreshPending: false,
             isBootstrapped: true,
             hasCurrentUser: false,
-            launchedWithPersistedSession: true
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
         )
 
         XCTAssertTrue(policy.shouldShowSessionRestoreLoading)
@@ -56,14 +65,68 @@ final class PatchworkTests: XCTestCase {
             isAuthenticated: true,
             isRestoringSession: true,
             needsSessionRestore: false,
+            hasAttemptedSessionRestore: true,
             isForegroundRefreshPending: true,
             isBootstrapped: true,
             hasCurrentUser: false,
-            launchedWithPersistedSession: false
+            launchedWithPersistedSession: false,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
         )
 
         XCTAssertFalse(policy.shouldShowForegroundRefreshLoading)
         XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
+    }
+
+    func testRootLoadingPolicyBlocksBeforeInitialRestoreAttemptWithoutToken() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: false,
+            needsSessionRestore: true,
+            hasAttemptedSessionRestore: false,
+            isForegroundRefreshPending: false,
+            isBootstrapped: false,
+            hasCurrentUser: false,
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
+        )
+
+        XCTAssertTrue(policy.shouldShowSessionRestoreLoading)
+    }
+
+    func testRootLoadingPolicyStopsBlockingAfterRestoreAttemptFailsWithoutToken() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: false,
+            needsSessionRestore: true,
+            hasAttemptedSessionRestore: true,
+            isForegroundRefreshPending: false,
+            isBootstrapped: false,
+            hasCurrentUser: false,
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: false
+        )
+
+        XCTAssertFalse(policy.shouldShowSessionRestoreLoading)
+    }
+
+    func testRootLoadingPolicyStopsWaitingWhenPersistedCurrentUserFetchFails() {
+        let policy = RootLoadingPolicy(
+            isAuthenticated: true,
+            isRestoringSession: false,
+            needsSessionRestore: false,
+            hasAttemptedSessionRestore: true,
+            isForegroundRefreshPending: false,
+            isBootstrapped: true,
+            hasCurrentUser: false,
+            launchedWithPersistedSession: true,
+            hasConfirmedMissingCurrentUser: false,
+            hasFailedCurrentUserRefreshWithoutPrevious: true
+        )
+
+        XCTAssertFalse(policy.shouldShowPersistedCurrentUserResolutionLoading)
     }
 
     func testVerifyOTPPropagatesBetterAuthCookieToConvexTokenRequest() async throws {
@@ -1049,6 +1112,75 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testSessionStoreLoadsCachedCurrentUserFromPersistedSession() {
+        let cachedUser = Self.makeCurrentUser(id: "user_cached")
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: "existing-token",
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                currentUser: cachedUser
+            )
+        )
+
+        let store = SessionStore(sessionPersistence: persistence)
+
+        XCTAssertEqual(store.cachedCurrentUser, cachedUser)
+        XCTAssertTrue(store.launchedWithPersistedSession)
+    }
+
+    @MainActor
+    func testSessionStorePreservesCachedCurrentUserAcrossTokenRefresh() async throws {
+        let cachedUser = Self.makeCurrentUser(id: "user_preserved")
+        let persistence = InMemorySessionPersistence(
+            session: StoredSession(
+                convexAuthToken: nil,
+                betterAuthCookie: "session=abc",
+                betterAuthSessionToken: nil,
+                currentUser: cachedUser
+            )
+        )
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/convex/token")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data("{\"token\":\"fresh-token\"}".utf8))
+        }
+
+        let store = SessionStore(
+            sessionPersistence: persistence,
+            clientBuilder: { authToken, betterAuthCookie, betterAuthSessionToken, onAuthTokenRefresh, onBetterAuthCookieRefresh, onAuthSessionInvalidated in
+                ConvexHTTPClient(
+                    cloudURL: cloudURL,
+                    siteURL: siteURL,
+                    session: session,
+                    authToken: authToken,
+                    betterAuthCookie: betterAuthCookie,
+                    betterAuthSessionToken: betterAuthSessionToken,
+                    onAuthTokenRefresh: onAuthTokenRefresh,
+                    onBetterAuthCookieRefresh: onBetterAuthCookieRefresh,
+                    onAuthSessionInvalidated: onAuthSessionInvalidated
+                )
+            }
+        )
+
+        let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
+
+        XCTAssertTrue(restored)
+        XCTAssertEqual(store.token, "fresh-token")
+        XCTAssertEqual(store.cachedCurrentUser, cachedUser)
+        XCTAssertEqual(persistence.session?.currentUser, cachedUser)
+    }
+
+    @MainActor
     func testRestoreKeepsSessionOnNonAuthRefreshFailure() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
@@ -1196,6 +1328,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertTrue(store.isAuthenticated)
         XCTAssertEqual(store.errorMessage, "We couldn't refresh your session. We'll keep trying.")
         XCTAssertNil(store.token)
+        XCTAssertTrue(store.hasAttemptedSessionRestore)
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
     }
 
@@ -1249,6 +1382,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertTrue(store.needsSessionRestore)
         XCTAssertEqual(store.errorMessage, "We couldn't refresh your session. We'll keep trying.")
         XCTAssertNil(store.token)
+        XCTAssertTrue(store.hasAttemptedSessionRestore)
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
     }
 
@@ -1791,6 +1925,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(appState.currentUser, expectedUser)
         XCTAssertNil(appState.lastError)
         XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
+        XCTAssertFalse(appState.hasFailedCurrentUserRefreshWithoutPrevious)
     }
 
     @MainActor
@@ -1824,6 +1959,7 @@ final class PatchworkTests: XCTestCase {
 
         XCTAssertNil(appState.currentUser)
         XCTAssertTrue(appState.hasConfirmedMissingCurrentUser)
+        XCTAssertFalse(appState.hasFailedCurrentUserRefreshWithoutPrevious)
     }
 
     @MainActor
@@ -1857,6 +1993,7 @@ final class PatchworkTests: XCTestCase {
 
         XCTAssertNil(appState.currentUser)
         XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
+        XCTAssertTrue(appState.hasFailedCurrentUserRefreshWithoutPrevious)
     }
 
     @MainActor
@@ -2072,6 +2209,23 @@ final class PatchworkTests: XCTestCase {
             data.append(buffer, count: read)
         }
         return data
+    }
+
+    private static func makeCurrentUser(id: ConvexID) -> CurrentUser {
+        CurrentUser(
+            id: id,
+            email: "\(id)@example.com",
+            name: "Cached User",
+            roles: UserRoles(isSeeker: true, isTasker: false),
+            location: UserLocation(
+                city: "Toronto",
+                province: "ON",
+                coordinates: Coordinates(lat: 43.6532, lng: -79.3832)
+            ),
+            settings: UserSettings(notificationsEnabled: true, locationEnabled: true),
+            createdAt: 1_704_067_200_000,
+            photoImage: nil
+        )
     }
 
     private static func makeJWT(expiration: Date) -> String {
