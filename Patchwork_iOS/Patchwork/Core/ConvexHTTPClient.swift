@@ -204,9 +204,6 @@ struct ConvexHTTPClient {
                 continue
             }
 
-            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: message) {
-                await notifyAuthSessionInvalidated()
-            }
             throw PatchworkError.authRefreshFailed(statusCode: httpResponse.statusCode, message: message)
         }
 
@@ -256,9 +253,6 @@ struct ConvexHTTPClient {
                     args: args
                 )
             }
-            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: errorMessage) {
-                await notifyAuthSessionInvalidated()
-            }
             throw PatchworkError.server(errorMessage ?? PatchworkError.invalidResponse.localizedDescription)
         }
 
@@ -274,9 +268,6 @@ struct ConvexHTTPClient {
                     path: path,
                     args: args
                 )
-            }
-            if shouldInvalidateSession(statusCode: httpResponse.statusCode, errorMessage: nil) {
-                await notifyAuthSessionInvalidated()
             }
             throw PatchworkError.invalidResponse
         }
@@ -432,21 +423,9 @@ struct ConvexHTTPClient {
     }
 
     private func refreshAuthToken() async throws -> String {
-        do {
-            let refreshedToken = try await fetchConvexJWT()
-            await onAuthTokenRefresh?(refreshedToken)
-            return refreshedToken
-        } catch {
-            if case let PatchworkError.authRefreshFailed(statusCode, message) = error,
-               shouldInvalidateSession(statusCode: statusCode, errorMessage: message) {
-                await notifyAuthSessionInvalidated()
-            }
-            if case let PatchworkError.server(message) = error,
-               isAuthenticationFailure(statusCode: nil, errorMessage: message) {
-                await notifyAuthSessionInvalidated()
-            }
-            throw error
-        }
+        let refreshedToken = try await fetchConvexJWT()
+        await onAuthTokenRefresh?(refreshedToken)
+        return refreshedToken
     }
 
     private func shouldRetryAfterAuthFailure(statusCode: Int, errorMessage: String?) -> Bool {
@@ -459,37 +438,6 @@ struct ConvexHTTPClient {
         }
 
         return authFailurePhrase(in: errorMessage) != nil
-    }
-
-    private func isHTTPAuthenticationFailure(statusCode: Int) -> Bool {
-        statusCode == 401 || statusCode == 403
-    }
-
-    private func isAuthenticationFailure(statusCode: Int?, errorMessage: String?) -> Bool {
-        if shouldInvalidateSession(statusCode: statusCode, errorMessage: errorMessage) {
-            return true
-        }
-        return authFailurePhrase(in: errorMessage) != nil
-    }
-
-    private func shouldInvalidateSession(statusCode: Int?, errorMessage: String?) -> Bool {
-        if authFailurePhrase(in: errorMessage) != nil {
-            return true
-        }
-
-        guard let statusCode else {
-            return false
-        }
-
-        if statusCode == 401 {
-            return errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
-        }
-
-        return false
-    }
-
-    private func notifyAuthSessionInvalidated() async {
-        await onAuthSessionInvalidated?(Self.sessionExpiredMessage)
     }
 
     private func authFailurePhrase(in errorMessage: String?) -> String? {
@@ -523,8 +471,6 @@ struct ConvexHTTPClient {
         ]
         return authFailurePhrases.first(where: { normalized.contains($0) })
     }
-
-    private static let sessionExpiredMessage = "Your session expired. Sign in again."
 }
 
 struct ConvexAuthRefresh {

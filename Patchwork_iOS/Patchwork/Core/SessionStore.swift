@@ -190,9 +190,7 @@ final class SessionStore {
             { [weak self] refreshedCookie in
                 await self?.storeRefreshedBetterAuthCookie(refreshedCookie, snapshot: clientAuthSessionSnapshot)
             },
-            { [weak self] message in
-                await self?.invalidateSession(message: message, snapshot: clientAuthSessionSnapshot)
-            }
+            nil
         )
     }
 
@@ -296,11 +294,6 @@ final class SessionStore {
             )
             return true
         } catch {
-            if shouldClearSessionAfterRestoreFailure(error) {
-                clearSession(errorMessage: restoreFailureMessage(for: error))
-                return false
-            }
-
             if token != nil {
                 return true
             }
@@ -340,17 +333,6 @@ final class SessionStore {
     func selectRecentEmail(_ email: String) {
         emailForOTP = Self.normalizedEmail(email)
         errorMessage = nil
-    }
-
-    private func invalidateSession(message: String, snapshot: AuthSessionSnapshot) {
-        guard currentAuthSessionSnapshot == snapshot else {
-            return
-        }
-        guard isAuthenticated else {
-            return
-        }
-
-        clearSession(errorMessage: message)
     }
 
     private func unauthenticatedClient() -> ConvexHTTPClient {
@@ -475,28 +457,6 @@ final class SessionStore {
         return now.timeIntervalSince(refreshedAt) >= Self.maximumTokenRefreshAge
     }
 
-    private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
-        if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
-            if statusCode == 401 {
-                return !hasCurrentlyUsableConvexToken()
-            }
-            if isAuthenticationFailure(message) {
-                return true
-            }
-            return false
-        }
-
-        return isAuthenticationFailure(error)
-    }
-
-    private func hasCurrentlyUsableConvexToken(now: Date = Date()) -> Bool {
-        guard let expiryDate = Self.jwtExpiryDate(token) else {
-            return false
-        }
-
-        return expiryDate.timeIntervalSince(now) > Self.minimumUsableTokenLifetime
-    }
-
     private func recordRecentEmail(_ email: String) {
         let normalized = Self.normalizedEmail(email)
         guard !normalized.isEmpty else {
@@ -548,21 +508,20 @@ final class SessionStore {
     }
 
     private static let proactiveRefreshLeeway: TimeInterval = 60 * 5
-    private static let minimumUsableTokenLifetime: TimeInterval = 60
     private static let maximumTokenRefreshAge: TimeInterval = 60 * 60 * 6
     private static let maximumRecentEmailCount = 3
+    private static let sessionRefreshRetryMessage = "We couldn't refresh your session. We'll keep trying."
 
     private func restoreFailureMessage(for error: Error) -> String {
-        if case let PatchworkError.authRefreshFailed(statusCode, _) = error,
-           statusCode == 401 {
-            return "Your session expired. Sign in again."
+        if case PatchworkError.authRefreshFailed = error {
+            return Self.sessionRefreshRetryMessage
         }
 
         if let patchworkError = error as? PatchworkError,
            let description = patchworkError.errorDescription,
            !description.isEmpty {
             if isAuthenticationFailure(description) {
-                return "Your session expired. Sign in again."
+                return Self.sessionRefreshRetryMessage
             }
             return description
         }
@@ -570,12 +529,12 @@ final class SessionStore {
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !description.isEmpty {
             if isAuthenticationFailure(description) {
-                return "Your session expired. Sign in again."
+                return Self.sessionRefreshRetryMessage
             }
             return description
         }
 
-        return "We couldn't restore your session. Sign in again."
+        return Self.sessionRefreshRetryMessage
     }
 
     private func isAuthenticationFailure(_ description: String) -> Bool {

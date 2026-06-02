@@ -639,10 +639,11 @@ struct RootView: View {
             return
         }
 
-        let shouldForceRefresh = forceRefresh || appState.currentUser == nil
-        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: shouldForceRefresh)
+        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: forceRefresh)
         guard restored else {
-            appState.resetForSignedOutSession()
+            if !sessionStore.isAuthenticated {
+                appState.resetForSignedOutSession()
+            }
             return
         }
 
