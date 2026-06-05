@@ -116,6 +116,15 @@ export const categoryValidator = v.object({
   sortOrder: v.optional(v.number()),
 });
 
+export const categoryGroupValidator = v.object({
+  _id: v.id("categoryGroups"),
+  name: v.string(),
+  slug: v.string(),
+  description: v.optional(v.string()),
+  sortOrder: v.number(),
+  categories: v.array(categoryValidator),
+});
+
 export const taskerCategoryRateTypeValidator = v.union(
   v.literal("hourly"),
   v.literal("fixed")

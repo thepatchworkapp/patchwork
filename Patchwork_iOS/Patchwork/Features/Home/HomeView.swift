@@ -15,6 +15,8 @@ struct HomeView: View {
     @Environment(SessionStore.self) private var sessionStore
 
     @State private var selectedCategorySlug: String?
+    @State private var selectedCategoryGroupSlug: String?
+    @State private var selectedCategorySlugs = Set<String>()
     @State private var radiusKm = 25
     @State private var showRadiusSheet = false
     @State private var showCategorySheet = false
@@ -60,7 +62,7 @@ struct HomeView: View {
             }
             selectedCategorySlug = appState.activeCategorySlug
             radiusKm = appState.searchRadius
-            await reload()
+            await reload(resetDismissedTaskers: true)
         }
         .task(id: coordinateRefreshKey) {
             guard !usesVisualPreview else {
@@ -69,7 +71,7 @@ struct HomeView: View {
             guard appState.currentUser?.location?.coordinates != nil else {
                 return
             }
-            await reload()
+            await reload(resetDismissedTaskers: false)
         }
     }
 
@@ -178,31 +180,38 @@ struct HomeView: View {
     }
 
     private var spotlightContent: some View {
-        VStack(spacing: 0) {
-            if visibleTaskers.isEmpty {
-                emptyState
-                    .padding(.horizontal, MainLayout.horizontalGutter)
-                    .padding(.top, MainLayout.topRhythm)
-            } else if let tasker = currentTasker {
-                spotlightCard(tasker)
-                    .padding(.horizontal, MainLayout.horizontalGutter)
-                    .padding(.top, MainLayout.topRhythm)
-                    .offset(x: cardDragOffset)
-                    .rotationEffect(.degrees(Double(cardDragOffset / 24)))
-                    .opacity(Double(1 - min(CGFloat(0.25), abs(cardDragOffset) / CGFloat(420))))
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                cardDragOffset = max(-140, min(140, value.translation.width))
-                            }
-                            .onEnded { value in
-                                handleSpotlightSwipeEnd(value)
-                            }
-                    )
-            }
+        ScrollView {
+            VStack(spacing: 0) {
+                if visibleTaskers.isEmpty {
+                    emptyState
+                        .padding(.horizontal, MainLayout.horizontalGutter)
+                        .padding(.top, MainLayout.topRhythm)
+                } else if let tasker = currentTasker {
+                    spotlightCard(tasker)
+                        .padding(.horizontal, MainLayout.horizontalGutter)
+                        .padding(.top, MainLayout.topRhythm)
+                        .offset(x: cardDragOffset)
+                        .rotationEffect(.degrees(Double(cardDragOffset / 24)))
+                        .opacity(Double(1 - min(CGFloat(0.25), abs(cardDragOffset) / CGFloat(420))))
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    cardDragOffset = max(-140, min(140, value.translation.width))
+                                }
+                                .onEnded { value in
+                                    handleSpotlightSwipeEnd(value)
+                                }
+                        )
+                }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
         }
+        .refreshable {
+            await reload(resetDismissedTaskers: false)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private func spotlightCard(_ tasker: TaskerSummary) -> some View {
@@ -411,7 +420,7 @@ struct HomeView: View {
                     .foregroundStyle(PatchworkTheme.textSecondary)
 
                     Button("Apply") {
-                        Task { await reload() }
+                        Task { await reload(resetDismissedTaskers: true) }
                         showRadiusSheet = false
                     }
                     .buttonStyle(PatchworkPrimaryButtonStyle())
@@ -488,17 +497,39 @@ struct HomeView: View {
                                 }
                             }
 
+                            ForEach(discoverCategoryGroupOptions, id: \.id) { group in
+                                categorySheetRow(
+                                    label: group.name,
+                                    isSelected: selectedCategoryGroupSlug == group.slug && selectedCategorySlugs.count == group.categories.count,
+                                    accessibilityIdentifier: "Home.categoryGroupOption.\(group.slug)"
+                                ) {
+                                    selectCategoryGroup(group)
+                                }
+                            }
+
+                            if selectedCategoryGroup != nil && !discoverMemberCategoryOptions.isEmpty {
+                                ForEach(discoverMemberCategoryOptions, id: \.id) { category in
+                                    categorySheetRow(
+                                        label: categoryMenuLabel(for: category),
+                                        isSelected: selectedCategorySlugs.contains(category.slug),
+                                        accessibilityIdentifier: "Home.categoryGroupMemberOption.\(category.slug)"
+                                    ) {
+                                        toggleSelectedMemberCategory(category)
+                                    }
+                                }
+                            }
+
                             ForEach(discoverCategoryOptions, id: \.id) { category in
                                 categorySheetRow(
                                     label: categoryMenuLabel(for: category),
-                                    isSelected: selectedCategorySlug == category.slug,
+                                    isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                     accessibilityIdentifier: "Home.categoryOption.\(category.slug)"
                                 ) {
                                     selectCategory(category.slug)
                                 }
                             }
 
-                            if discoverCategoryOptions.isEmpty && !shouldShowAllCategoriesOption {
+                            if discoverCategoryGroupOptions.isEmpty && discoverCategoryOptions.isEmpty && discoverMemberCategoryOptions.isEmpty && !shouldShowAllCategoriesOption {
                                 VStack(spacing: 10) {
                                     Image(systemName: "magnifyingglass")
                                         .font(.title3.weight(.semibold))
@@ -573,6 +604,17 @@ struct HomeView: View {
            let category = appState.categories.first(where: { $0.slug == selectedCategorySlug }) {
             return categoryMenuLabel(for: category)
         }
+        if let selectedCategoryGroup {
+            if selectedCategorySlugs.count == selectedCategoryGroup.categories.count {
+                return selectedCategoryGroup.name
+            }
+            let selectedNames = selectedCategoryGroup.categories
+                .filter { selectedCategorySlugs.contains($0.slug) }
+                .map(\.name)
+            if !selectedNames.isEmpty {
+                return "\(selectedCategoryGroup.name): \(selectedNames.joined(separator: ", "))"
+            }
+        }
         return "All categories"
     }
 
@@ -588,10 +630,47 @@ struct HomeView: View {
         }
     }
 
+    private var discoverCategoryGroupOptions: [CategoryGroup] {
+        sortedDiscoverCategoryGroups.filter { group in
+            let query = trimmedCategorySearchText
+            return query.isEmpty
+                || group.name.localizedStandardContains(query)
+                || group.categories.contains { $0.name.localizedStandardContains(query) }
+        }
+    }
+
+    private var discoverMemberCategoryOptions: [Category] {
+        guard let selectedCategoryGroup else {
+            return []
+        }
+        let query = trimmedCategorySearchText
+        return selectedCategoryGroup.categories
+            .sorted { lhs, rhs in lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending }
+            .filter { category in
+                query.isEmpty || category.name.localizedStandardContains(query)
+            }
+    }
+
     private var sortedDiscoverCategories: [Category] {
         appState.categories.sorted { lhs, rhs in
             lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private var sortedDiscoverCategoryGroups: [CategoryGroup] {
+        appState.categoryGroups.sorted { lhs, rhs in
+            if lhs.sortOrder != rhs.sortOrder {
+                return lhs.sortOrder < rhs.sortOrder
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var selectedCategoryGroup: CategoryGroup? {
+        guard let selectedCategoryGroupSlug else {
+            return nil
+        }
+        return appState.categoryGroups.first { $0.slug == selectedCategoryGroupSlug }
     }
 
     private var shouldShowAllCategoriesOption: Bool {
@@ -711,28 +790,65 @@ struct HomeView: View {
 
     private func selectCategory(_ slug: String?) {
         selectedCategorySlug = slug
+        selectedCategoryGroupSlug = nil
+        selectedCategorySlugs.removeAll()
         showCategorySheet = false
-        Task { await reload() }
+        Task { await reload(resetDismissedTaskers: true) }
         if let slug {
             recordDiscoverCategorySelection(categorySlug: slug)
         }
     }
 
-    private func reload() async {
+    private func selectCategoryGroup(_ group: CategoryGroup) {
+        selectedCategorySlug = nil
+        selectedCategoryGroupSlug = group.slug
+        selectedCategorySlugs = Set(group.categories.map(\.slug))
+        Task { await reload(resetDismissedTaskers: true) }
+    }
+
+    private func toggleSelectedMemberCategory(_ category: Category) {
+        selectedCategorySlug = nil
+        if selectedCategorySlugs.contains(category.slug) {
+            selectedCategorySlugs.remove(category.slug)
+        } else {
+            selectedCategorySlugs.insert(category.slug)
+        }
+        Task { await reload(resetDismissedTaskers: true) }
+        recordDiscoverCategorySelection(categorySlug: category.slug)
+    }
+
+    private func reload(resetDismissedTaskers: Bool) async {
         appState.activeCategorySlug = selectedCategorySlug
+        appState.activeCategorySlugs = selectedSearchCategorySlugs ?? []
         appState.searchRadius = radiusKm
         await appState.searchTaskers(
             client: sessionStore.client,
             categorySlug: selectedCategorySlug,
+            categorySlugs: selectedSearchCategorySlugs,
             radiusKm: radiusKm,
             excludeCurrentUserWhenTasker: true
         )
-        dismissedTaskerIDs.removeAll()
+        if resetDismissedTaskers {
+            dismissedTaskerIDs.removeAll()
+        } else {
+            dismissedTaskerIDs.formIntersection(Set(appState.taskers.map(\.id)))
+        }
         if visibleTaskers.isEmpty {
             currentCardIndex = 0
         } else if currentCardIndex >= visibleTaskers.count {
             currentCardIndex = visibleTaskers.count - 1
         }
+    }
+
+    private var selectedSearchCategorySlugs: [String]? {
+        if let selectedCategorySlug {
+            return [selectedCategorySlug]
+        }
+        if selectedCategoryGroupSlug != nil {
+            let slugs = selectedCategorySlugs.sorted()
+            return slugs.isEmpty ? [] : slugs
+        }
+        return nil
     }
 
     private func recordDiscoverCategorySelection(categorySlug: String) {
@@ -785,6 +901,7 @@ struct HomeView: View {
         }
         dismissedTaskerIDs.insert(tasker.id)
         if visibleTaskers.isEmpty {
+            dismissedTaskerIDs.removeAll()
             currentCardIndex = 0
         } else if currentCardIndex >= visibleTaskers.count {
             currentCardIndex = visibleTaskers.count - 1

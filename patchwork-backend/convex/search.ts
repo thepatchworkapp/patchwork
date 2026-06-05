@@ -13,6 +13,7 @@ const DEFAULT_GEO_RESULTS = 50;
 export const searchTaskers = query({
   args: {
     categorySlug: v.optional(v.string()),
+    categorySlugs: v.optional(v.array(v.string())),
     lat: v.number(),
     lng: v.number(),
     radiusKm: v.number(),
@@ -30,17 +31,25 @@ export const searchTaskers = query({
     if (args.lng < -180 || args.lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
     if (args.radiusKm < 0 || args.radiusKm > 500) throw new ConvexError("Search radius must be between 0 and 500 km");
 
-    let category: Doc<"categories"> | null = null;
-    if (args.categorySlug) {
-      category = await ctx.db
+    const requestedCategorySlugs = Array.from(
+      new Set([
+        ...(args.categorySlugs ?? []),
+        ...(args.categorySlug ? [args.categorySlug] : []),
+      ].map((slug) => slug.trim()).filter((slug) => slug.length > 0))
+    );
+    const categories = [];
+    for (const categorySlug of requestedCategorySlugs) {
+      const category = await ctx.db
         .query("categories")
-        .withIndex("by_slug", (q) => q.eq("slug", args.categorySlug!))
+        .withIndex("by_slug", (q) => q.eq("slug", categorySlug))
         .unique();
-      
-      if (!category) {
+
+      if (!category?.isActive) {
         return [];
       }
+      categories.push(category);
     }
+    const categoryIds = new Set(categories.map((category) => category._id));
 
     const maxDistanceMeters = args.radiusKm * 1000;
     const nearbyTaskers = await taskerGeo.nearest(ctx, {
@@ -74,18 +83,20 @@ export const searchTaskers = query({
       }
 
       let categoryData: Doc<"taskerCategories"> | null = null;
-      let currentCategory: Doc<"categories"> | null = category;
+      let currentCategory: Doc<"categories"> | null = categories[0] ?? null;
       
-      if (currentCategory) {
-        categoryData = await ctx.db
+      if (categoryIds.size > 0) {
+        const taskerCategoryRows = await ctx.db
           .query("taskerCategories")
-          .withIndex("by_taskerProfile_category", (q) =>
-            q.eq("taskerProfileId", profile._id).eq("categoryId", currentCategory!._id)
-          )
-          .unique();
+          .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", profile._id))
+          .collect();
 
-        if (!categoryData) {
-          continue;
+        for (const candidate of taskerCategoryRows) {
+          if (categoryIds.has(candidate.categoryId)) {
+            categoryData = candidate;
+            currentCategory = categories.find((category) => category._id === candidate.categoryId) ?? null;
+            break;
+          }
         }
       } else {
         categoryData = await ctx.db
@@ -102,6 +113,9 @@ export const searchTaskers = query({
         if (!currentCategory) {
           continue;
         }
+      }
+      if (!categoryData || !currentCategory) {
+        continue;
       }
 
       const distanceKm = geoResult.distance / 1000;

@@ -144,6 +144,84 @@ describe("searchTaskers", () => {
     expect(results[0].category).toBe("Cleaning");
   });
 
+  test("returns taskers matching any requested category slug", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const plumbingCategory = categories.find((c) => c.slug === "plumbing");
+    const paintingCategory = categories.find((c) => c.slug === "painting");
+    expect(cleaningCategory).toBeDefined();
+    expect(plumbingCategory).toBeDefined();
+    expect(paintingCategory).toBeDefined();
+
+    const asCleaner = t.withIdentity({
+      tokenIdentifier: "google|multi-category-cleaner",
+      email: "multi-category-cleaner@example.com",
+    });
+    await asCleaner.mutation(api.users.createProfile, {
+      name: "Cleaner",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asCleaner.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Cleaner Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+    const cleanerUser = await asCleaner.query(api.users.getCurrentUser);
+    await applyAnnualRevenueCatAccess(t, cleanerUser!._id);
+    await asCleaner.mutation(api.location.updateTaskerLocation, {
+      lat: 43.65107,
+      lng: -79.347015,
+    });
+
+    const asPlumber = t.withIdentity({
+      tokenIdentifier: "google|multi-category-plumber",
+      email: "multi-category-plumber@example.com",
+    });
+    await asPlumber.mutation(api.users.createProfile, {
+      name: "Plumber",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asPlumber.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Plumber Pro",
+      categoryId: plumbingCategory!._id,
+      categoryBio: "I fix pipes",
+      rateType: "hourly",
+      hourlyRate: 6000,
+      serviceRadius: 10,
+    });
+    const plumberUser = await asPlumber.query(api.users.getCurrentUser);
+    await applyAnnualRevenueCatAccess(t, plumberUser!._id);
+    await asPlumber.mutation(api.location.updateTaskerLocation, {
+      lat: 43.65107,
+      lng: -79.347015,
+    });
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlugs: ["cleaning", "plumbing"],
+      lat: 43.65,
+      lng: -79.38,
+      radiusKm: 50,
+    });
+
+    expect(results.map((result) => result.name).sort()).toEqual(["Cleaner Pro", "Plumber Pro"]);
+
+    const narrowedResults = await t.query(api.search.searchTaskers, {
+      categorySlugs: ["painting"],
+      lat: 43.65,
+      lng: -79.38,
+      radiusKm: 50,
+    });
+    expect(narrowedResults).toHaveLength(0);
+  });
+
   test("syncs tasker geo when an existing located seeker creates a tasker profile", async () => {
     const t = createTest();
 

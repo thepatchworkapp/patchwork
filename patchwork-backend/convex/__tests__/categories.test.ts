@@ -41,6 +41,27 @@ describe("categories", () => {
     expect(secondRun).toHaveLength(firstRun.length);
   });
 
+  test("seedCategories creates idempotent category groups with alphabetized members", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+    const firstRun = await t.query(api.categories.listCategoryGroups);
+
+    await t.mutation(internal.categories.seedCategories);
+    const secondRun = await t.query(api.categories.listCategoryGroups);
+
+    expect(secondRun).toHaveLength(firstRun.length);
+
+    const homeServices = secondRun.find((group) => group.slug === "home-services");
+    expect(homeServices).toBeDefined();
+    expect(homeServices?.name).toBe("Home Services");
+    expect(homeServices?.categories.map((category) => category.slug)).toContain("plumbing");
+    expect(homeServices?.categories.map((category) => category.slug)).toContain("cleaning");
+
+    const memberNames = homeServices!.categories.map((category) => category.name);
+    expect(memberNames).toEqual([...memberNames].sort((lhs, rhs) => lhs.localeCompare(rhs)));
+  });
+
   test("listCategories returns all active categories sorted by sortOrder", async () => {
     const t = convexTest(schema, modules);
     

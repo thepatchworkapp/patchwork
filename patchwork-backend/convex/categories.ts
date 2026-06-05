@@ -1,6 +1,7 @@
 import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { categoryValidator } from "../lib/convex/validators";
+import { categoryGroupValidator, categoryValidator } from "../lib/convex/validators";
+import { Id } from "./_generated/dataModel";
 
 function toSlug(name: string): string {
   return name
@@ -103,9 +104,45 @@ export const seedCategories = internalMutation({
   returns: v.object({
     total: v.number(),
     inserted: v.number(),
+    groups: v.number(),
   }),
   handler: async (ctx) => {
     let inserted = 0;
+    const now = Date.now();
+    const groupByName = new Map<string, { groupId: Id<"categoryGroups">; sortOrder: number }>();
+
+    for (const cat of ALL_CATEGORIES) {
+      if (groupByName.has(cat.group)) {
+        continue;
+      }
+
+      const slug = toSlug(cat.group);
+      const existingGroup = await ctx.db
+        .query("categoryGroups")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .unique();
+      const sortOrder = cat.sortOrder;
+
+      if (existingGroup) {
+        await ctx.db.patch(existingGroup._id, {
+          name: cat.group,
+          sortOrder,
+          isActive: true,
+          updatedAt: now,
+        });
+        groupByName.set(cat.group, { groupId: existingGroup._id, sortOrder });
+      } else {
+        const groupId = await ctx.db.insert("categoryGroups", {
+          name: cat.group,
+          slug,
+          sortOrder,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        groupByName.set(cat.group, { groupId, sortOrder });
+      }
+    }
 
     for (const cat of ALL_CATEGORIES) {
       const slug = toSlug(cat.name);
@@ -131,9 +168,40 @@ export const seedCategories = internalMutation({
         });
         inserted++;
       }
+
+      const category = await ctx.db
+        .query("categories")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .unique();
+      const group = groupByName.get(cat.group);
+      if (!category || !group) {
+        continue;
+      }
+
+      const existingMapping = await ctx.db
+        .query("categoryGroupMappings")
+        .withIndex("by_group_category", (q) =>
+          q.eq("groupId", group.groupId).eq("categoryId", category._id)
+        )
+        .unique();
+
+      if (existingMapping) {
+        await ctx.db.patch(existingMapping._id, {
+          sortOrder: cat.sortOrder,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("categoryGroupMappings", {
+          groupId: group.groupId,
+          categoryId: category._id,
+          sortOrder: cat.sortOrder,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     }
 
-    return { total: ALL_CATEGORIES.length, inserted };
+    return { total: ALL_CATEGORIES.length, inserted, groups: groupByName.size };
   },
 });
 
@@ -160,6 +228,68 @@ export const listCategories = query({
       isActive: category.isActive,
       sortOrder: category.sortOrder,
     }));
+  },
+});
+
+export const listCategoryGroups = query({
+  args: {},
+  returns: v.array(categoryGroupValidator),
+  handler: async (ctx) => {
+    await ctx.auth.getUserIdentity();
+
+    const groups = await ctx.db
+      .query("categoryGroups")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
+
+    groups.sort((lhs, rhs) => {
+      if (lhs.sortOrder !== rhs.sortOrder) {
+        return lhs.sortOrder - rhs.sortOrder;
+      }
+      return lhs.name.localeCompare(rhs.name);
+    });
+
+    const results = [];
+    for (const group of groups) {
+      const mappings = await ctx.db
+        .query("categoryGroupMappings")
+        .withIndex("by_group", (q) => q.eq("groupId", group._id))
+        .collect();
+
+      const categories = [];
+      for (const mapping of mappings) {
+        const category = await ctx.db.get(mapping.categoryId);
+        if (!category?.isActive) {
+          continue;
+        }
+        categories.push({
+          _id: category._id,
+          name: category.name,
+          slug: category.slug,
+          icon: category.icon,
+          emoji: category.emoji,
+          group: category.group,
+          description: category.description,
+          isActive: category.isActive,
+          sortOrder: category.sortOrder,
+        });
+      }
+
+      categories.sort((lhs, rhs) =>
+        lhs.name.localeCompare(rhs.name, undefined, { sensitivity: "base" })
+      );
+
+      results.push({
+        _id: group._id,
+        name: group.name,
+        slug: group.slug,
+        description: group.description,
+        sortOrder: group.sortOrder,
+        categories,
+      });
+    }
+
+    return results;
   },
 });
 

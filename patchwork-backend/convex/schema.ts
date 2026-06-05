@@ -333,6 +333,30 @@ export default defineSchema({
     .index("by_name", ["name"])
     .index("by_active", ["isActive"]),
 
+  categoryGroups: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    sortOrder: v.number(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_active", ["isActive"])
+    .index("by_sortOrder", ["sortOrder"]),
+
+  categoryGroupMappings: defineTable({
+    groupId: v.id("categoryGroups"),
+    categoryId: v.id("categories"),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_group", ["groupId", "sortOrder"])
+    .index("by_category", ["categoryId"])
+    .index("by_group_category", ["groupId", "categoryId"]),
+
   // ============================================
   // MESSAGING
   // ============================================

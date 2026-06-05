@@ -18,6 +18,7 @@ final class AppState {
     var isBootstrapped = false
 
     var categories: [Category] = []
+    var categoryGroups: [CategoryGroup] = []
     var categoriesErrorMessage: String?
     var isLoadingCategories = false
     var taskers: [TaskerSummary] = []
@@ -32,6 +33,7 @@ final class AppState {
     var taskerProfile: TaskerProfileSelf?
 
     var activeCategorySlug: String?
+    var activeCategorySlugs: [String] = []
     var selectedTasker: TaskerDetail?
     var selectedConversation: ConversationDetail?
 
@@ -45,6 +47,7 @@ final class AppState {
     var taskerHourlyRate = ""
 
     var lastError: String?
+    private var latestTaskerSearchRequestID: UUID?
 
     private enum CurrentUserRefreshResult {
         case user(CurrentUser)
@@ -97,10 +100,15 @@ final class AppState {
         defer { isLoadingCategories = false }
 
         do {
-            categories = try await PatchworkAPI(client: client).categories.list()
+            let api = PatchworkAPI(client: client)
+            async let categoryList = api.categories.list()
+            async let groupList = api.categories.listGroups()
+            categories = try await categoryList
+            categoryGroups = try await groupList
             categoriesErrorMessage = nil
         } catch {
             categories = []
+            categoryGroups = []
             categoriesErrorMessage = error.localizedDescription
         }
     }
@@ -282,11 +290,17 @@ final class AppState {
     func searchTaskers(
         client: ConvexHTTPClient,
         categorySlug: String?,
+        categorySlugs: [String]? = nil,
         radiusKm: Int,
         excludeCurrentUserWhenTasker: Bool
     ) async {
+        let requestID = UUID()
+        latestTaskerSearchRequestID = requestID
         do {
             guard let currentCoordinates = currentUser?.location?.coordinates else {
+                guard latestTaskerSearchRequestID == requestID else {
+                    return
+                }
                 taskers = []
                 return
             }
@@ -299,16 +313,24 @@ final class AppState {
                 excludeUserId = nil
             }
 
-            taskers = try await PatchworkAPI(client: client).search.taskers(
+            let results = try await PatchworkAPI(client: client).search.taskers(
                 lat: currentCoordinates.lat,
                 lng: currentCoordinates.lng,
                 radiusKm: radiusKm,
                 limit: Self.defaultListLimit,
                 categorySlug: categorySlug,
+                categorySlugs: categorySlugs,
                 excludeUserId: excludeUserId
             )
+            guard latestTaskerSearchRequestID == requestID else {
+                return
+            }
+            taskers = results
             prefetchTaskerImages(taskers)
         } catch {
+            guard latestTaskerSearchRequestID == requestID else {
+                return
+            }
             if isCancellationError(error) {
                 return
             }
@@ -325,6 +347,7 @@ final class AppState {
         await searchTaskers(
             client: client,
             categorySlug: categorySlug ?? activeCategorySlug,
+            categorySlugs: activeCategorySlugs.isEmpty ? nil : activeCategorySlugs,
             radiusKm: radiusKm ?? searchRadius,
             excludeCurrentUserWhenTasker: excludeCurrentUserWhenTasker
         )
@@ -361,6 +384,7 @@ final class AppState {
         selectedTab = .home
         isBootstrapped = false
         taskers = []
+        latestTaskerSearchRequestID = nil
         favouriteTaskers = []
         blockedUsers = []
         conversations = []
@@ -374,6 +398,8 @@ final class AppState {
         selectedConversation = nil
         categoriesErrorMessage = nil
         isLoadingCategories = false
+        activeCategorySlug = nil
+        activeCategorySlugs = []
         lastError = nil
     }
 

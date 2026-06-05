@@ -85,6 +85,22 @@ struct Category: Identifiable, Codable, Hashable {
     }
 }
 
+struct CategoryGroup: Identifiable, Codable, Hashable {
+    let id: ConvexID
+    let name: String
+    let slug: String
+    let sortOrder: Int
+    let categories: [Category]
+
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case name
+        case slug
+        case sortOrder
+        case categories
+    }
+}
+
 struct TaskerSummary: Identifiable, Codable, Hashable {
     let id: ConvexID
     let userId: ConvexID

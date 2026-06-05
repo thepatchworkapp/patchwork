@@ -55,6 +55,10 @@ struct PatchworkAPI {
         func list() async throws -> [Category] {
             try await client.query("categories:listCategories", args: [:])
         }
+
+        func listGroups() async throws -> [CategoryGroup] {
+            try await client.query("categories:listCategoryGroups", args: [:])
+        }
     }
 
     struct Conversations {
@@ -122,6 +126,7 @@ struct PatchworkAPI {
             radiusKm: Int,
             limit: Int = 50,
             categorySlug: String?,
+            categorySlugs: [String]? = nil,
             excludeUserId: ConvexID?
         ) async throws -> [TaskerSummary] {
             var args: [String: Any] = [
@@ -132,6 +137,9 @@ struct PatchworkAPI {
             ]
             if let categorySlug {
                 args["categorySlug"] = categorySlug
+            }
+            if let categorySlugs, !categorySlugs.isEmpty {
+                args["categorySlugs"] = categorySlugs
             }
             if let excludeUserId {
                 args["excludeUserId"] = excludeUserId
