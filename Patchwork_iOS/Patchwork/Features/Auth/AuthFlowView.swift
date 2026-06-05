@@ -108,7 +108,7 @@ struct AuthFlowView: View {
         .init(
             icon: "person.2.fill",
             title: "Connect with local service providers",
-            description: "Find trusted Taskers within 100 km for 65+ categories, from plumbing to tutoring.",
+            description: "Find trusted Taskers within 250 km for 62 categories, from plumbing to tutoring.",
             iconSize: 34
         ),
         .init(
@@ -183,7 +183,7 @@ struct AuthFlowView: View {
 
                 splashWordmark
 
-                Text("Connect with local service providers, or list yourself in over 65 categories.")
+                Text("Connect with local service providers, or list yourself in 62 categories.")
                     .font(.patchworkBody)
                     .foregroundStyle(.white.opacity(0.78))
                     .multilineTextAlignment(.center)

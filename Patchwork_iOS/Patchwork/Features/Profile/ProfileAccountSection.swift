@@ -114,7 +114,6 @@ struct ProfileAccountSection: View {
                     .padding(.top, 6)
                 }
 
-                preTaskerSettingsCard
             }
             .frame(maxWidth: .infinity)
 
@@ -186,20 +185,6 @@ struct ProfileAccountSection: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var preTaskerSettingsCard: some View {
-        PatchworkSurfaceCard {
-            VStack(spacing: 0) {
-                preTaskerSettingsRow(
-                    title: "Seeker profile",
-                    systemImage: "person.fill",
-                    accessibilityIdentifier: "Profile.seekerProfileRow"
-                ) {
-                    isShowingProfileEditor = true
-                }
-            }
-        }
-    }
-
     private var avatar: some View {
         ZStack(alignment: .bottomTrailing) {
             AvatarPhotoControl(
@@ -230,39 +215,6 @@ struct ProfileAccountSection: View {
                 .offset(x: 4, y: 4)
             }
         }
-    }
-
-    private func preTaskerSettingsRow(
-        title: String,
-        systemImage: String,
-        accessibilityIdentifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 18) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(PatchworkTheme.brand)
-                    .frame(width: 44, height: 44)
-                    .background(PatchworkTheme.brandSoft.opacity(0.86), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .accessibilityHidden(true)
-
-                Text(title)
-                    .font(.patchworkBodyStrong)
-                    .foregroundStyle(PatchworkTheme.textPrimary)
-
-                Spacer(minLength: 12)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(PatchworkTheme.textTertiary)
-                    .accessibilityHidden(true)
-            }
-            .frame(height: 62)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var avatarFallback: some View {
@@ -561,7 +513,7 @@ private struct ProfileAccountEditSheet: View {
                 PatchworkSectionIntro(
                     eyebrow: "Account",
                     title: "Edit profile",
-                    message: "Update the hometown we use when live location is unavailable."
+                    message: "Update the home base we use when live location is unavailable."
                 )
 
                 VStack(spacing: 12) {
@@ -570,7 +522,7 @@ private struct ProfileAccountEditSheet: View {
                         .textContentType(.name)
                         .accessibilityIdentifier("ProfileEdit.nameField")
 
-                    TextField("Hometown", text: $city)
+                    TextField("Home base", text: $city)
                         .patchworkInputFieldStyle()
                         .textContentType(.addressCity)
                         .accessibilityIdentifier("ProfileEdit.cityField")

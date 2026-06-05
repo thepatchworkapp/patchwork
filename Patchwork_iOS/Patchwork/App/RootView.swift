@@ -879,6 +879,41 @@ private struct ProfileSetupView: View {
         case province
     }
 
+    private struct HomeBaseSuggestion: Identifiable, Equatable {
+        let city: String
+        let province: String
+
+        var id: String { "\(city), \(province)" }
+        var label: String { id }
+    }
+
+    private let homeBaseSuggestions: [HomeBaseSuggestion] = [
+        .init(city: "Barrie", province: "ON"),
+        .init(city: "Brampton", province: "ON"),
+        .init(city: "Calgary", province: "AB"),
+        .init(city: "Edmonton", province: "AB"),
+        .init(city: "Guelph", province: "ON"),
+        .init(city: "Halifax", province: "NS"),
+        .init(city: "Hamilton", province: "ON"),
+        .init(city: "Kitchener", province: "ON"),
+        .init(city: "London", province: "ON"),
+        .init(city: "Mississauga", province: "ON"),
+        .init(city: "Montreal", province: "QC"),
+        .init(city: "Oakville", province: "ON"),
+        .init(city: "Oshawa", province: "ON"),
+        .init(city: "Ottawa", province: "ON"),
+        .init(city: "Quebec City", province: "QC"),
+        .init(city: "Richmond Hill", province: "ON"),
+        .init(city: "St. Catharines", province: "ON"),
+        .init(city: "Toronto", province: "ON"),
+        .init(city: "Vancouver", province: "BC"),
+        .init(city: "Vaughan", province: "ON"),
+        .init(city: "Victoria", province: "BC"),
+        .init(city: "Waterloo", province: "ON"),
+        .init(city: "Windsor", province: "ON"),
+        .init(city: "Winnipeg", province: "MB"),
+    ]
+
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
     @Environment(LocationManager.self) private var locationManager
@@ -899,6 +934,9 @@ private struct ProfileSetupView: View {
     @State private var createdUserId: ConvexID?
     @State private var resolvedCoordinates: Coordinates?
     @State private var step: Step = .profile
+    @State private var selectedHomeBase: HomeBaseSuggestion?
+    @State private var isFinalizingNotifications = false
+    @State private var fallbackNotificationsEnabled = false
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -1026,22 +1064,81 @@ private struct ProfileSetupView: View {
                 .focused($focusedField, equals: .name)
                 .accessibilityIdentifier("ProfileSetup.nameField")
 
-            TextField("City", text: $city)
+            TextField("Home base", text: $city)
                 .patchworkInputFieldStyle()
                 .focused($focusedField, equals: .city)
                 .accessibilityIdentifier("ProfileSetup.cityField")
+                .onChange(of: city) { _, _ in
+                    clearHomeBaseSelectionIfNeeded()
+                }
 
             TextField("Province", text: $province)
                 .patchworkInputFieldStyle()
                 .focused($focusedField, equals: .province)
                 .accessibilityIdentifier("ProfileSetup.provinceField")
+                .onChange(of: province) { _, newValue in
+                    let uppercased = newValue.uppercased()
+                    if province != uppercased {
+                        province = uppercased
+                    }
+                    clearHomeBaseSelectionIfNeeded()
+                }
+
+            homeBaseSuggestionsContent
         }
     }
 
     private var isProfileStepValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !province.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && hasSelectedValidHomeBase
+    }
+
+    @ViewBuilder
+    private var homeBaseSuggestionsContent: some View {
+        if trimmedCity.count >= 3 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Home base")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+
+                if matchingHomeBaseSuggestions.isEmpty {
+                    Text("Select a suggested home base to continue.")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textTertiary)
+                        .accessibilityIdentifier("ProfileSetup.homeBaseNoResults")
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(matchingHomeBaseSuggestions) { suggestion in
+                            Button {
+                                selectHomeBase(suggestion)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: selectedHomeBase == suggestion ? "checkmark.circle.fill" : "mappin.and.ellipse")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(selectedHomeBase == suggestion ? PatchworkTheme.success : PatchworkTheme.brand)
+                                        .accessibilityHidden(true)
+
+                                    Text(suggestion.label)
+                                        .font(.patchworkBodyStrong)
+                                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 11)
+                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(selectedHomeBase == suggestion ? PatchworkTheme.success.opacity(0.5) : PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("ProfileSetup.homeBaseSuggestion.\(suggestion.id)")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var locationStepContent: some View {
@@ -1119,17 +1216,28 @@ private struct ProfileSetupView: View {
         case .notifications:
             Button("Allow notifications") {
                 Task {
-                    _ = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
+                    guard !isFinalizingNotifications else { return }
+                    isFinalizingNotifications = true
+                    fallbackNotificationsEnabled = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
                     await finalizeSetup()
+                    isFinalizingNotifications = false
                 }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
+            .disabled(isFinalizingNotifications)
             .accessibilityIdentifier("ProfileSetup.notificationsAllowButton")
 
             Button("Maybe later") {
-                Task { await finalizeSetup() }
+                Task {
+                    guard !isFinalizingNotifications else { return }
+                    isFinalizingNotifications = true
+                    fallbackNotificationsEnabled = false
+                    await finalizeSetup()
+                    isFinalizingNotifications = false
+                }
             }
             .buttonStyle(PatchworkSecondaryButtonStyle())
+            .disabled(isFinalizingNotifications)
             .accessibilityIdentifier("ProfileSetup.notificationsSkipButton")
         }
     }
@@ -1172,6 +1280,53 @@ private struct ProfileSetupView: View {
         selectedPhotoData != nil || selectedPhotoPreviewImage != nil || selectedPhotoAsset != nil
     }
 
+    private var trimmedCity: String {
+        city.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedProvince: String {
+        province.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasSelectedValidHomeBase: Bool {
+        guard let selectedHomeBase else {
+            return false
+        }
+
+        return selectedHomeBase.city.caseInsensitiveCompare(trimmedCity) == .orderedSame
+            && selectedHomeBase.province.caseInsensitiveCompare(trimmedProvince) == .orderedSame
+    }
+
+    private var matchingHomeBaseSuggestions: [HomeBaseSuggestion] {
+        let query = trimmedCity
+        guard query.count >= 3 else {
+            return []
+        }
+
+        let lowercasedQuery = query.lowercased()
+        return homeBaseSuggestions
+            .filter { suggestion in
+                suggestion.city.lowercased().hasPrefix(lowercasedQuery)
+                    || suggestion.label.lowercased().contains(lowercasedQuery)
+            }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private func selectHomeBase(_ suggestion: HomeBaseSuggestion) {
+        selectedHomeBase = suggestion
+        city = suggestion.city
+        province = suggestion.province
+        focusedField = nil
+    }
+
+    private func clearHomeBaseSelectionIfNeeded() {
+        guard selectedHomeBase != nil, !hasSelectedValidHomeBase else {
+            return
+        }
+        selectedHomeBase = nil
+    }
+
     private func createProfile() async {
         isSaving = true
         photoUploadError = nil
@@ -1179,9 +1334,9 @@ private struct ProfileSetupView: View {
         do {
             if createdUserId == nil {
                 let args: [String: Any] = [
-                    "name": name,
-                    "city": city,
-                    "province": province,
+                    "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "city": trimmedCity,
+                    "province": trimmedProvince,
                 ]
                 createdUserId = try await sessionStore.client.mutation(
                     "users:createProfile",
@@ -1219,15 +1374,15 @@ private struct ProfileSetupView: View {
         appState.currentUser = CurrentUser(
             id: createdUserId,
             email: sessionStore.emailForOTP,
-            name: name,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             roles: UserRoles(isSeeker: true, isTasker: false),
             location: UserLocation(
-                city: city,
-                province: province,
+                city: trimmedCity,
+                province: trimmedProvince,
                 coordinates: resolvedCoordinates
             ),
             settings: UserSettings(
-                notificationsEnabled: false,
+                notificationsEnabled: fallbackNotificationsEnabled,
                 locationEnabled: resolvedCoordinates != nil
             ),
             createdAt: nil,

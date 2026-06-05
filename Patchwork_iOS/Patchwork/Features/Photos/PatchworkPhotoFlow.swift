@@ -136,12 +136,14 @@ enum PatchworkPhotoCropRenderer {
         purpose: PhotoPurpose,
         scale: CGFloat,
         offset: CGSize,
+        cropSize previewCropSize: CGSize? = nil,
         normalizeInput: Bool = true
     ) throws -> UIImage {
         let normalizedImage = normalizeInput ? image.normalizedForPatchworkCropping() : image
         let outputSize = purpose.outputPixelSize
         let aspect = purpose.cropAspectRatio
-        let cropSize = CGSize(width: 1000, height: 1000 * aspect.height / aspect.width)
+        let fallbackCropSize = CGSize(width: 1000, height: 1000 * aspect.height / aspect.width)
+        let cropSize = previewCropSize?.isValidCropSize == true ? previewCropSize! : fallbackCropSize
         let fittedSize = aspectFillSize(imageSize: normalizedImage.size, cropSize: cropSize)
         let outputScaleX = outputSize.width / cropSize.width
         let outputScaleY = outputSize.height / cropSize.height
@@ -633,6 +635,7 @@ struct PhotoCropEditor: View {
                 purpose: input.purpose,
                 scale: cropScale,
                 offset: cropOffset,
+                cropSize: cropState.viewportSize,
                 normalizeInput: false
             )
             guard let data = rendered.jpegData(compressionQuality: 0.86), !data.isEmpty else {
@@ -655,6 +658,7 @@ struct PhotoCropEditor: View {
 private final class PhotoCropInteractionState: ObservableObject {
     var scale: CGFloat = 1
     var offset: CGSize = .zero
+    var viewportSize: CGSize?
 
     func reset() {
         scale = 1
@@ -816,6 +820,7 @@ private final class PhotoCropZoomContainerView: UIView, UIScrollViewDelegate {
             width: centeredOffset.x - scrollView.contentOffset.x,
             height: centeredOffset.y - scrollView.contentOffset.y
         )
+        cropState?.viewportSize = bounds.size
     }
 
     private func centeredContentOffset(contentSize: CGSize) -> CGPoint {
@@ -823,6 +828,12 @@ private final class PhotoCropZoomContainerView: UIView, UIScrollViewDelegate {
             x: max(0, (contentSize.width - bounds.width) / 2),
             y: max(0, (contentSize.height - bounds.height) / 2)
         )
+    }
+}
+
+private extension CGSize {
+    var isValidCropSize: Bool {
+        width.isFinite && height.isFinite && width > 0 && height > 0
     }
 }
 
