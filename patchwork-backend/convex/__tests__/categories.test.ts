@@ -19,6 +19,144 @@ const modules: Record<string, () => Promise<any>> = {
   "../schema.ts": async () => ({ default: schema }),
 };
 
+const expectedCategoryGroups = [
+  {
+    slug: "beauty",
+    name: "Beauty",
+    categorySlugs: [
+      "barber",
+      "hair-removal",
+      "hair-stylist",
+      "lash-tech",
+      "makeup-artist",
+      "microblading",
+      "nail-tech",
+      "skin-treatments",
+      "tattoo-artist",
+    ],
+  },
+  {
+    slug: "child-care",
+    name: "Child Care",
+    categorySlugs: ["day-care-baby-sitters", "tutor"],
+  },
+  {
+    slug: "clothing",
+    name: "Clothing",
+    categorySlugs: ["clothing-stylist", "tailor"],
+  },
+  {
+    slug: "design-creative-marketing",
+    name: "Design, Creative & Marketing",
+    categorySlugs: [
+      "artist",
+      "engraver",
+      "graphic-designer",
+      "photographer",
+      "printer",
+      "social-media-consultant",
+      "videographer",
+    ],
+  },
+  {
+    slug: "food",
+    name: "Food",
+    categorySlugs: ["baker", "caterer", "personal-chef"],
+  },
+  {
+    slug: "health-wellbeing",
+    name: "Health & Wellbeing",
+    categorySlugs: [
+      "in-home-care",
+      "life-coach",
+      "massage",
+      "nutritionist",
+      "personal-assistant",
+      "personal-errand-runner",
+      "personal-trainer",
+    ],
+  },
+  {
+    slug: "home-garden",
+    name: "Home & Garden",
+    categorySlugs: [
+      "carpenter",
+      "carpet-cleaning",
+      "exterior-painter",
+      "florist",
+      "general-contractor",
+      "general-handy-man",
+      "gutter-cleaning",
+      "interior-cleaning-services",
+      "interior-designer",
+      "interior-painter",
+      "landscaper",
+      "mortgage-broker",
+      "plumber",
+      "professional-organizer",
+      "realtor",
+      "roofing",
+      "snow-shoveling-removal",
+      "window-cleaning",
+      "window-install",
+    ],
+  },
+  {
+    slug: "legal",
+    name: "Legal",
+    categorySlugs: ["lawyer"],
+  },
+  {
+    slug: "mechanical",
+    name: "Mechanical",
+    categorySlugs: ["auto-mechanic", "small-engine-repair"],
+  },
+  {
+    slug: "music",
+    name: "Music",
+    categorySlugs: ["bands-musicians", "dj", "guitar-lessons", "piano-lessons"],
+  },
+  {
+    slug: "pet-care",
+    name: "Pet Care",
+    categorySlugs: ["dog-walker", "pet-groomer", "pet-sitting"],
+  },
+  {
+    slug: "planners",
+    name: "Planners",
+    categorySlugs: ["event-planner", "travel-planner", "wedding-planner"],
+  },
+  {
+    slug: "sports",
+    name: "Sports",
+    categorySlugs: [
+      "baseball-instructor",
+      "figure-skating-coach",
+      "golf-instructor",
+      "hockey-instructor",
+      "tennis-instructor",
+    ],
+  },
+  {
+    slug: "technical",
+    name: "Technical",
+    categorySlugs: [
+      "architect",
+      "computer-genius",
+      "developers",
+      "electrician",
+      "engineer",
+      "tax-consultant",
+      "web-designer",
+    ],
+  },
+  {
+    slug: "writing-proofreading",
+    name: "Writing & Proofreading",
+    categorySlugs: ["copywriter", "editor", "resume-consultant"],
+  },
+];
+
 describe("categories", () => {
   test("seedCategories creates all categories", async () => {
     const t = convexTest(schema, modules);
@@ -26,7 +164,8 @@ describe("categories", () => {
     await t.mutation(internal.categories.seedCategories);
     
     const categories = await t.query(api.categories.listCategories);
-    expect(categories.length).toBeGreaterThanOrEqual(50);
+    expect(categories).toHaveLength(77);
+    expect(new Set(categories.map((category) => category.slug)).size).toBe(77);
   });
 
   test("seedCategories is idempotent (running twice doesn't duplicate)", async () => {
@@ -52,14 +191,33 @@ describe("categories", () => {
 
     expect(secondRun).toHaveLength(firstRun.length);
 
-    const homeServices = secondRun.find((group) => group.slug === "home-services");
-    expect(homeServices).toBeDefined();
-    expect(homeServices?.name).toBe("Home Services");
-    expect(homeServices?.categories.map((category) => category.slug)).toContain("plumbing");
-    expect(homeServices?.categories.map((category) => category.slug)).toContain("cleaning");
+    expect(secondRun).toHaveLength(expectedCategoryGroups.length);
 
-    const memberNames = homeServices!.categories.map((category) => category.name);
+    const homeGarden = secondRun.find((group) => group.slug === "home-garden");
+    expect(homeGarden).toBeDefined();
+    expect(homeGarden?.name).toBe("Home & Garden");
+    expect(homeGarden?.categories.map((category) => category.slug)).toContain("plumber");
+    expect(homeGarden?.categories.map((category) => category.slug)).toContain("interior-cleaning-services");
+
+    const memberNames = homeGarden!.categories.map((category) => category.name);
     expect(memberNames).toEqual([...memberNames].sort((lhs, rhs) => lhs.localeCompare(rhs)));
+  });
+
+  test("seedCategories maps the intended taxonomy exactly", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const groups = await t.query(api.categories.listCategoryGroups);
+    expect(groups.map((group) => group.slug)).toEqual(expectedCategoryGroups.map((group) => group.slug));
+
+    for (const expectedGroup of expectedCategoryGroups) {
+      const group = groups.find((candidate) => candidate.slug === expectedGroup.slug);
+      expect(group?.name).toBe(expectedGroup.name);
+      expect(group?.categories.map((category) => category.slug).sort()).toEqual(
+        [...expectedGroup.categorySlugs].sort()
+      );
+    }
   });
 
   test("listCategories returns all active categories sorted by sortOrder", async () => {
@@ -86,14 +244,14 @@ describe("categories", () => {
     await t.mutation(internal.categories.seedCategories);
     
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
     
     expect(category).toBeDefined();
-    expect(category?.name).toBe("Plumbing");
-    expect(category?.slug).toBe("plumbing");
+    expect(category?.name).toBe("Plumber");
+    expect(category?.slug).toBe("plumber");
     expect(category?.emoji).toBe("🚰");
-    expect(category?.group).toBe("Home Services");
+    expect(category?.group).toBe("Home & Garden");
   });
 
   test("seedCategories includes clear arts and music taxonomy entries", async () => {
@@ -106,37 +264,37 @@ describe("categories", () => {
         slug: "guitar-lessons",
         name: "Guitar Lessons",
         emoji: "🎸",
-        group: "Tech & Professional",
+        group: "Music",
       },
       {
         slug: "piano-lessons",
         name: "Piano Lessons",
         emoji: "🎹",
-        group: "Tech & Professional",
+        group: "Music",
       },
       {
-        slug: "art-lessons",
-        name: "Art Lessons",
+        slug: "artist",
+        name: "Artist",
         emoji: "🎨",
-        group: "Tech & Professional",
+        group: "Design, Creative & Marketing",
       },
       {
-        slug: "graphic-design",
-        name: "Graphic Design",
+        slug: "graphic-designer",
+        name: "Graphic Designer",
         emoji: "🖼️",
-        group: "Events & Creative",
+        group: "Design, Creative & Marketing",
       },
       {
-        slug: "muralists",
-        name: "Muralists",
-        emoji: "🖌️",
-        group: "Events & Creative",
+        slug: "photographer",
+        name: "Photographer",
+        emoji: "📸",
+        group: "Design, Creative & Marketing",
       },
       {
-        slug: "illustrators",
-        name: "Illustrators",
-        emoji: "✏️",
-        group: "Events & Creative",
+        slug: "videographer",
+        name: "Videographer",
+        emoji: "🎥",
+        group: "Design, Creative & Marketing",
       },
     ];
 
@@ -165,18 +323,63 @@ describe("categories", () => {
     const t = convexTest(schema, modules);
 
     await t.mutation(internal.categories.seedCategories);
-    const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+    const plumber = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumber",
     });
-    expect(plumbing).toBeDefined();
+    expect(plumber).toBeDefined();
 
     await t.run(async (ctx) => {
-      await ctx.db.patch(plumbing!._id, {
+      await ctx.db.patch(plumber!._id, {
         isActive: false,
       });
     });
 
     const categories = await t.query(api.categories.listCategories);
-    expect(categories.find((category) => category.slug === "plumbing")).toBeUndefined();
+    expect(categories.find((category) => category.slug === "plumber")).toBeUndefined();
+  });
+
+  test("seedCategories deactivates retired categories and removes stale mappings", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+    const staleIds = await t.run(async (ctx) => {
+      const groupId = await ctx.db.insert("categoryGroups", {
+        name: "Retired Group",
+        slug: "retired-group",
+        sortOrder: 999,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      const categoryId = await ctx.db.insert("categories", {
+        name: "Retired Category",
+        slug: "retired-category",
+        group: "Retired Group",
+        isActive: true,
+        sortOrder: 999,
+      });
+      const mappingId = await ctx.db.insert("categoryGroupMappings", {
+        groupId,
+        categoryId,
+        sortOrder: 999,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return { groupId, categoryId, mappingId };
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const staleCategory = await t.query(api.categories.getCategoryBySlug, {
+      slug: "retired-category",
+    });
+    expect(staleCategory).toBeNull();
+
+    const groups = await t.query(api.categories.listCategoryGroups);
+    expect(groups.find((group) => group.slug === "retired-group")).toBeUndefined();
+
+    await t.run(async (ctx) => {
+      expect(await ctx.db.get(staleIds.mappingId)).toBeNull();
+    });
   });
 });

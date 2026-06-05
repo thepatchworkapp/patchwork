@@ -207,6 +207,8 @@ export const listMessagesSince = query({
       latestCursor: cursor.afterCreatedAt,
       latestMessageId: null,
       latestMessageAt: null,
+      latestProposalUpdatedAt: null,
+      latestProposal: null,
     };
     const participant = await getParticipantConversation(ctx, args.conversationId);
     if (!participant) return empty;
@@ -228,13 +230,25 @@ export const listMessagesSince = query({
     const hydrated = await hydrateMessages(ctx, messages);
     const latestMessage = messages.at(-1);
     const latestMessageId = latestMessageIdAtCursor(messages);
+    const latestProposal = await ctx.db
+      .query("proposals")
+      .withIndex("by_conversation_updatedAt", (q) =>
+        q.eq("conversationId", args.conversationId).gt("updatedAt", cursor.afterCreatedAt)
+      )
+      .order("desc")
+      .first();
 
     return {
       messages: hydrated,
       hasMore: filteredRows.length > limit,
-      latestCursor: latestMessage?.createdAt ?? cursor.afterCreatedAt,
+      latestCursor: Math.max(
+        latestMessage?.createdAt ?? cursor.afterCreatedAt,
+        latestProposal?.updatedAt ?? cursor.afterCreatedAt
+      ),
       latestMessageId,
       latestMessageAt: latestMessage?.createdAt ?? null,
+      latestProposalUpdatedAt: latestProposal?.updatedAt ?? null,
+      latestProposal: latestProposal ? serializeProposal(latestProposal) : null,
     };
   },
 });

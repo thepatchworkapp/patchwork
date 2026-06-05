@@ -194,6 +194,7 @@ struct RootView: View {
         [
             sessionStore.isAuthenticated ? "authenticated" : "signed-out",
             appState.currentUser?.id ?? "no-user",
+            appState.currentUser?.settings?.notificationsEnabled.map { String($0) } ?? "notifications-unknown",
             remoteNotificationDeviceToken,
         ].joined(separator: "|")
     }
@@ -216,9 +217,9 @@ struct RootView: View {
         appState.selectedTab = showsBillingPreview ? .profile : .home
         appState.searchRadius = 25
         appState.categories = [
-            Category(id: "category-cleaning", name: "Cleaning", slug: "cleaning", emoji: nil, group: nil),
-            Category(id: "category-plumbing", name: "Plumbing", slug: "plumbing", emoji: nil, group: nil),
-            Category(id: "category-electrical", name: "Electrical", slug: "electrical", emoji: nil, group: nil),
+            Category(id: "category-interior-cleaning-services", name: "Interior Cleaning Services", slug: "interior-cleaning-services", emoji: nil, group: "Home & Garden"),
+            Category(id: "category-plumber", name: "Plumber", slug: "plumber", emoji: nil, group: "Home & Garden"),
+            Category(id: "category-electrician", name: "Electrician", slug: "electrician", emoji: nil, group: "Technical"),
         ]
         appState.currentUser = CurrentUser(
             id: "debug-preview-user",
@@ -257,10 +258,10 @@ struct RootView: View {
             photoImage: nil,
             categories: [
                 TaskerManagedCategory(
-                    id: "debug-tasker-category-cleaning",
-                    categoryId: "category-cleaning",
-                    categoryName: "Cleaning",
-                    categorySlug: "cleaning",
+                    id: "debug-tasker-category-interior-cleaning-services",
+                    categoryId: "category-interior-cleaning-services",
+                    categoryName: "Interior Cleaning Services",
+                    categorySlug: "interior-cleaning-services",
                     bio: "Recurring home cleaning and turnover prep.",
                     rateType: "hourly",
                     hourlyRate: 4500,
@@ -274,10 +275,10 @@ struct RootView: View {
                     portfolioImages: nil
                 ),
                 TaskerManagedCategory(
-                    id: "debug-tasker-category-plumbing",
-                    categoryId: "category-plumbing",
-                    categoryName: "Plumbing",
-                    categorySlug: "plumbing",
+                    id: "debug-tasker-category-plumber",
+                    categoryId: "category-plumber",
+                    categoryName: "Plumber",
+                    categorySlug: "plumber",
                     bio: "Fixture swaps, leak checks, and small repairs.",
                     rateType: "hourly",
                     hourlyRate: 6500,
@@ -302,7 +303,7 @@ struct RootView: View {
                 averageRating: 4.8,
                 reviewCount: 31,
                 distanceLabel: "4.1 km",
-                categoryName: "Cleaning",
+                categoryName: "Interior Cleaning Services",
                 rateLabel: "$48/hr",
                 verified: true,
                 bio: "Recurring home cleaning and deep resets.",
@@ -321,7 +322,7 @@ struct RootView: View {
                 averageRating: 5.0,
                 reviewCount: 18,
                 distanceLabel: "7.8 km",
-                categoryName: "Electrical",
+                categoryName: "Electrician",
                 rateLabel: "$72/hr",
                 verified: true,
                 bio: "Fixture installs, troubleshooting, and panel upgrades.",
@@ -464,7 +465,7 @@ struct RootView: View {
 
     private func registerPushTokenIfNeeded() async {
         guard sessionStore.isAuthenticated,
-              appState.currentUser != nil,
+              appState.currentUser?.settings?.notificationsEnabled == true,
               !remoteNotificationDeviceToken.isEmpty else {
             return
         }
@@ -1218,9 +1219,9 @@ private struct ProfileSetupView: View {
                 Task {
                     guard !isFinalizingNotifications else { return }
                     isFinalizingNotifications = true
-                    fallbackNotificationsEnabled = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
-                    await finalizeSetup()
-                    isFinalizingNotifications = false
+                    defer { isFinalizingNotifications = false }
+                    let notificationsEnabled = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
+                    await saveNotificationPreferenceAndFinalize(notificationsEnabled: notificationsEnabled)
                 }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
@@ -1231,9 +1232,8 @@ private struct ProfileSetupView: View {
                 Task {
                     guard !isFinalizingNotifications else { return }
                     isFinalizingNotifications = true
-                    fallbackNotificationsEnabled = false
-                    await finalizeSetup()
-                    isFinalizingNotifications = false
+                    defer { isFinalizingNotifications = false }
+                    await saveNotificationPreferenceAndFinalize(notificationsEnabled: false)
                 }
             }
             .buttonStyle(PatchworkSecondaryButtonStyle())
@@ -1353,6 +1353,40 @@ private struct ProfileSetupView: View {
         } catch {
             appState.lastError = error.localizedDescription
         }
+    }
+
+    private func saveNotificationPreferenceAndFinalize(notificationsEnabled: Bool) async {
+        fallbackNotificationsEnabled = notificationsEnabled
+        do {
+            let updatedUser = try await PatchworkAPI(client: sessionStore.client).users.updateNotificationSettings(
+                notificationsEnabled: notificationsEnabled
+            )
+            appState.currentUser = updatedUser
+        } catch {
+            print("[Notifications] Failed to save notification preference: \(error.localizedDescription)")
+            applyLocalNotificationPreference(notificationsEnabled)
+        }
+        await finalizeSetup()
+    }
+
+    private func applyLocalNotificationPreference(_ notificationsEnabled: Bool) {
+        guard let currentUser = appState.currentUser else {
+            return
+        }
+
+        appState.currentUser = CurrentUser(
+            id: currentUser.id,
+            email: currentUser.email,
+            name: currentUser.name,
+            roles: currentUser.roles,
+            location: currentUser.location,
+            settings: UserSettings(
+                notificationsEnabled: notificationsEnabled,
+                locationEnabled: currentUser.settings?.locationEnabled
+            ),
+            createdAt: currentUser.createdAt,
+            photoImage: currentUser.photoImage
+        )
     }
 
     private func finalizeSetup() async {

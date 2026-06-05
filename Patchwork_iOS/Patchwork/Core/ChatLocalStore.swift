@@ -87,19 +87,21 @@ final class ChatLocalStore {
             latestMessageAt: threadDelta.latestMessageAt,
             latestProposalUpdatedAt: threadDelta.latestProposalUpdatedAt
         ) ?? 0
+        let messages = threadDelta.messages.map { LocalMessage.Snapshot(message: $0, conversationId: conversationId) }
+        let proposals = threadDelta.messages.compactMap { message in
+            message.proposal.map {
+                LocalProposal.Snapshot(proposal: $0, conversationId: message.conversationId ?? conversationId)
+            }
+        } + [threadDelta.latestProposal].compactMap { proposal in
+            proposal.map { LocalProposal.Snapshot(proposal: $0, conversationId: $0.conversationId ?? conversationId) }
+        }
         return try apply(
             delta: Delta(
                 conversation: threadDelta.conversation.map {
                     LocalConversation.Snapshot(conversation: $0, updatedAt: latestUpdate)
                 },
-                messages: threadDelta.messages.map { LocalMessage.Snapshot(message: $0, conversationId: conversationId) },
-                proposals: threadDelta.messages.compactMap { message in
-                    message.proposal.map {
-                        LocalProposal.Snapshot(proposal: $0, conversationId: message.conversationId ?? conversationId)
-                    }
-                } + [threadDelta.latestProposal].compactMap { proposal in
-                    proposal.map { LocalProposal.Snapshot(proposal: $0, conversationId: $0.conversationId ?? conversationId) }
-                },
+                messages: messages + fallbackProposalMessages(for: proposals, incomingMessages: messages),
+                proposals: proposals,
                 cursor: cursor(
                     explicitCursor: threadDelta.latestCursor,
                     latestMessageAt: threadDelta.latestMessageAt,
@@ -113,14 +115,18 @@ final class ChatLocalStore {
 
     @discardableResult
     func apply(messagesSince response: MessagesSinceResponse, conversationId: ConvexID) throws -> String? {
-        try apply(
+        let messages = response.messages.map { LocalMessage.Snapshot(message: $0, conversationId: conversationId) }
+        let proposals = response.messages.compactMap { message in
+            message.proposal.map {
+                LocalProposal.Snapshot(proposal: $0, conversationId: message.conversationId ?? conversationId)
+            }
+        } + [response.latestProposal].compactMap { proposal in
+            proposal.map { LocalProposal.Snapshot(proposal: $0, conversationId: $0.conversationId ?? conversationId) }
+        }
+        return try apply(
             delta: Delta(
-                messages: response.messages.map { LocalMessage.Snapshot(message: $0, conversationId: conversationId) },
-                proposals: response.messages.compactMap { message in
-                    message.proposal.map {
-                        LocalProposal.Snapshot(proposal: $0, conversationId: message.conversationId ?? conversationId)
-                    }
-                },
+                messages: messages + fallbackProposalMessages(for: proposals, incomingMessages: messages),
+                proposals: proposals,
                 cursor: cursor(
                     explicitCursor: response.latestCursor,
                     latestMessageAt: response.latestMessageAt,
@@ -404,11 +410,77 @@ final class ChatLocalStore {
            let message = messages.first(where: { $0.clientMessageId == clientMessageId }) {
             return message
         }
-        if let clientProposalId = snapshot.clientProposalId,
-           let message = messages.first(where: { $0.clientProposalId == clientProposalId }) {
+        if snapshot.type == "proposal",
+           let clientProposalId = snapshot.clientProposalId,
+           let message = messages.first(where: { $0.type == "proposal" && $0.clientProposalId == clientProposalId }) {
+            return message
+        }
+        if snapshot.type == "proposal",
+           let proposalId = snapshot.proposalId,
+           let message = messages.first(where: { $0.type == "proposal" && $0.proposalId == proposalId }) {
             return message
         }
         return messages.first { $0.id == snapshot.id }
+    }
+
+    private func fallbackProposalMessages(
+        for proposals: [LocalProposal.Snapshot],
+        incomingMessages: [LocalMessage.Snapshot]
+    ) -> [LocalMessage.Snapshot] {
+        proposals.compactMap { proposal in
+            guard !incomingMessages.contains(where: { messageLinks($0, to: proposal) }),
+                  !cachedMessageExists(for: proposal) else {
+                return nil
+            }
+
+            return LocalMessage.Snapshot(
+                id: fallbackMessageId(for: proposal),
+                conversationId: proposal.conversationId,
+                senderId: proposal.senderId,
+                type: "proposal",
+                content: proposal.previousProposalId == nil ? "Proposal sent" : "Counter proposal sent",
+                proposalId: proposal.serverProposalId,
+                clientProposalId: proposal.clientProposalId,
+                createdAt: proposal.createdAt,
+                updatedAt: proposal.updatedAt,
+                isOptimistic: proposal.isOptimistic,
+                localStatus: proposal.isOptimistic ? "sending" : "synced"
+            )
+        }
+    }
+
+    private func cachedMessageExists(for proposal: LocalProposal.Snapshot) -> Bool {
+        let messages = (try? context.fetch(FetchDescriptor<LocalMessage>())) ?? []
+        return messages.contains { message in
+            messageLinks(message.snapshot, to: proposal)
+        }
+    }
+
+    private func messageLinks(_ message: LocalMessage.Snapshot, to proposal: LocalProposal.Snapshot) -> Bool {
+        guard message.type == "proposal" else {
+            return false
+        }
+        if let proposalId = message.proposalId,
+           let serverProposalId = proposal.serverProposalId,
+           proposalId == serverProposalId {
+            return true
+        }
+        if let clientProposalId = message.clientProposalId,
+           let proposalClientId = proposal.clientProposalId,
+           clientProposalId == proposalClientId {
+            return true
+        }
+        return false
+    }
+
+    private func fallbackMessageId(for proposal: LocalProposal.Snapshot) -> String {
+        if let serverProposalId = proposal.serverProposalId {
+            return "proposal-message-\(serverProposalId)"
+        }
+        if let clientProposalId = proposal.clientProposalId {
+            return "proposal-message-\(clientProposalId)"
+        }
+        return "proposal-message-\(proposal.id)"
     }
 
     private func findProposal(matching snapshot: LocalProposal.Snapshot) -> LocalProposal? {
@@ -476,7 +548,7 @@ extension LocalMessage.Snapshot {
             type: message.type,
             content: message.content,
             proposalId: message.proposalId,
-            clientProposalId: message.proposal?.clientProposalId,
+            clientProposalId: message.type == "proposal" ? message.proposal?.clientProposalId : nil,
             createdAt: message.createdAt,
             updatedAt: message.updatedAt ?? message.createdAt,
             isOptimistic: false

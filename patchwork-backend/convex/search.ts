@@ -37,6 +37,10 @@ export const searchTaskers = query({
         ...(args.categorySlug ? [args.categorySlug] : []),
       ].map((slug) => slug.trim()).filter((slug) => slug.length > 0))
     );
+    if (args.categorySlugs !== undefined && requestedCategorySlugs.length === 0 && !args.categorySlug?.trim()) {
+      return [];
+    }
+
     const categories = [];
     for (const categorySlug of requestedCategorySlugs) {
       const category = await ctx.db
@@ -110,7 +114,7 @@ export const searchTaskers = query({
           continue;
         }
         currentCategory = await ctx.db.get(categoryData.categoryId);
-        if (!currentCategory) {
+        if (!currentCategory?.isActive) {
           continue;
         }
       }

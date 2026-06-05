@@ -17,86 +17,111 @@ const ALL_CATEGORIES: {
   sortOrder: number;
 }[] = [
   // Beauty
-  { name: "Makeup Artist", emoji: "💄", group: "Beauty", sortOrder: 1 },
-  { name: "Hair Stylist", emoji: "💇", group: "Beauty", sortOrder: 2 },
-  { name: "Lash Tech", emoji: "👁️", group: "Beauty", sortOrder: 3 },
-  { name: "Nail Tech", emoji: "💅", group: "Beauty", sortOrder: 4 },
-  { name: "Hair Removal", emoji: "🧖", group: "Beauty", sortOrder: 5 },
+  { name: "Barber", emoji: "💈", group: "Beauty", sortOrder: 1 },
+  { name: "Hair Removal", emoji: "🧖", group: "Beauty", sortOrder: 2 },
+  { name: "Hair Stylist", emoji: "💇", group: "Beauty", sortOrder: 3 },
+  { name: "Lash Tech", emoji: "👁️", group: "Beauty", sortOrder: 4 },
+  { name: "Makeup Artist", emoji: "💄", group: "Beauty", sortOrder: 5 },
+  { name: "Microblading", emoji: "✒️", group: "Beauty", sortOrder: 6 },
+  { name: "Nail Tech", emoji: "💅", group: "Beauty", sortOrder: 7 },
+  { name: "Tattoo Artist", emoji: "🖋️", group: "Beauty", sortOrder: 8 },
+  { name: "Skin Treatments", emoji: "🧴", group: "Beauty", sortOrder: 9 },
 
-  // Home & Garden
-  { name: "Property Maintenance", emoji: "🔧", group: "Home & Garden", sortOrder: 10 },
-  { name: "Interior Painter", emoji: "🎨", group: "Home & Garden", sortOrder: 11 },
-  { name: "Exterior Painter", emoji: "🖌️", group: "Home & Garden", sortOrder: 12 },
-  { name: "Window Cleaner", emoji: "🚪", group: "Home & Garden", sortOrder: 13 },
-  { name: "Gutter Cleaning", emoji: "🏠", group: "Home & Garden", sortOrder: 14 },
-  { name: "Gardening", emoji: "🌳", group: "Home & Garden", sortOrder: 15 },
-  { name: "Landscaping", emoji: "🪴", group: "Home & Garden", sortOrder: 16 },
-  { name: "Lawn Care", emoji: "🌿", group: "Home & Garden", sortOrder: 17 },
+  // Child Care
+  { name: "Day Care & Baby Sitters", emoji: "🧸", group: "Child Care", sortOrder: 20 },
+  { name: "Tutor", emoji: "📚", group: "Child Care", sortOrder: 21 },
+
+  // Clothing
+  { name: "Clothing Stylist", emoji: "👗", group: "Clothing", sortOrder: 30 },
+  { name: "Tailor", emoji: "🧵", group: "Clothing", sortOrder: 31 },
+
+  // Design, Creative & Marketing
+  { name: "Engraver", emoji: "🔖", group: "Design, Creative & Marketing", sortOrder: 40 },
+  { name: "Graphic Designer", emoji: "🖼️", group: "Design, Creative & Marketing", sortOrder: 41 },
+  { name: "Artist", emoji: "🎨", group: "Design, Creative & Marketing", sortOrder: 42 },
+  { name: "Photographer", emoji: "📸", group: "Design, Creative & Marketing", sortOrder: 43 },
+  { name: "Printer", emoji: "🖨️", group: "Design, Creative & Marketing", sortOrder: 44 },
+  { name: "Social Media Consultant", emoji: "📣", group: "Design, Creative & Marketing", sortOrder: 45 },
+  { name: "Videographer", emoji: "🎥", group: "Design, Creative & Marketing", sortOrder: 46 },
+
+  // Food
+  { name: "Baker", emoji: "🧁", group: "Food", sortOrder: 50 },
+  { name: "Caterer", emoji: "🍽️", group: "Food", sortOrder: 51 },
+  { name: "Personal Chef", emoji: "👨‍🍳", group: "Food", sortOrder: 52 },
 
   // Health & Wellbeing
-  { name: "Massage Therapist", emoji: "💆", group: "Health & Wellbeing", sortOrder: 20 },
-  { name: "Nutritionist", emoji: "🍏", group: "Health & Wellbeing", sortOrder: 21 },
-  { name: "Care Giver", emoji: "👵", group: "Health & Wellbeing", sortOrder: 22 },
-  { name: "Personal Trainer", emoji: "🏋️", group: "Health & Wellbeing", sortOrder: 23 },
-  { name: "Errand Runner", emoji: "🏃", group: "Health & Wellbeing", sortOrder: 24 },
+  { name: "In-Home Care", emoji: "🏥", group: "Health & Wellbeing", sortOrder: 60 },
+  { name: "Life Coach", emoji: "🧭", group: "Health & Wellbeing", sortOrder: 61 },
+  { name: "Massage", emoji: "💆", group: "Health & Wellbeing", sortOrder: 62 },
+  { name: "Nutritionist", emoji: "🍏", group: "Health & Wellbeing", sortOrder: 63 },
+  { name: "Personal Assistant", emoji: "🗂️", group: "Health & Wellbeing", sortOrder: 64 },
+  { name: "Personal Errand Runner", emoji: "🏃", group: "Health & Wellbeing", sortOrder: 65 },
+  { name: "Personal Trainer", emoji: "🏋️", group: "Health & Wellbeing", sortOrder: 66 },
+
+  // Home & Garden
+  { name: "Carpenter", emoji: "🪚", group: "Home & Garden", sortOrder: 70 },
+  { name: "Carpet Cleaning", emoji: "🧼", group: "Home & Garden", sortOrder: 71 },
+  { name: "Exterior Painter", emoji: "🖌️", group: "Home & Garden", sortOrder: 72 },
+  { name: "Florist", emoji: "💐", group: "Home & Garden", sortOrder: 73 },
+  { name: "General Contractor", emoji: "🏗️", group: "Home & Garden", sortOrder: 74 },
+  { name: "General Handy-man", emoji: "🔨", group: "Home & Garden", sortOrder: 75 },
+  { name: "Gutter Cleaning", emoji: "🏠", group: "Home & Garden", sortOrder: 76 },
+  { name: "Interior Cleaning Services", emoji: "🧹", group: "Home & Garden", sortOrder: 77 },
+  { name: "Interior Designer", emoji: "🛋️", group: "Home & Garden", sortOrder: 78 },
+  { name: "Interior Painter", emoji: "🎨", group: "Home & Garden", sortOrder: 79 },
+  { name: "Landscaper", emoji: "🪴", group: "Home & Garden", sortOrder: 80 },
+  { name: "Mortgage Broker", emoji: "🏦", group: "Home & Garden", sortOrder: 81 },
+  { name: "Plumber", emoji: "🚰", group: "Home & Garden", sortOrder: 82 },
+  { name: "Professional Organizer", emoji: "📦", group: "Home & Garden", sortOrder: 83 },
+  { name: "Realtor", emoji: "🏘️", group: "Home & Garden", sortOrder: 84 },
+  { name: "Roofing", emoji: "🏠", group: "Home & Garden", sortOrder: 85 },
+  { name: "Snow Shoveling/Removal", emoji: "❄️", group: "Home & Garden", sortOrder: 86 },
+  { name: "Window Cleaning", emoji: "🪟", group: "Home & Garden", sortOrder: 87 },
+  { name: "Window Install", emoji: "🪟", group: "Home & Garden", sortOrder: 88 },
+
+  // Legal
+  { name: "Lawyer", emoji: "⚖️", group: "Legal", sortOrder: 90 },
+
+  // Mechanical
+  { name: "Auto Mechanic", emoji: "🚗", group: "Mechanical", sortOrder: 100 },
+  { name: "Small Engine Repair", emoji: "🔧", group: "Mechanical", sortOrder: 101 },
+
+  // Music
+  { name: "Bands/Musicians", emoji: "🎵", group: "Music", sortOrder: 110 },
+  { name: "DJ", emoji: "🎧", group: "Music", sortOrder: 111 },
+  { name: "Guitar Lessons", emoji: "🎸", group: "Music", sortOrder: 112 },
+  { name: "Piano Lessons", emoji: "🎹", group: "Music", sortOrder: 113 },
 
   // Pet Care
-  { name: "Dog Walking", emoji: "🐕", group: "Pet Care", sortOrder: 30 },
-  { name: "Pet Sitting", emoji: "🐾", group: "Pet Care", sortOrder: 31 },
-  { name: "Pet Grooming", emoji: "✂️", group: "Pet Care", sortOrder: 32 },
-  { name: "Pet Training", emoji: "🐕‍🦺", group: "Pet Care", sortOrder: 33 },
+  { name: "Dog Walker", emoji: "🐕", group: "Pet Care", sortOrder: 120 },
+  { name: "Pet Groomer", emoji: "✂️", group: "Pet Care", sortOrder: 121 },
+  { name: "Pet Sitting", emoji: "🐾", group: "Pet Care", sortOrder: 122 },
 
-  // Home Services
-  { name: "Electrical", emoji: "🔌", group: "Home Services", sortOrder: 40 },
-  { name: "Plumbing", emoji: "🚰", group: "Home Services", sortOrder: 41 },
-  { name: "Handyman", emoji: "🔨", group: "Home Services", sortOrder: 42 },
-  { name: "HVAC", emoji: "❄️", group: "Home Services", sortOrder: 43 },
-  { name: "Carpentry", emoji: "🏗️", group: "Home Services", sortOrder: 44 },
-  { name: "Roofing", emoji: "🏠", group: "Home Services", sortOrder: 45 },
-  { name: "Flooring", emoji: "🪟", group: "Home Services", sortOrder: 46 },
-  { name: "Welding", emoji: "⚡", group: "Home Services", sortOrder: 47 },
-  { name: "Cleaning", emoji: "🧹", group: "Home Services", sortOrder: 48 },
-  { name: "Pest Control", emoji: "🐜", group: "Home Services", sortOrder: 49 },
-  { name: "Locksmith", emoji: "🔑", group: "Home Services", sortOrder: 50 },
-  { name: "Painting", emoji: "🎨", group: "Home Services", sortOrder: 51 },
-  { name: "House Cleaning", emoji: "🏡", group: "Home Services", sortOrder: 52 },
+  // Planners
+  { name: "Event Planner", emoji: "🎉", group: "Planners", sortOrder: 130 },
+  { name: "Travel Planner", emoji: "✈️", group: "Planners", sortOrder: 131 },
+  { name: "Wedding Planner", emoji: "💍", group: "Planners", sortOrder: 132 },
 
-  // Moving & Delivery
-  { name: "Moving", emoji: "📦", group: "Moving & Delivery", sortOrder: 60 },
-  { name: "Delivery", emoji: "🚚", group: "Moving & Delivery", sortOrder: 61 },
-  { name: "Courier", emoji: "📮", group: "Moving & Delivery", sortOrder: 62 },
+  // Sports
+  { name: "Baseball Instructor", emoji: "⚾", group: "Sports", sortOrder: 140 },
+  { name: "Figure Skating Coach", emoji: "⛸️", group: "Sports", sortOrder: 141 },
+  { name: "Golf Instructor", emoji: "⛳", group: "Sports", sortOrder: 142 },
+  { name: "Hockey Instructor", emoji: "🏒", group: "Sports", sortOrder: 143 },
+  { name: "Tennis Instructor", emoji: "🎾", group: "Sports", sortOrder: 144 },
 
-  // Tech & Professional
-  { name: "IT Support", emoji: "💻", group: "Tech & Professional", sortOrder: 70 },
-  { name: "Phone Repair", emoji: "📱", group: "Tech & Professional", sortOrder: 71 },
-  { name: "Computer Repair", emoji: "🖥️", group: "Tech & Professional", sortOrder: 72 },
-  { name: "Tutoring", emoji: "📚", group: "Tech & Professional", sortOrder: 73 },
-  { name: "Music Lessons", emoji: "🎓", group: "Tech & Professional", sortOrder: 74 },
-  { name: "Guitar Lessons", emoji: "🎸", group: "Tech & Professional", sortOrder: 75 },
-  { name: "Piano Lessons", emoji: "🎹", group: "Tech & Professional", sortOrder: 76 },
-  { name: "Art Lessons", emoji: "🎨", group: "Tech & Professional", sortOrder: 77 },
+  // Technical
+  { name: "Architect", emoji: "📐", group: "Technical", sortOrder: 150 },
+  { name: "Computer Genius", emoji: "💻", group: "Technical", sortOrder: 151 },
+  { name: "Developers", emoji: "⌨️", group: "Technical", sortOrder: 152 },
+  { name: "Electrician", emoji: "🔌", group: "Technical", sortOrder: 153 },
+  { name: "Engineer", emoji: "⚙️", group: "Technical", sortOrder: 154 },
+  { name: "Tax Consultant", emoji: "🧾", group: "Technical", sortOrder: 155 },
+  { name: "Web Designer", emoji: "🌐", group: "Technical", sortOrder: 156 },
 
-  // Automotive
-  { name: "Auto Repair", emoji: "🚗", group: "Automotive", sortOrder: 80 },
-  { name: "Car Detailing", emoji: "🚙", group: "Automotive", sortOrder: 81 },
-  { name: "Oil Change", emoji: "🔧", group: "Automotive", sortOrder: 82 },
-  { name: "Car Wash", emoji: "🚘", group: "Automotive", sortOrder: 83 },
-
-  // Events & Creative
-  { name: "Photography", emoji: "📸", group: "Events & Creative", sortOrder: 90 },
-  { name: "Videography", emoji: "🎥", group: "Events & Creative", sortOrder: 91 },
-  { name: "Event Planning", emoji: "🎉", group: "Events & Creative", sortOrder: 92 },
-  { name: "Catering", emoji: "🍽️", group: "Events & Creative", sortOrder: 93 },
-  { name: "DJ Services", emoji: "🎤", group: "Events & Creative", sortOrder: 94 },
-  { name: "Entertainment", emoji: "🎭", group: "Events & Creative", sortOrder: 95 },
-  { name: "Graphic Design", emoji: "🖼️", group: "Events & Creative", sortOrder: 96 },
-  { name: "Muralists", emoji: "🖌️", group: "Events & Creative", sortOrder: 97 },
-  { name: "Illustrators", emoji: "✏️", group: "Events & Creative", sortOrder: 98 },
-
-  // Repair & Appliances
-  { name: "Appliance Repair", emoji: "🔧", group: "Repair & Appliances", sortOrder: 100 },
-  { name: "TV Mounting", emoji: "📺", group: "Repair & Appliances", sortOrder: 101 },
-  { name: "Furniture Assembly", emoji: "🛠️", group: "Repair & Appliances", sortOrder: 102 },
+  // Writing & Proofreading
+  { name: "Copywriter", emoji: "✍️", group: "Writing & Proofreading", sortOrder: 160 },
+  { name: "Editor", emoji: "📝", group: "Writing & Proofreading", sortOrder: 161 },
+  { name: "Resume Consultant", emoji: "📄", group: "Writing & Proofreading", sortOrder: 162 },
 ];
 
 export const seedCategories = internalMutation({
@@ -110,6 +135,9 @@ export const seedCategories = internalMutation({
     let inserted = 0;
     const now = Date.now();
     const groupByName = new Map<string, { groupId: Id<"categoryGroups">; sortOrder: number }>();
+    const activeCategorySlugs = new Set(ALL_CATEGORIES.map((category) => toSlug(category.name)));
+    const activeGroupSlugs = new Set(ALL_CATEGORIES.map((category) => toSlug(category.group)));
+    const desiredMappingKeys = new Set<string>();
 
     for (const cat of ALL_CATEGORIES) {
       if (groupByName.has(cat.group)) {
@@ -153,8 +181,10 @@ export const seedCategories = internalMutation({
 
       if (existing) {
         await ctx.db.patch(existing._id, {
+          name: cat.name,
           emoji: cat.emoji,
           group: cat.group,
+          isActive: true,
           sortOrder: cat.sortOrder,
         });
       } else {
@@ -177,6 +207,7 @@ export const seedCategories = internalMutation({
       if (!category || !group) {
         continue;
       }
+      desiredMappingKeys.add(`${group.groupId}:${category._id}`);
 
       const existingMapping = await ctx.db
         .query("categoryGroupMappings")
@@ -201,6 +232,30 @@ export const seedCategories = internalMutation({
       }
     }
 
+    const existingCategories = await ctx.db.query("categories").collect();
+    for (const category of existingCategories) {
+      if (activeCategorySlugs.has(category.slug) || !category.isActive) {
+        continue;
+      }
+      await ctx.db.patch(category._id, { isActive: false });
+    }
+
+    const existingGroups = await ctx.db.query("categoryGroups").collect();
+    for (const group of existingGroups) {
+      if (activeGroupSlugs.has(group.slug) || !group.isActive) {
+        continue;
+      }
+      await ctx.db.patch(group._id, { isActive: false, updatedAt: now });
+    }
+
+    const existingMappings = await ctx.db.query("categoryGroupMappings").collect();
+    for (const mapping of existingMappings) {
+      if (desiredMappingKeys.has(`${mapping.groupId}:${mapping.categoryId}`)) {
+        continue;
+      }
+      await ctx.db.delete(mapping._id);
+    }
+
     return { total: ALL_CATEGORIES.length, inserted, groups: groupByName.size };
   },
 });
@@ -214,8 +269,16 @@ export const listCategories = query({
     const categories = await ctx.db
       .query("categories")
       .withIndex("by_active", (q) => q.eq("isActive", true))
-      .order("asc")
-      .take(200);
+      .collect();
+
+    categories.sort((lhs, rhs) => {
+      const lhsSortOrder = lhs.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      const rhsSortOrder = rhs.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      if (lhsSortOrder !== rhsSortOrder) {
+        return lhsSortOrder - rhsSortOrder;
+      }
+      return lhs.name.localeCompare(rhs.name, undefined, { sensitivity: "base" });
+    });
 
     return categories.map((category) => ({
       _id: category._id,
@@ -279,6 +342,10 @@ export const listCategoryGroups = query({
         lhs.name.localeCompare(rhs.name, undefined, { sensitivity: "base" })
       );
 
+      if (categories.length === 0) {
+        continue;
+      }
+
       results.push({
         _id: group._id,
         name: group.name,
@@ -304,7 +371,7 @@ export const getCategoryBySlug = query({
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
 
-    if (!category) {
+    if (!category?.isActive) {
       return null;
     }
 

@@ -346,6 +346,8 @@ export const messagesDeltaValidator = v.object({
   latestCursor: v.number(),
   latestMessageId: v.union(v.id("messages"), v.null()),
   latestMessageAt: v.union(v.number(), v.null()),
+  latestProposalUpdatedAt: v.union(v.number(), v.null()),
+  latestProposal: v.union(proposalPayloadValidator, v.null()),
 });
 
 export const threadWatchValidator = v.object({

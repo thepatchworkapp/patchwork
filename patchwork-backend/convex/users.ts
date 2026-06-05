@@ -114,6 +114,7 @@ export const createProfile = mutation({
     name: v.string(),
     city: v.string(),
     province: v.string(),
+    notificationsEnabled: v.optional(v.boolean()),
     photoAssetId: v.optional(v.id("imageAssets")),
     photo: v.optional(v.id("_storage")),
   },
@@ -173,7 +174,7 @@ export const createProfile = mutation({
         isTasker: false,
       },
       settings: {
-        notificationsEnabled: true,
+        notificationsEnabled: args.notificationsEnabled ?? false,
         locationEnabled: false,
       },
       createdAt: now,
@@ -238,6 +239,10 @@ export const registerPushToken = mutation({
   returns: v.object({ registered: v.boolean() }),
   handler: async (ctx, args) => {
     const { user } = await requireAppUser(ctx);
+    if (user.settings?.notificationsEnabled === false) {
+      return { registered: false };
+    }
+
     const token = args.token.trim();
     if (!token) {
       throw new ConvexError("Push token is required");
@@ -273,6 +278,48 @@ export const registerPushToken = mutation({
     });
 
     return { registered: true };
+  },
+});
+
+export const updateNotificationSettings = mutation({
+  args: {
+    notificationsEnabled: v.boolean(),
+  },
+  returns: currentUserValidator,
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+    const now = Date.now();
+
+    await ctx.db.patch(user._id, {
+      settings: {
+        ...user.settings,
+        notificationsEnabled: args.notificationsEnabled,
+      },
+      updatedAt: now,
+    });
+
+    const updatedUser = await ctx.db.get(user._id);
+    if (!updatedUser) {
+      throw new ConvexError("User not found");
+    }
+
+    const photoImage = await getUserPhotoImageAssetDto(ctx, updatedUser, true);
+
+    return {
+      _id: updatedUser._id,
+      authId: updatedUser.authId,
+      email: updatedUser.email,
+      emailVerified: updatedUser.emailVerified,
+      name: updatedUser.name,
+      photo: updatedUser.photo,
+      photoAssetId: updatedUser.photoAssetId,
+      photoImage,
+      location: updatedUser.location,
+      roles: updatedUser.roles,
+      settings: updatedUser.settings,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+    };
   },
 });
 

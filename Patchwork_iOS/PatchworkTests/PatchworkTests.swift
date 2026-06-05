@@ -414,7 +414,7 @@ final class PatchworkTests: XCTestCase {
             XCTAssertEqual(args["lng"] as? Double, -79.3832)
             XCTAssertEqual(args["radiusKm"] as? Int, 15)
             XCTAssertEqual(args["limit"] as? Int, 25)
-            XCTAssertEqual(args["categorySlug"] as? String, "plumbing")
+            XCTAssertEqual(args["categorySlug"] as? String, "plumber")
             XCTAssertEqual(args["excludeUserId"] as? String, "user_123")
 
             let response = try XCTUnwrap(
@@ -436,7 +436,7 @@ final class PatchworkTests: XCTestCase {
             lng: -79.3832,
             radiusKm: 15,
             limit: 25,
-            categorySlug: "plumbing",
+            categorySlug: "plumber",
             excludeUserId: "user_123"
         )
 
@@ -482,6 +482,46 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(taskers, [])
     }
 
+    func testPatchworkAPISearchTaskersIncludesCategorySlugs() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "search:searchTaskers")
+            let args = try XCTUnwrap(object["args"] as? [String: Any])
+            XCTAssertNil(args["categorySlug"])
+            XCTAssertEqual(args["categorySlugs"] as? [String], ["interior-cleaning-services", "plumber"])
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":[]}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let api = PatchworkAPI(client: client)
+
+        let taskers = try await api.search.taskers(
+            lat: 43.6532,
+            lng: -79.3832,
+            radiusKm: 15,
+            categorySlug: nil,
+            categorySlugs: ["interior-cleaning-services", "plumber"],
+            excludeUserId: nil
+        )
+
+        XCTAssertEqual(taskers, [])
+    }
+
     func testPatchworkAPIUpdateLocationUsesConvexMutation() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -518,6 +558,41 @@ final class PatchworkTests: XCTestCase {
         )
 
         XCTAssertEqual(locationId, "location_123")
+    }
+
+    func testPatchworkAPIUpdateNotificationSettingsUsesConvexMutation() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/mutation")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "users:updateNotificationSettings")
+            let args = try XCTUnwrap(object["args"] as? [String: Any])
+            XCTAssertEqual(args["notificationsEnabled"] as? Bool, false)
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("""
+            {"status":"success","value":{"_id":"user_123","email":"tester@example.com","name":"Tester","roles":{"isSeeker":true,"isTasker":false},"location":{"city":"Toronto","province":"ON"},"settings":{"notificationsEnabled":false,"locationEnabled":true},"createdAt":1700000000000}}
+            """.utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let api = PatchworkAPI(client: client)
+
+        let currentUser = try await api.users.updateNotificationSettings(notificationsEnabled: false)
+
+        XCTAssertEqual(currentUser.id, "user_123")
+        XCTAssertEqual(currentUser.settings?.notificationsEnabled, false)
     }
 
     @MainActor

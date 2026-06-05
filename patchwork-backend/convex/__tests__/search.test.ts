@@ -93,7 +93,7 @@ describe("searchTaskers", () => {
     // Seed categories
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
     expect(cleaningCategory).toBeDefined();
 
     // Create tasker user
@@ -132,7 +132,7 @@ describe("searchTaskers", () => {
 
     // Search for cleaning taskers
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -141,7 +141,7 @@ describe("searchTaskers", () => {
     expect(results).toBeDefined();
     expect(results.length).toBe(1);
     expect(results[0].name).toBe("Tasker 1 Pro");
-    expect(results[0].category).toBe("Cleaning");
+    expect(results[0].category).toBe("Interior Cleaning Services");
   });
 
   test("returns taskers matching any requested category slug", async () => {
@@ -149,9 +149,9 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
-    const plumbingCategory = categories.find((c) => c.slug === "plumbing");
-    const paintingCategory = categories.find((c) => c.slug === "painting");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
+    const plumbingCategory = categories.find((c) => c.slug === "plumber");
+    const paintingCategory = categories.find((c) => c.slug === "interior-painter");
     expect(cleaningCategory).toBeDefined();
     expect(plumbingCategory).toBeDefined();
     expect(paintingCategory).toBeDefined();
@@ -205,7 +205,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlugs: ["cleaning", "plumbing"],
+      categorySlugs: ["interior-cleaning-services", "plumber"],
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -214,12 +214,20 @@ describe("searchTaskers", () => {
     expect(results.map((result) => result.name).sort()).toEqual(["Cleaner Pro", "Plumber Pro"]);
 
     const narrowedResults = await t.query(api.search.searchTaskers, {
-      categorySlugs: ["painting"],
+      categorySlugs: ["interior-painter"],
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
     });
     expect(narrowedResults).toHaveLength(0);
+
+    const explicitEmptyResults = await t.query(api.search.searchTaskers, {
+      categorySlugs: [],
+      lat: 43.65,
+      lng: -79.38,
+      radiusKm: 50,
+    });
+    expect(explicitEmptyResults).toHaveLength(0);
   });
 
   test("syncs tasker geo when an existing located seeker creates a tasker profile", async () => {
@@ -227,7 +235,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
     expect(cleaningCategory).toBeDefined();
 
     const asTasker = t.withIdentity({
@@ -267,7 +275,7 @@ describe("searchTaskers", () => {
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: taskerLat,
       lng: taskerLng,
       radiusKm: 5,
@@ -281,7 +289,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
     expect(cleaningCategory).toBeDefined();
 
     const asTasker = t.withIdentity({
@@ -338,7 +346,7 @@ describe("searchTaskers", () => {
     expect(profileAfterActivation?.location?.lng).toBe(taskerLng);
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: taskerLat,
       lng: taskerLng,
       radiusKm: 5,
@@ -353,7 +361,7 @@ describe("searchTaskers", () => {
     // Seed categories
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     // Create tasker user
     const asTasker = t.withIdentity({
@@ -393,7 +401,7 @@ describe("searchTaskers", () => {
 
     // Search for cleaning taskers
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -408,7 +416,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     const asTasker = t.withIdentity({
       tokenIdentifier: "google|tasker2b",
@@ -436,7 +444,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -450,7 +458,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     const asTasker = t.withIdentity({
       tokenIdentifier: "google|tasker3",
@@ -506,7 +514,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -523,7 +531,7 @@ describe("searchTaskers", () => {
 
     // Search for taskers in a category with no taskers
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "plumbing",
+      categorySlug: "plumber",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -539,7 +547,7 @@ describe("searchTaskers", () => {
     // Seed categories
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     // Create tasker user
     const asTasker = t.withIdentity({
@@ -576,7 +584,7 @@ describe("searchTaskers", () => {
 
     // Search for cleaning taskers
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -589,7 +597,7 @@ describe("searchTaskers", () => {
     expect(tasker.id).toBeDefined();
     expect(tasker.userId).toBe(userId);
     expect(tasker.name).toBe("Tasker 4 Pro");
-    expect(tasker.category).toBe("Cleaning");
+    expect(tasker.category).toBe("Interior Cleaning Services");
     expect(tasker.rating).toBe(0); // Default rating
     expect(tasker.reviews).toBe(0); // Default review count
     expect(tasker.price).toBe("$50/hr"); // Formatted from 5000 cents hourly
@@ -606,7 +614,7 @@ describe("searchTaskers", () => {
     // Seed categories
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     // Create tasker user
     const asTasker = t.withIdentity({
@@ -640,7 +648,7 @@ describe("searchTaskers", () => {
 
     // Search for cleaning taskers
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: 43.65,
       lng: -79.38,
       radiusKm: 50,
@@ -655,7 +663,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     const asTasker = t.withIdentity({
       tokenIdentifier: "google|tasker6",
@@ -690,7 +698,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: seekerLat,
       lng: seekerLng,
       radiusKm: 5,
@@ -704,7 +712,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     const asTasker = t.withIdentity({
       tokenIdentifier: "google|tasker7",
@@ -739,7 +747,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: seekerLat,
       lng: seekerLng,
       radiusKm: 100,
@@ -753,7 +761,7 @@ describe("searchTaskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const categories = await t.query(api.categories.listCategories);
-    const cleaningCategory = categories.find((c) => c.slug === "cleaning");
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
 
     const asTasker = t.withIdentity({
       tokenIdentifier: "google|tasker8",
@@ -788,7 +796,7 @@ describe("searchTaskers", () => {
     });
 
     const results = await t.query(api.search.searchTaskers, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
       lat: seekerLat,
       lng: seekerLng,
       radiusKm: 100,

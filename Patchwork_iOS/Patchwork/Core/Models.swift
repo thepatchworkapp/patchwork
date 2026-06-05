@@ -440,6 +440,7 @@ struct MessagesSinceResponse: Decodable {
     let latestMessageId: ConvexID?
     let latestMessageAt: Int?
     let latestProposalUpdatedAt: Int?
+    let latestProposal: ProposalPayload?
 }
 
 struct ThreadDelta: Decodable {

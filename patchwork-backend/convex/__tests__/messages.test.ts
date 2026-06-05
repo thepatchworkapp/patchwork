@@ -804,6 +804,7 @@ describe("messages", () => {
     expect(unauthorized.messages).toHaveLength(0);
     expect(unauthorized.latestCursor).toBe(0);
     expect(unauthorized.latestMessageId).toBeNull();
+    expect(unauthorized.latestProposal).toBeNull();
   });
 
   test("listMessagesSince uses afterMessageId for same-time cursor boundaries", async () => {
@@ -908,7 +909,51 @@ describe("messages", () => {
     expect(proposalMessage?.proposal?._id).toBe(proposalId);
     expect(proposalMessage?.proposal?.clientProposalId).toBe("ios-proposal-1");
     expect(proposalMessage?.proposal?.status).toBe("pending");
+    expect(delta.latestProposal?._id).toBe(proposalId);
+    expect(delta.latestProposalUpdatedAt).toBe(delta.latestProposal?.updatedAt);
     expect(delta.latestMessageAt).toBe(delta.latestCursor);
+  });
+
+  test("listMessagesSince carries latestProposal when message rows are behind cursor", async () => {
+    const t = convexTest(schema, modules);
+    const { asSeeker, asTasker, conversationId } = await createConversation(
+      t,
+      "since_latest_proposal"
+    );
+
+    const proposalId = await asTasker.mutation((api as any).proposals.sendProposal, {
+      conversationId,
+      clientProposalId: "ios-proposal-latest",
+      rate: 7500,
+      rateType: "flat",
+      startDateTime: "2026-02-15T10:00:00Z",
+      notes: "I can do it",
+    });
+
+    await t.run(async (ctx) => {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+        .collect();
+      for (const message of messages) {
+        await ctx.db.patch(message._id, { createdAt: 1000, updatedAt: 1000 });
+      }
+      await ctx.db.patch(proposalId, { updatedAt: 1500 });
+    });
+
+    const delta = await asSeeker.query((api as any).messages.listMessagesSince, {
+      conversationId,
+      afterCreatedAt: 1000,
+      limit: 10,
+    });
+
+    expect(delta.messages).toHaveLength(0);
+    expect(delta.latestMessageAt).toBeNull();
+    expect(delta.latestMessageId).toBeNull();
+    expect(delta.latestProposal?._id).toBe(proposalId);
+    expect(delta.latestProposal?.clientProposalId).toBe("ios-proposal-latest");
+    expect(delta.latestProposalUpdatedAt).toBe(1500);
+    expect(delta.latestCursor).toBe(1500);
   });
 
   test("watchThread emits text message deltas after the cursor", async () => {

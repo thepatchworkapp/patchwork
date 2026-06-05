@@ -90,7 +90,7 @@ async function expectStorageIdsPresent(t: any, storageIds: string[]) {
 
 async function seedAndGetCategory(
   t: any,
-  slug: string = "plumbing",
+  slug: string = "plumber",
 ) {
   await t.mutation(internal.categories.seedCategories, {});
   const category = await t.query(api.categories.getCategoryBySlug, { slug });
@@ -252,7 +252,7 @@ describe("image asset contract", () => {
       })
     ).rejects.toThrow("Image asset not found");
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const plumbing = await seedAndGetCategory(t, "plumber");
 
     await asOther.mutation(api.taskers.createTaskerProfile, {
       displayName: "Other Tasker",
@@ -466,7 +466,7 @@ describe("image asset contract", () => {
       province: "ON",
     });
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const plumbing = await seedAndGetCategory(t, "plumber");
 
     const userPhoto = await createImageAsset(t, asUser, "userPhoto");
     const customTaskerPhoto = await createImageAsset(t, asUser, "taskerPhoto");
@@ -562,7 +562,7 @@ describe("image asset contract", () => {
       province: "ON",
     });
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const plumbing = await seedAndGetCategory(t, "plumber");
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
       displayName: "Portfolio Tasker",
@@ -647,8 +647,8 @@ describe("image asset contract", () => {
       province: "ON",
     });
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
-    const electrical = await seedAndGetCategory(t, "electrical");
+    const plumbing = await seedAndGetCategory(t, "plumber");
+    const electrical = await seedAndGetCategory(t, "electrician");
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
       displayName: "Add Category Tasker",
@@ -699,7 +699,7 @@ describe("image asset contract", () => {
       province: "ON",
     });
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const plumbing = await seedAndGetCategory(t, "plumber");
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
       displayName: "Update Category Tasker",
@@ -769,7 +769,7 @@ describe("image asset contract", () => {
       province: "ON",
     });
 
-    const plumbing = await seedAndGetCategory(t, "plumbing");
+    const plumbing = await seedAndGetCategory(t, "plumber");
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
       displayName: "Portfolio Cleanup Tasker",

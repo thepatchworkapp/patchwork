@@ -100,8 +100,8 @@ describe("Security: Input Validation", () => {
     // Seed category and create tasker profile
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -152,8 +152,8 @@ describe("Security: Input Validation", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -203,8 +203,8 @@ describe("Security: Input Validation", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -290,8 +290,8 @@ describe("Security: Input Validation", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -330,8 +330,8 @@ describe("Security: Input Validation", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -391,8 +391,8 @@ describe("Security: Authorization", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -439,8 +439,8 @@ describe("Security: Server-side Data Resolution", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -468,7 +468,7 @@ describe("Security: Server-side Data Resolution", () => {
     const jobRequests = await asUser.query(api.jobRequests.listMyJobRequests, {});
     const created = jobRequests!.find((jr: any) => jr._id === jobRequestId);
     expect(created).toBeDefined();
-    expect(created!.categoryName).toBe("Cleaning");
+    expect(created!.categoryName).toBe("Interior Cleaning Services");
     expect(created!.categoryName).not.toBe("INJECTED SCAM TEXT");
   });
 
@@ -484,8 +484,8 @@ describe("Security: Server-side Data Resolution", () => {
 
     await t.run(async (ctx) => {
       await ctx.db.insert("categories", {
-        name: "Cleaning",
-        slug: "cleaning",
+        name: "Interior Cleaning Services",
+        slug: "interior-cleaning-services",
         isActive: true,
       });
     });
@@ -496,7 +496,7 @@ describe("Security: Server-side Data Resolution", () => {
     await expect(
       asUser.mutation(api.jobRequests.createJobRequest, {
         categoryId,
-        categoryName: "Cleaning",
+        categoryName: "Interior Cleaning Services",
         description: "I need my house cleaned",
         location: {
           address: "123 Main St",

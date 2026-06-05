@@ -73,7 +73,7 @@ describe("taskers", () => {
     
     // Get plumbing category
     const plumbingCategory = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
     expect(plumbingCategory).not.toBeNull();
 
@@ -130,7 +130,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "electrical",
+      slug: "electrician",
     });
 
     // Create first profile
@@ -176,7 +176,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "handyman",
+      slug: "general-handy-man",
     });
 
     // Create tasker profile
@@ -210,7 +210,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "cleaning",
+      slug: "interior-cleaning-services",
     });
 
     await expect(
@@ -241,10 +241,10 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
     const electrical = await t.query(api.categories.getCategoryBySlug, {
-      slug: "electrical",
+      slug: "electrician",
     });
 
     // Create profile with first category
@@ -319,7 +319,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
 
     const taskerId = await asTasker.mutation(api.taskers.createTaskerProfile, {
@@ -384,7 +384,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
 
     const taskerId = await asTasker.mutation(api.taskers.createTaskerProfile, {
@@ -420,7 +420,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "painting",
+      slug: "interior-painter",
     });
 
     // Create profile
@@ -467,7 +467,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "cleaning",
+      slug: "interior-cleaning-services",
     });
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -515,7 +515,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "cleaning",
+      slug: "interior-cleaning-services",
     });
     const elevenLinks = Array.from({ length: 11 }, (_, index) => `https://example.com/${index}`);
 
@@ -565,7 +565,7 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "painting",
+      slug: "interior-painter",
     });
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -625,10 +625,10 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
     const electrical = await t.query(api.categories.getCategoryBySlug, {
-      slug: "electrical",
+      slug: "electrician",
     });
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -676,10 +676,10 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
     const electrical = await t.query(api.categories.getCategoryBySlug, {
-      slug: "electrical",
+      slug: "electrician",
     });
 
     await asOwner.mutation(api.taskers.createTaskerProfile, {
@@ -727,15 +727,15 @@ describe("taskers", () => {
 
     await t.mutation(internal.categories.seedCategories);
     const plumbing = await t.query(api.categories.getCategoryBySlug, {
-      slug: "plumbing",
+      slug: "plumber",
     });
-    const hvac = await t.query(api.categories.getCategoryBySlug, {
-      slug: "hvac",
+    const electrician = await t.query(api.categories.getCategoryBySlug, {
+      slug: "electrician",
     });
 
     // Create profile with plumbing
     await asUser.mutation(api.taskers.createTaskerProfile, {
-      displayName: "HVAC & Plumbing Pro",
+      displayName: "Electrical & Plumbing Pro",
       categoryId: plumbing!._id,
       categoryBio: "Plumbing work",
       rateType: "hourly",
@@ -743,10 +743,10 @@ describe("taskers", () => {
       serviceRadius: 25,
     });
 
-    // Add HVAC category
+    // Add electrician category
     await asUser.mutation(api.taskers.addTaskerCategory, {
-      categoryId: hvac!._id,
-      categoryBio: "HVAC installation and repair",
+      categoryId: electrician!._id,
+      categoryBio: "Electrical installation and repair",
       rateType: "fixed",
       fixedRate: 25000,
       serviceRadius: 30,
@@ -756,11 +756,11 @@ describe("taskers", () => {
     const profile = await asUser.query(api.taskers.getTaskerProfile);
     expect(profile?.categories).toHaveLength(2);
     
-    const hvacCategory = profile?.categories.find(c => c.categoryId === hvac!._id);
-    expect(hvacCategory).toBeDefined();
-    expect(hvacCategory?.bio).toBe("HVAC installation and repair");
-    expect(hvacCategory?.rateType).toBe("fixed");
-    expect(hvacCategory?.fixedRate).toBe(25000);
+    const electricianCategory = profile?.categories.find(c => c.categoryId === electrician!._id);
+    expect(electricianCategory).toBeDefined();
+    expect(electricianCategory?.bio).toBe("Electrical installation and repair");
+    expect(electricianCategory?.rateType).toBe("fixed");
+    expect(electricianCategory?.fixedRate).toBe(25000);
   });
 
   test("addTaskerCategory supports a third category on the same profile", async () => {
@@ -778,8 +778,8 @@ describe("taskers", () => {
     });
 
     await t.mutation(internal.categories.seedCategories);
-    const carWash = await t.query(api.categories.getCategoryBySlug, {
-      slug: "car-wash",
+    const autoMechanic = await t.query(api.categories.getCategoryBySlug, {
+      slug: "auto-mechanic",
     });
     const makeupArtist = await t.query(api.categories.getCategoryBySlug, {
       slug: "makeup-artist",
@@ -790,8 +790,8 @@ describe("taskers", () => {
 
     await asUser.mutation(api.taskers.createTaskerProfile, {
       displayName: "Multi-service Pro",
-      categoryId: carWash!._id,
-      categoryBio: "Car wash services",
+      categoryId: autoMechanic!._id,
+      categoryBio: "Auto mechanic services",
       rateType: "hourly",
       hourlyRate: 2200,
       serviceRadius: 15,
@@ -816,7 +816,7 @@ describe("taskers", () => {
     const profile = await asUser.query(api.taskers.getTaskerProfile);
     expect(profile?.categories).toHaveLength(3);
     expect(profile?.categories.map((category) => category.categoryId).sort()).toEqual(
-      [carWash!._id, makeupArtist!._id, hairStylist!._id].sort()
+      [autoMechanic!._id, makeupArtist!._id, hairStylist!._id].sort()
     );
   });
 
@@ -836,10 +836,10 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const plumbing = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
      const electrical = await t.query(api.categories.getCategoryBySlug, {
-       slug: "electrical",
+       slug: "electrician",
      });
 
      // Create profile with plumbing
@@ -889,7 +889,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
 
      // Create tasker profile
@@ -940,7 +940,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "electrical",
+       slug: "electrician",
      });
 
      // Create tasker profile
@@ -989,7 +989,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "handyman",
+       slug: "general-handy-man",
      });
 
      // Create tasker profile
@@ -1044,7 +1044,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "handyman",
+       slug: "general-handy-man",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -1096,7 +1096,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "handyman",
+       slug: "general-handy-man",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -1150,7 +1150,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "painting",
+       slug: "interior-painter",
      });
 
      // Create tasker profile (subscriptionPlan defaults to "none")
@@ -1185,16 +1185,16 @@ describe("taskers", () => {
        province: "AB",
      });
 
-     await t.mutation(internal.categories.seedCategories);
-     const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "hvac",
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "electrician",
      });
 
      // Create tasker profile
      await asUser.mutation(api.taskers.createTaskerProfile, {
        displayName: "Ghost Mode Enabled Tasker",
        categoryId: category!._id,
-       categoryBio: "HVAC services",
+       categoryBio: "Electrical services",
        rateType: "hourly",
        hourlyRate: 9000,
        serviceRadius: 30,
@@ -1245,15 +1245,15 @@ describe("taskers", () => {
        province: "ON",
      });
 
-     await t.mutation(internal.categories.seedCategories);
-     const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "hvac",
+    await t.mutation(internal.categories.seedCategories);
+    const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "electrician",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
        displayName: "Lifetime Tasker",
        categoryId: category!._id,
-       categoryBio: "HVAC services",
+       categoryBio: "Electrical services",
        rateType: "hourly",
        hourlyRate: 9000,
        serviceRadius: 30,
@@ -1291,7 +1291,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -1341,7 +1341,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -1414,7 +1414,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {
@@ -1498,7 +1498,7 @@ describe("taskers", () => {
 
      await t.mutation(internal.categories.seedCategories);
      const category = await t.query(api.categories.getCategoryBySlug, {
-       slug: "plumbing",
+       slug: "plumber",
      });
 
      await asUser.mutation(api.taskers.createTaskerProfile, {

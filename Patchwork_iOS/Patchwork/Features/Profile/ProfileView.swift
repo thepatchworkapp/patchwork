@@ -329,6 +329,7 @@ struct TaskerOnboardingView: View {
             }
 
             step = 6
+            isShowingSubscriptions = true
             onboardingDraftJSON = ""
             Task {
                 await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)

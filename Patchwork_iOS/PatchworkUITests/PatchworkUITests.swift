@@ -274,7 +274,7 @@ final class PatchworkUITests: XCTestCase {
         replaceText(in: displayNameField, with: displayName)
 
         app.buttons["TaskerOnboarding1.categoryPicker"].tap()
-        let categoryRow = app.buttons["Categories.row.cleaning"]
+        let categoryRow = app.buttons["Categories.row.interior-cleaning-services"]
         XCTAssertTrue(categoryRow.waitForExistence(timeout: 10))
         categoryRow.tap()
 
@@ -297,7 +297,7 @@ final class PatchworkUITests: XCTestCase {
 
         app.buttons["TaskerOnboarding2.backButton"].tap()
         XCTAssertEqual(app.textFields["TaskerOnboarding1.displayNameField"].value as? String, displayName)
-        XCTAssertTrue(app.buttons["TaskerOnboarding1.categoryPicker"].label.contains("Cleaning"))
+        XCTAssertTrue(app.buttons["TaskerOnboarding1.categoryPicker"].label.contains("Interior Cleaning Services"))
     }
 
     func testTaskerProfileManagementPersistsDisplayNameAndCategoryEdits() throws {
@@ -510,9 +510,9 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(proposeTermsButton.waitForExistence(timeout: 15))
         proposeTermsButton.tap()
 
-        submitProposal(rate: "75", date: "2026-03-15", time: "09:30", notes: "Can arrive with supplies and start at 9:30 AM.")
+        submitProposal(rate: "75")
 
-        XCTAssertTrue(app.staticTexts["Pending"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForProposalStatus("Pending"))
         XCTAssertTrue(waitForLatestProposal(seekerEmail: seekerEmail, taskerEmail: taskerEmail) { proposal in
             proposal["status"] as? String == "pending"
         })
@@ -816,10 +816,9 @@ final class PatchworkUITests: XCTestCase {
 
         let cityField = app.textFields["ProfileSetup.cityField"]
         replaceText(in: cityField, with: city)
-        dismissKeyboardIfPresent()
-
-        let provinceField = app.textFields["ProfileSetup.provinceField"]
-        replaceText(in: provinceField, with: province)
+        let homeBaseSuggestion = app.buttons["ProfileSetup.homeBaseSuggestion.\(city), \(province.uppercased())"]
+        XCTAssertTrue(homeBaseSuggestion.waitForExistence(timeout: 10))
+        homeBaseSuggestion.tap()
         dismissKeyboardIfPresent()
 
         app.buttons["ProfileSetup.continueButton"].tap()
@@ -930,7 +929,7 @@ final class PatchworkUITests: XCTestCase {
 
     private func completeTaskerOnboarding(
         displayName: String,
-        categoryRowIdentifier: String = "Categories.row.cleaning",
+        categoryRowIdentifier: String = "Categories.row.interior-cleaning-services",
         categoryBio: String,
         hourlyRate: String
     ) {
@@ -1062,8 +1061,8 @@ final class PatchworkUITests: XCTestCase {
             "province": province,
             "lat": lat,
             "lng": lng,
-            "categorySlug": "cleaning",
-            "categoryName": "Cleaning",
+            "categorySlug": "interior-cleaning-services",
+            "categoryName": "Interior Cleaning Services",
             "categoryBio": categoryBio,
             "rateType": rateType,
             "serviceRadius": serviceRadius,
@@ -1114,8 +1113,8 @@ final class PatchworkUITests: XCTestCase {
                 "province": province,
                 "lat": lat,
                 "lng": lng,
-                "categorySlug": "cleaning",
-                "categoryName": "Cleaning",
+                "categorySlug": "interior-cleaning-services",
+                "categoryName": "Interior Cleaning Services",
                 "categoryBio": "Reliable local cleaning help for homes and apartments.",
                 "rate": 7500,
                 "rateType": "hourly",
@@ -1147,8 +1146,8 @@ final class PatchworkUITests: XCTestCase {
                 "province": province,
                 "lat": lat,
                 "lng": lng,
-                "categorySlug": "cleaning",
-                "categoryName": "Cleaning",
+                "categorySlug": "interior-cleaning-services",
+                "categoryName": "Interior Cleaning Services",
                 "categoryBio": "Reliable local cleaning help for homes and apartments.",
                 "rate": 7500,
                 "rateType": "hourly",
@@ -1180,8 +1179,8 @@ final class PatchworkUITests: XCTestCase {
                 "province": province,
                 "lat": lat,
                 "lng": lng,
-                "categorySlug": "cleaning",
-                "categoryName": "Cleaning",
+                "categorySlug": "interior-cleaning-services",
+                "categoryName": "Interior Cleaning Services",
                 "categoryBio": "Reliable local cleaning help for homes and apartments.",
                 "rate": 7500,
                 "rateType": "hourly",
@@ -1309,26 +1308,24 @@ final class PatchworkUITests: XCTestCase {
         return false
     }
 
-    private func submitProposal(rate: String, date: String, time: String, notes: String) {
+    private func submitProposal(rate: String) {
         let rateField = app.textFields["ProposalForm.rateField"]
         XCTAssertTrue(rateField.waitForExistence(timeout: 10))
         replaceText(in: rateField, with: rate, shouldClearExisting: false)
 
-        let dateField = app.textFields["ProposalForm.dateField"]
-        XCTAssertTrue(dateField.waitForExistence(timeout: 10))
-        replaceText(in: dateField, with: date)
-
-        let timeField = app.textFields["ProposalForm.timeField"]
-        XCTAssertTrue(timeField.waitForExistence(timeout: 10))
-        replaceText(in: timeField, with: time)
-
-        let notesField = app.textViews["ProposalForm.notesField"]
-        XCTAssertTrue(notesField.waitForExistence(timeout: 10))
-        replaceText(in: notesField, with: notes)
-
         let submitButton = app.buttons["ProposalForm.submitButton"]
         XCTAssertTrue(submitButton.waitForExistence(timeout: 10))
         submitButton.tap()
+    }
+
+    private func waitForProposalStatus(_ status: String, timeout: TimeInterval = 15) -> Bool {
+        let predicate = NSPredicate(
+            format: "identifier BEGINSWITH %@ AND (value CONTAINS %@ OR label == %@)",
+            "Chat.proposal.",
+            "Status \(status)",
+            status
+        )
+        return app.descendants(matching: .any).matching(predicate).firstMatch.waitForExistence(timeout: timeout)
     }
 
     private func waitForTaskerProfile(
@@ -1433,7 +1430,11 @@ final class PatchworkUITests: XCTestCase {
             return
         }
 
-        app.swipeDown()
+        let toolbarDoneButton = app.buttons["Done"]
+        if toolbarDoneButton.exists {
+            toolbarDoneButton.tap()
+            return
+        }
     }
 
     private func elementHasKeyboardFocus(_ element: XCUIElement) -> Bool {

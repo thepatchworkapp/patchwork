@@ -490,7 +490,9 @@ struct HomeView: View {
                             if shouldShowAllCategoriesOption {
                                 categorySheetRow(
                                     label: "All categories",
-                                    isSelected: selectedCategorySlug == nil,
+                                    isSelected: selectedCategorySlug == nil
+                                        && selectedCategoryGroupSlug == nil
+                                        && selectedCategorySlugs.isEmpty,
                                     accessibilityIdentifier: "Home.categoryOption.all"
                                 ) {
                                     selectCategory(nil)
@@ -784,7 +786,7 @@ struct HomeView: View {
     private func retryCategories() async {
         await appState.refreshCategories(client: sessionStore.client)
         if appState.currentUser != nil {
-            await reload()
+            await reload(resetDismissedTaskers: true)
         }
     }
 
@@ -809,6 +811,9 @@ struct HomeView: View {
     private func toggleSelectedMemberCategory(_ category: Category) {
         selectedCategorySlug = nil
         if selectedCategorySlugs.contains(category.slug) {
+            guard selectedCategorySlugs.count > 1 else {
+                return
+            }
             selectedCategorySlugs.remove(category.slug)
         } else {
             selectedCategorySlugs.insert(category.slug)

@@ -93,6 +93,8 @@ struct ProfileAccountSection: View {
                             Image(systemName: "pencil")
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(PatchworkTheme.textSecondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit seeker profile")
@@ -147,6 +149,8 @@ struct ProfileAccountSection: View {
                             Image(systemName: "pencil")
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(PatchworkTheme.brand)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit seeker profile")

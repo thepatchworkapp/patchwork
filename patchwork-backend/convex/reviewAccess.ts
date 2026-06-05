@@ -12,8 +12,8 @@ const REVIEW_CITY = "Toronto";
 const REVIEW_PROVINCE = "Ontario";
 const REVIEW_LAT = 43.6532;
 const REVIEW_LNG = -79.3832;
-const REVIEW_CATEGORY_NAME = "Cleaning";
-const REVIEW_CATEGORY_SLUG = "cleaning";
+const REVIEW_CATEGORY_NAME = "Interior Cleaning Services";
+const REVIEW_CATEGORY_SLUG = "interior-cleaning-services";
 const REVIEW_RATE_CENTS = 6500;
 const REVIEW_SERVICE_RADIUS_KM = 25;
 const PRIMARY_REVIEW_EMAIL = APP_REVIEW_EMAIL;
@@ -121,7 +121,7 @@ async function ensureReviewCategory(ctx: any) {
       name: REVIEW_CATEGORY_NAME,
       slug: REVIEW_CATEGORY_SLUG,
       emoji: "🧹",
-      group: "Home Services",
+      group: "Home & Garden",
       isActive: true,
       sortOrder: 48,
     });

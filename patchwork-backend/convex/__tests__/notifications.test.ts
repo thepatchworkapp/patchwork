@@ -66,6 +66,7 @@ async function createConversation(t: ReturnType<typeof convexTest>, suffix: stri
     name: `Notification Seeker ${suffix}`,
     city: "Toronto",
     province: "ON",
+    notificationsEnabled: true,
   });
 
   const asTasker = t.withIdentity({
@@ -76,6 +77,7 @@ async function createConversation(t: ReturnType<typeof convexTest>, suffix: stri
     name: `Notification Tasker ${suffix}`,
     city: "Toronto",
     province: "ON",
+    notificationsEnabled: true,
   });
 
   const conversationId = await asSeeker.mutation(api.conversations.startConversation, {

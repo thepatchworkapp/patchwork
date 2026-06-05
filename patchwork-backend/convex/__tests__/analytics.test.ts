@@ -73,14 +73,14 @@ async function insertCategory(t: any, overrides: Partial<{
   slug: string;
   isActive: boolean;
 }> = {}) {
-  const name = overrides.name ?? "Cleaning";
-  const slug = overrides.slug ?? "cleaning";
+  const name = overrides.name ?? "Interior Cleaning Services";
+  const slug = overrides.slug ?? "interior-cleaning-services";
   return await t.run(async (ctx: any) =>
     await ctx.db.insert("categories", {
       name,
       slug,
       emoji: "🧹",
-      group: "Home Services",
+      group: "Home & Garden",
       isActive: overrides.isActive ?? true,
       sortOrder: 1,
     })
@@ -99,7 +99,7 @@ describe("discover analytics", () => {
   test("records one category selection per user, category, and day", async () => {
     const t = convexTest(schema, await analyticsModules());
     const cleaningId = await insertCategory(t);
-    const paintingId = await insertCategory(t, { name: "Painting", slug: "painting" });
+    const paintingId = await insertCategory(t, { name: "Interior Painter", slug: "interior-painter" });
 
     const asFirstUser = t.withIdentity({
       tokenIdentifier: "google|analytics-user-1",
@@ -113,16 +113,16 @@ describe("discover analytics", () => {
     await createUser(asSecondUser, "Analytics User 2");
 
     await asFirstUser.mutation((api as any).analytics.recordDiscoverCategorySelection, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
     });
     const duplicate = await asFirstUser.mutation((api as any).analytics.recordDiscoverCategorySelection, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
     });
     await asFirstUser.mutation((api as any).analytics.recordDiscoverCategorySelection, {
-      categorySlug: "painting",
+      categorySlug: "interior-painter",
     });
     await asSecondUser.mutation((api as any).analytics.recordDiscoverCategorySelection, {
-      categorySlug: "cleaning",
+      categorySlug: "interior-cleaning-services",
     });
 
     expect(duplicate).toEqual({ recorded: false, reason: "already_recorded_today" });
@@ -224,8 +224,8 @@ describe("discover analytics", () => {
         for (const row of rows) {
           await ctx.db.insert("discoverCategoryDailyViews", {
             categoryId,
-            categoryName: "Cleaning",
-            categorySlug: "cleaning",
+            categoryName: "Interior Cleaning Services",
+            categorySlug: "interior-cleaning-services",
             dayKey: row.dayKey,
             viewCount: row.viewCount,
             uniqueUserCount: row.uniqueUserCount,
@@ -239,8 +239,8 @@ describe("discover analytics", () => {
           { dayKey: dayKey(-30), searchCount: 5 },
         ]) {
           await ctx.db.insert("discoverCategorySearchDailyTerms", {
-            normalizedTerm: "cleaning",
-            displayTerm: "Cleaning",
+            normalizedTerm: "interior-cleaning-services",
+            displayTerm: "Interior Cleaning Services",
             dayKey: row.dayKey,
             searchCount: row.searchCount,
             createdAt: now,
@@ -257,7 +257,7 @@ describe("discover analytics", () => {
 
       expect(analytics.categories).toHaveLength(1);
       expect(analytics.categories[0]).toMatchObject({
-        categoryName: "Cleaning",
+        categoryName: "Interior Cleaning Services",
         oneDayCount: 1,
         sevenDayCount: 7,
         thirtyDayCount: 36,
@@ -269,8 +269,8 @@ describe("discover analytics", () => {
       expect(analytics.categories[0].thirtyDayAverage).toBe(1.2);
       expect(analytics.searchTerms).toHaveLength(1);
       expect(analytics.searchTerms[0]).toMatchObject({
-        displayTerm: "Cleaning",
-        normalizedTerm: "cleaning",
+        displayTerm: "Interior Cleaning Services",
+        normalizedTerm: "interior-cleaning-services",
         oneDayCount: 2,
         sevenDayCount: 5,
         thirtyDayCount: 5,
@@ -316,8 +316,8 @@ describe("discover analytics", () => {
       await t.run(async (ctx: any) => {
         await ctx.db.insert("discoverCategoryDailyViews", {
           categoryId,
-          categoryName: "Cleaning",
-          categorySlug: "cleaning",
+          categoryName: "Interior Cleaning Services",
+          categorySlug: "interior-cleaning-services",
           dayKey: dayKey(0),
           viewCount: 1,
           uniqueUserCount: 1,
@@ -331,8 +331,8 @@ describe("discover analytics", () => {
           createdAt: Date.now(),
         });
         await ctx.db.insert("discoverCategorySearchDailyTerms", {
-          normalizedTerm: "cleaning",
-          displayTerm: "Cleaning",
+          normalizedTerm: "interior-cleaning-services",
+          displayTerm: "Interior Cleaning Services",
           dayKey: dayKey(0),
           searchCount: 1,
           createdAt: Date.now(),

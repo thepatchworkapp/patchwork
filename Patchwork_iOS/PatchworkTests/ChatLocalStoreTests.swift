@@ -134,6 +134,87 @@ final class ChatLocalStoreTests: XCTestCase {
         XCTAssertEqual(messages.first?.isOptimistic, false)
     }
 
+    func testHydratedSystemProposalMessageDoesNotReplaceProposalCardMessage() throws {
+        try store.upsertOptimisticProposal(
+            proposal(
+                serverProposalId: nil,
+                clientProposalId: "client-proposal-1",
+                status: "pending",
+                updatedAt: 100,
+                isOptimistic: true
+            )
+        )
+        try store.upsertOptimisticMessage(
+            message(
+                serverMessageId: nil,
+                type: "proposal",
+                content: "Proposal sent",
+                clientProposalId: "client-proposal-1",
+                createdAt: 100,
+                updatedAt: 100,
+                isOptimistic: true,
+                localStatus: "sending"
+            )
+        )
+
+        let payload = proposalPayload(
+            serverProposalId: "proposal-1",
+            clientProposalId: "client-proposal-1",
+            status: "pending",
+            createdAt: 105,
+            updatedAt: 105
+        )
+        try store.apply(
+            messagesSince: MessagesSinceResponse(
+                messages: [
+                    ChatMessage(
+                        id: "proposal-message-1",
+                        conversationId: "conversation-1",
+                        senderId: "seeker-1",
+                        type: "proposal",
+                        content: "Proposal sent",
+                        proposalId: "proposal-1",
+                        proposal: payload,
+                        createdAt: 105,
+                        updatedAt: 105,
+                        clientMessageId: nil,
+                        localStatus: nil
+                    ),
+                    ChatMessage(
+                        id: "system-message-1",
+                        conversationId: "conversation-1",
+                        senderId: "seeker-1",
+                        type: "system",
+                        content: "A proposal was sent",
+                        proposalId: "proposal-1",
+                        proposal: payload,
+                        createdAt: 106,
+                        updatedAt: 106,
+                        clientMessageId: nil,
+                        localStatus: nil
+                    ),
+                ],
+                hasMore: false,
+                latestCursor: 106,
+                latestMessageId: "system-message-1",
+                latestMessageAt: 106,
+                latestProposalUpdatedAt: 105,
+                latestProposal: payload
+            ),
+            conversationId: "conversation-1"
+        )
+
+        let messages = try store.messages(conversationId: "conversation-1")
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertTrue(messages.contains { $0.type == "proposal" && $0.serverMessageId == "proposal-message-1" })
+        XCTAssertTrue(messages.contains { $0.type == "system" && $0.serverMessageId == "system-message-1" })
+
+        let proposalMessage = try XCTUnwrap(try store.chatMessages(conversationId: "conversation-1").first { $0.type == "proposal" })
+        XCTAssertEqual(proposalMessage.proposal?.id, "proposal-1")
+        XCTAssertEqual(proposalMessage.proposal?.status, "pending")
+        XCTAssertEqual(proposalMessage.localStatus, "synced")
+    }
+
     func testProposalMessageFailureIsMarkedByClientProposalId() throws {
         try store.upsertOptimisticMessage(
             message(
@@ -263,7 +344,8 @@ final class ChatLocalStoreTests: XCTestCase {
                 latestCursor: 201,
                 latestMessageId: "message-1",
                 latestMessageAt: 201,
-                latestProposalUpdatedAt: nil
+                latestProposalUpdatedAt: nil,
+                latestProposal: nil
             ),
             conversationId: "conversation-1"
         )
@@ -308,12 +390,62 @@ final class ChatLocalStoreTests: XCTestCase {
                 latestCursor: 150,
                 latestMessageId: "message-2",
                 latestMessageAt: 150,
-                latestProposalUpdatedAt: nil
+                latestProposalUpdatedAt: nil,
+                latestProposal: nil
             ),
             conversationId: "conversation-1"
         )
 
         XCTAssertEqual(try store.chatMessages(conversationId: "conversation-1").map(\.content), ["Cached", "Fresh"])
+    }
+
+    func testMessagesSinceLatestProposalSynthesizesRenderableProposalMessage() throws {
+        try store.apply(
+            delta: .init(messages: [
+                message(serverMessageId: "message-1", content: "Cached", createdAt: 100),
+            ], cursor: "100"),
+            conversationId: "conversation-1"
+        )
+
+        try store.apply(
+            messagesSince: MessagesSinceResponse(
+                messages: [
+                    ChatMessage(
+                        id: "message-2",
+                        conversationId: "conversation-1",
+                        senderId: "seeker-1",
+                        type: "system",
+                        content: "A proposal was sent",
+                        proposalId: "proposal-1",
+                        proposal: nil,
+                        createdAt: 160,
+                        updatedAt: 160,
+                        clientMessageId: nil,
+                        localStatus: nil
+                    ),
+                ],
+                hasMore: false,
+                latestCursor: 175,
+                latestMessageId: "message-2",
+                latestMessageAt: 160,
+                latestProposalUpdatedAt: 175,
+                latestProposal: proposalPayload(
+                    serverProposalId: "proposal-1",
+                    clientProposalId: "client-proposal-1",
+                    status: "pending",
+                    createdAt: 150,
+                    updatedAt: 175
+                )
+            ),
+            conversationId: "conversation-1"
+        )
+
+        let chatMessages = try store.chatMessages(conversationId: "conversation-1")
+        let proposalMessage = try XCTUnwrap(chatMessages.first { $0.type == "proposal" })
+        XCTAssertEqual(proposalMessage.proposal?.id, "proposal-1")
+        XCTAssertEqual(proposalMessage.proposal?.status, "pending")
+        XCTAssertEqual(proposalMessage.localStatus, "synced")
+        XCTAssertTrue(chatMessages.contains { $0.type == "system" && $0.content == "A proposal was sent" })
     }
 
     func testConversationCacheKeepsMessageReadAndSyncFields() throws {
@@ -433,6 +565,31 @@ final class ChatLocalStoreTests: XCTestCase {
             createdAt: 90,
             updatedAt: updatedAt,
             isOptimistic: isOptimistic
+        )
+    }
+
+    private func proposalPayload(
+        serverProposalId: ConvexID = "proposal-1",
+        clientProposalId: String? = nil,
+        status: String,
+        createdAt: Int = 90,
+        updatedAt: Int
+    ) -> ProposalPayload {
+        ProposalPayload(
+            id: serverProposalId,
+            conversationId: "conversation-1",
+            senderId: "seeker-1",
+            receiverId: "tasker-1",
+            rate: 2_500,
+            rateType: "hourly",
+            startDateTime: "2026-06-01T12:00:00Z",
+            notes: nil,
+            status: status,
+            previousProposalId: nil,
+            counterProposalId: nil,
+            clientProposalId: clientProposalId,
+            createdAt: createdAt,
+            updatedAt: updatedAt
         )
     }
 }

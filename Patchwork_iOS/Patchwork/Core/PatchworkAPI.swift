@@ -202,6 +202,14 @@ struct PatchworkAPI {
             return result.registered
         }
 
+        @discardableResult
+        func updateNotificationSettings(notificationsEnabled: Bool) async throws -> CurrentUser {
+            try await client.mutation(
+                "users:updateNotificationSettings",
+                args: ["notificationsEnabled": notificationsEnabled]
+            )
+        }
+
         func unreadBadgeCount() async throws -> Int {
             try await client.query("users:getUnreadBadgeCount", args: [:])
         }

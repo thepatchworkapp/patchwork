@@ -1407,6 +1407,8 @@ private struct ProposalMessageCard: View {
                     .foregroundStyle(PatchworkTheme.textPrimary)
                 Spacer()
                 proposalStatus
+                    .accessibilityIdentifier("Chat.proposal.status.\(proposal.id)")
+                    .accessibilityLabel(statusLabel)
             }
 
             Text(scheduleLabel)
@@ -1466,7 +1468,7 @@ private struct ProposalMessageCard: View {
             rateLabel,
             scheduleLabel,
             proposal.notes?.isEmpty == false ? proposal.notes : nil,
-            "Status \(proposal.status)",
+            "Status \(statusLabel)",
         ].compactMap { $0 }.joined(separator: ", "))
         .accessibilityIdentifier("Chat.proposal.\(proposal.id)")
     }
@@ -1487,6 +1489,19 @@ private struct ProposalMessageCard: View {
             PatchworkPill(title: "Countered", foreground: PatchworkTheme.brand)
         default:
             PatchworkPill(title: "Pending", foreground: PatchworkTheme.warning)
+        }
+    }
+
+    private var statusLabel: String {
+        switch proposal.status {
+        case "accepted":
+            "Accepted"
+        case "declined":
+            "Declined"
+        case "countered":
+            "Countered"
+        default:
+            "Pending"
         }
     }
 
@@ -2061,6 +2076,8 @@ private struct ProposalFormSheet: View {
                             .accessibilityLabel("Rate type")
                             .accessibilityIdentifier("ProposalForm.rateType")
 
+                            proposalSubmitButton
+
                             HStack(spacing: 8) {
                                 Text("$")
                                     .font(.patchworkBody.weight(.semibold))
@@ -2069,6 +2086,7 @@ private struct ProposalFormSheet: View {
 
                                 TextField("Rate", text: $rate)
                                     .keyboardType(.decimalPad)
+                                    .patchworkKeyboardDismissToolbar()
                                     .accessibilityLabel("Rate amount")
                                     .accessibilityIdentifier("ProposalForm.rateField")
                             }
@@ -2097,14 +2115,6 @@ private struct ProposalFormSheet: View {
                                     .accessibilityLabel("Proposal notes")
                                     .accessibilityIdentifier("ProposalForm.notesField")
                             }
-
-                            Button(isCounter ? "Send Counter" : "Send") {
-                                onSubmit()
-                            }
-                            .buttonStyle(PatchworkPrimaryButtonStyle())
-                            .disabled(rate.isEmpty || date.isEmpty || time.isEmpty)
-                            .accessibilityLabel(isCounter ? "Send counter proposal" : "Send proposal")
-                            .accessibilityIdentifier("ProposalForm.submitButton")
                         }
                     }
                     .padding(.horizontal, 20)
@@ -2113,8 +2123,19 @@ private struct ProposalFormSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
+            .accessibilityIdentifier("ProposalForm.scrollView")
         }
         .onAppear(perform: initializePickerDefaults)
+    }
+
+    private var proposalSubmitButton: some View {
+        Button(isCounter ? "Send Counter" : "Send") {
+            onSubmit()
+        }
+        .buttonStyle(PatchworkPrimaryButtonStyle())
+        .disabled(rate.isEmpty || date.isEmpty || time.isEmpty)
+        .accessibilityLabel(isCounter ? "Send counter proposal" : "Send proposal")
+        .accessibilityIdentifier("ProposalForm.submitButton")
     }
 
     private var proposalDateBinding: Binding<Date> {

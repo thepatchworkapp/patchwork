@@ -92,6 +92,7 @@ describe("users", () => {
       name: "Push Token User",
       city: "Toronto",
       province: "ON",
+      notificationsEnabled: true,
     });
 
     await asUser.mutation(api.users.registerPushToken, {
@@ -115,6 +116,49 @@ describe("users", () => {
     expect(tokens[0].platform).toBe("ios");
     expect(tokens[0].environment).toBe("production");
     expect(tokens[0].disabledAt).toBeUndefined();
+  });
+
+  test("createProfile defaults notifications off and gates push token registration", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|push-token-disabled-user",
+      email: "push-token-disabled@example.com",
+    });
+
+    const userId = await asUser.mutation(api.users.createProfile, {
+      name: "Push Token Disabled User",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const currentUser = await asUser.query(api.users.getCurrentUser);
+    expect(currentUser?.settings?.notificationsEnabled).toBe(false);
+
+    const disabledResult = await asUser.mutation(api.users.registerPushToken, {
+      token: "disabled-token",
+      environment: "sandbox",
+    });
+    expect(disabledResult).toEqual({ registered: false });
+
+    await asUser.mutation(api.users.updateNotificationSettings, {
+      notificationsEnabled: true,
+    });
+    const enabledResult = await asUser.mutation(api.users.registerPushToken, {
+      token: "enabled-token",
+      environment: "sandbox",
+    });
+    expect(enabledResult).toEqual({ registered: true });
+
+    const tokens = await t.run(async (ctx: any) => {
+      return await ctx.db
+        .query("pushTokens")
+        .withIndex("by_user", (q: any) => q.eq("userId", userId))
+        .collect();
+    });
+
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].token).toBe("enabled-token");
   });
 
   test("getUnreadBadgeCount returns the current user's unread conversation total", async () => {
@@ -342,7 +386,7 @@ describe("users", () => {
     const t = convexTest(schema, modules);
 
     await t.mutation(internal.categories.seedCategories, {});
-    const category = await t.query(api.categories.getCategoryBySlug, { slug: "plumbing" });
+    const category = await t.query(api.categories.getCategoryBySlug, { slug: "plumber" });
     expect(category).not.toBeNull();
 
     const asSeeker = t.withIdentity({
