@@ -237,6 +237,8 @@ type ResetDatabaseResult = {
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedPushTokens: number;
+  deletedTaskerGeoPoints?: number;
+  resendEmailCleanupPasses?: number;
   deletedStorageFiles: number;
   missingStorageFiles?: number;
   failedStorageFiles?: number;
@@ -292,12 +294,14 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
     ["User blocks", result.deletedUserBlocks],
     ["User reports", result.deletedUserReports],
     ["Push tokens", result.deletedPushTokens],
+    ["Tasker geo points", result.deletedTaskerGeoPoints],
     ["Image assets", result.deletedImageAssets],
     ["Storage files", result.deletedStorageFiles],
     ["Missing storage files", result.missingStorageFiles],
     ["Failed storage files", result.failedStorageFiles],
     ["User OTPs", result.deletedOtps],
     ["Admin OTPs", result.deletedAdminOtps],
+    ["Resend cleanup passes", result.resendEmailCleanupPasses],
   ] as const;
 
   return (
@@ -339,7 +343,11 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
           <div className="text-xs font-semibold uppercase tracking-wide text-kumo-muted">Deleted</div>
           <div className="mt-2 text-sm text-kumo-strong">
             Non-admin users, marketplace records, conversations, reports, OTPs, image assets, and storage files.
-            Discover analytics buckets are reset with application data.
+            Discover analytics buckets, tasker geo index entries, and Resend OTP email history are reset with application data.
+          </div>
+          <div className="mt-2 text-xs text-kumo-muted">
+            Component cleanup: {(result.deletedTaskerGeoPoints ?? 0).toLocaleString()} tasker geo point(s) removed;{" "}
+            {(result.resendEmailCleanupPasses ?? 0).toLocaleString()} Resend cleanup pass(es) ran.
           </div>
           {result.revenueCatCleanup && (
             <div className="mt-2 text-xs text-kumo-muted">
@@ -407,7 +415,7 @@ function AdminMaintenanceCard() {
       setResetResult(result);
       setShowResetConfirm(false);
       setResetConfirmText("");
-      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedPushTokens} push tokens, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
+      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedPushTokens} push tokens, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files. Cleaned ${(result.deletedTaskerGeoPoints ?? 0).toLocaleString()} tasker geo point(s) and ran ${(result.resendEmailCleanupPasses ?? 0).toLocaleString()} Resend cleanup pass(es).`;
       if (result.failedStorageFiles && result.failedStorageFiles > 0) {
         nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
       }

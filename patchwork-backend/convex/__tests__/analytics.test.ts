@@ -1,6 +1,8 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
+import { v } from "convex/values";
 import { api } from "../_generated/api";
+import { internalMutation } from "../_generated/server";
 import schema from "../schema";
 
 async function analyticsModules() {
@@ -51,16 +53,34 @@ async function adminAnalyticsModules() {
   }));
   vi.doMock("../geospatial", () => ({
     taskerGeo: {
-      remove: vi.fn(async () => undefined),
+      nearest: vi.fn(async () => []),
+      remove: vi.fn(async () => false),
     },
+  }));
+  vi.doMock("../resend", () => ({
+    sendOtpEmail: internalMutation({
+      args: {
+        email: v.string(),
+        otp: v.string(),
+        purpose: v.union(v.literal("admin-login"), v.literal("email-login"), v.literal("email-signup")),
+      },
+      handler: async () => undefined,
+    }),
+    cleanupEmailArtifacts: internalMutation({
+      args: {},
+      returns: v.object({ cleanupPasses: v.number() }),
+      handler: async () => ({ cleanupPasses: 0 }),
+    }),
   }));
 
   const baseModules = await analyticsModules();
   const adminModule = await import("../admin");
+  const resendModule = await import("../resend");
 
   return {
     ...baseModules,
     "../admin.ts": async () => adminModule,
+    "../resend.ts": async () => resendModule,
   };
 }
 

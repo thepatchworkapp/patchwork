@@ -8,6 +8,7 @@ const resend = new Resend(components.resend, {
 });
 
 const FROM_EMAIL = process.env.OTP_FROM_EMAIL || "otp@diaper.exchange";
+const RESEND_EMAIL_CLEANUP_PASSES = 10;
 
 export const sendOtpEmail = internalMutation({
   args: {
@@ -36,5 +37,23 @@ export const sendOtpEmail = internalMutation({
       html,
       text: `Your verification code is ${args.otp}. This code expires in 10 minutes.`,
     });
+  },
+});
+
+export const cleanupEmailArtifacts = internalMutation({
+  args: {},
+  returns: v.object({
+    cleanupPasses: v.number(),
+  }),
+  handler: async (ctx) => {
+    let cleanupPasses = 0;
+    for (let i = 0; i < RESEND_EMAIL_CLEANUP_PASSES; i += 1) {
+      await ctx.runMutation(components.resend.lib.cleanupAbandonedEmails, {
+        olderThan: 0,
+      });
+      cleanupPasses += 1;
+    }
+
+    return { cleanupPasses };
   },
 });

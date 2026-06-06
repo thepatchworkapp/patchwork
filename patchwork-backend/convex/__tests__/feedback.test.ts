@@ -1,6 +1,8 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
+import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
+import { internalMutation } from "../_generated/server";
 import schema from "../schema";
 
 async function feedbackModules() {
@@ -19,8 +21,20 @@ async function feedbackModules() {
   };
 }
 
-async function adminFeedbackModules() {
+async function adminFeedbackModules(options: {
+  taskerGeo?: {
+    nearest: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
+  cleanupEmailArtifacts?: ReturnType<typeof vi.fn>;
+} = {}) {
   vi.resetModules();
+  const taskerGeo = options.taskerGeo ?? {
+    nearest: vi.fn(async () => []),
+    remove: vi.fn(async () => false),
+  };
+  const cleanupEmailArtifacts =
+    options.cleanupEmailArtifacts ?? vi.fn(async () => ({ cleanupPasses: 0 }));
   const reviewAccessStatus = () => ({
     email: "review@apple.com",
     allowedEmails: ["review@apple.com", "seeker@apple.com"],
@@ -53,16 +67,31 @@ async function adminFeedbackModules() {
     setReviewAccessEnabled: vi.fn(async () => reviewAccessStatus()),
   }));
   vi.doMock("../geospatial", () => ({
-    taskerGeo: {
-      remove: vi.fn(async () => undefined),
-    },
+    taskerGeo,
+  }));
+  vi.doMock("../resend", () => ({
+    sendOtpEmail: internalMutation({
+      args: {
+        email: v.string(),
+        otp: v.string(),
+        purpose: v.union(v.literal("admin-login"), v.literal("email-login"), v.literal("email-signup")),
+      },
+      handler: async () => undefined,
+    }),
+    cleanupEmailArtifacts: internalMutation({
+      args: {},
+      returns: v.object({ cleanupPasses: v.number() }),
+      handler: async () => await cleanupEmailArtifacts(),
+    }),
   }));
   const baseModules = await feedbackModules();
   const adminModule = await import("../admin");
+  const resendModule = await import("../resend");
 
   return {
     ...baseModules,
     "../admin.ts": async () => adminModule,
+    "../resend.ts": async () => resendModule,
   };
 }
 
@@ -354,6 +383,46 @@ describe("feedback", () => {
     expect(result.deleted).toBe(0);
     expect(result.missing).toBe(1);
     expect(result.failed).toBe(0);
+  });
+
+  test("admin resetDatabase clears component reset artifacts", async () => {
+    const previousAdminEmails = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = "admin@example.com";
+
+    const taskerGeo = {
+      nearest: vi
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            key: "kh_orphan_tasker_profile",
+            coordinates: { latitude: 43.4372, longitude: -80.4988 },
+            distance: 0,
+          },
+        ])
+        .mockResolvedValueOnce([]),
+      remove: vi.fn(async () => true),
+    };
+    const cleanupEmailArtifacts = vi.fn(async () => ({ cleanupPasses: 10 }));
+
+    try {
+      const t = convexTest(schema, await adminFeedbackModules({ taskerGeo, cleanupEmailArtifacts }));
+
+      const asAdmin = t.withIdentity({
+        tokenIdentifier: "google|feedback-admin-reset-components",
+        email: "admin@example.com",
+      });
+
+      const result = await asAdmin.action((api as any).admin.resetDatabase, {});
+
+      expect(result.deletedTaskerGeoPoints).toBe(1);
+      expect(result.resendEmailCleanupPasses).toBe(10);
+      expect(taskerGeo.nearest).toHaveBeenCalled();
+      expect(taskerGeo.remove).toHaveBeenCalledWith(expect.anything(), "kh_orphan_tasker_profile");
+      expect(cleanupEmailArtifacts).toHaveBeenCalledOnce();
+    } finally {
+      process.env.ADMIN_EMAILS = previousAdminEmails;
+      vi.resetModules();
+    }
   });
 
   test("admin reseedAdminUser is idempotent and resetDatabaseAndReseed restores admin app user", async () => {

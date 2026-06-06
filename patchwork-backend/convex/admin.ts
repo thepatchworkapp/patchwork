@@ -87,6 +87,7 @@ const resetChunkResultValidator = v.object({
   deletedRows: v.number(),
   storageIds: v.array(v.string()),
   deletedUserAppUserIds: v.array(v.string()),
+  deletedTaskerGeoPoints: v.number(),
 });
 type ResetTableName = (typeof RESET_TABLES)[number];
 type ResetCounts = {
@@ -109,6 +110,8 @@ type ResetCounts = {
   deletedUserReports: number;
   deletedReviewAccess: number;
   deletedPushTokens: number;
+  deletedTaskerGeoPoints: number;
+  resendEmailCleanupPasses: number;
   deletedOtps: number;
   deletedAdminOtps: number;
   deletedUsers: number;
@@ -288,6 +291,8 @@ function createEmptyResetCounts(): ResetCounts {
     deletedUserReports: 0,
     deletedReviewAccess: 0,
     deletedPushTokens: 0,
+    deletedTaskerGeoPoints: 0,
+    resendEmailCleanupPasses: 0,
     deletedOtps: 0,
     deletedAdminOtps: 0,
     deletedUsers: 0,
@@ -390,7 +395,16 @@ async function performDatabaseResetInChunks(ctx: any) {
       if (chunkResult.deletedUserAppUserIds.length) {
         resetCounts.deletedUserAppUserIds.push(...chunkResult.deletedUserAppUserIds);
       }
+      resetCounts.deletedTaskerGeoPoints += chunkResult.deletedTaskerGeoPoints;
     }
+  }
+
+  while (true) {
+    const deletedTaskerGeoPoints = await ctx.runMutation(internal.admin.resetTaskerGeoIndexChunkCore, {});
+    if (!deletedTaskerGeoPoints) {
+      break;
+    }
+    resetCounts.deletedTaskerGeoPoints += deletedTaskerGeoPoints;
   }
 
   const storageIdList = Array.from(storageIds);
@@ -402,6 +416,9 @@ async function performDatabaseResetInChunks(ctx: any) {
     resetCounts.missingStorageFiles += storageDeleteResult.missing;
     resetCounts.failedStorageFiles += storageDeleteResult.failed;
   }
+
+  const resendEmailCleanup = await ctx.runMutation(internal.resend.cleanupEmailArtifacts, {});
+  resetCounts.resendEmailCleanupPasses = resendEmailCleanup.cleanupPasses;
 
   return {
     resetAt: Date.now(),
@@ -445,6 +462,8 @@ const resetDatabaseResultValidator = v.object({
   deletedUserReports: v.number(),
   deletedReviewAccess: v.number(),
   deletedPushTokens: v.number(),
+  deletedTaskerGeoPoints: v.number(),
+  resendEmailCleanupPasses: v.number(),
   deletedOtps: v.number(),
   deletedAdminOtps: v.number(),
   deletedUsers: v.number(),
@@ -964,11 +983,13 @@ export const resetApplicationDataChunkCore = internalMutation({
         deletedRows: 0,
         storageIds: [],
         deletedUserAppUserIds: [],
+        deletedTaskerGeoPoints: 0,
       };
     }
 
     const storageIds = new Set<string>();
     const deletedUserAppUserIds: string[] = [];
+    let deletedTaskerGeoPoints = 0;
     let deletedRows = 0;
 
     for (const row of rows) {
@@ -981,7 +1002,9 @@ export const resetApplicationDataChunkCore = internalMutation({
           await collectStorageIdsForRows([row], storageIds, (item) => item.photos ?? []);
           break;
         case "taskerProfiles":
-          await taskerGeo.remove(ctx, row._id);
+          if (await taskerGeo.remove(ctx, row._id)) {
+            deletedTaskerGeoPoints += 1;
+          }
           break;
         case "imageAssets":
           await collectStorageIdsForRows([row], storageIds, (imageAsset) => getImageAssetStorageIds(imageAsset));
@@ -1002,7 +1025,28 @@ export const resetApplicationDataChunkCore = internalMutation({
       deletedRows,
       storageIds: Array.from(storageIds),
       deletedUserAppUserIds,
+      deletedTaskerGeoPoints,
     };
+  },
+});
+
+export const resetTaskerGeoIndexChunkCore = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const points = await taskerGeo.nearest(ctx, {
+      point: { latitude: 0, longitude: 0 },
+      limit: RESET_BATCH_SIZE,
+    });
+
+    let deletedTaskerGeoPoints = 0;
+    for (const point of points) {
+      if (await taskerGeo.remove(ctx, point.key)) {
+        deletedTaskerGeoPoints += 1;
+      }
+    }
+
+    return deletedTaskerGeoPoints;
   },
 });
 
