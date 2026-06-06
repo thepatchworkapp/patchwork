@@ -39,4 +39,27 @@ final class SubscriptionReconciliationTests: XCTestCase {
         XCTAssertNil(StoreSubscriptionState.empty.willRenew)
         XCTAssertNil(StoreSubscriptionState.empty.expiresAt)
     }
+
+    func testBackendTierWinsOverGenericSubscriptionAccessType() {
+        let plans = BackendSubscriptionPlanResolver.confirmedPlans(
+            hasActiveSubscription: true,
+            activeAccessTypes: ["subscription"],
+            accessType: "subscription",
+            tier: "basic"
+        )
+
+        XCTAssertEqual(plans, [.basic])
+        XCTAssertEqual(BackendSubscriptionPlanResolver.preferredPlan(from: plans), .basic)
+    }
+
+    func testBackendPlanResolverFallsBackForLegacySubscriptionAccessType() {
+        let plans = BackendSubscriptionPlanResolver.confirmedPlans(
+            hasActiveSubscription: true,
+            activeAccessTypes: ["subscription"],
+            accessType: nil,
+            tier: nil
+        )
+
+        XCTAssertEqual(plans, [.premium])
+    }
 }

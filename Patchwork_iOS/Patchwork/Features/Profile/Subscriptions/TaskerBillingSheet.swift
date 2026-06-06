@@ -120,59 +120,16 @@ struct TaskerBillingSheet: View {
     }
 
     private var backendConfirmedPlans: [SubscriptionPlanChoice] {
-        guard appState.taskerProfile?.hasActiveSubscription == true else {
-            return []
-        }
-
-        let rawAccessTypes = appState.taskerProfile?.subscriptionActiveAccessTypes ?? []
-        let mappedAccessTypes = rawAccessTypes.compactMap { planChoice(forBackendAccessType: $0) }
-        if !mappedAccessTypes.isEmpty {
-            return mappedAccessTypes
-        }
-
-        if let fallbackPlan = planChoice(
-            forBackendAccessType: appState.taskerProfile?.subscriptionAccessType,
+        BackendSubscriptionPlanResolver.confirmedPlans(
+            hasActiveSubscription: appState.taskerProfile?.hasActiveSubscription,
+            activeAccessTypes: appState.taskerProfile?.subscriptionActiveAccessTypes,
+            accessType: appState.taskerProfile?.subscriptionAccessType,
             tier: appState.taskerProfile?.subscriptionTier
-        ) {
-            return [fallbackPlan]
-        }
-
-        return []
+        )
     }
 
     private var backendConfirmedPlan: SubscriptionPlanChoice? {
-        if backendConfirmedPlans.contains(.founders) {
-            return .founders
-        }
-        if backendConfirmedPlans.contains(.premium) {
-            return .premium
-        }
-        if backendConfirmedPlans.contains(.basic) {
-            return .basic
-        }
-        return nil
-    }
-
-    private func planChoice(forBackendAccessType accessType: String?, tier: String? = nil) -> SubscriptionPlanChoice? {
-        switch tier {
-        case "founders":
-            return .founders
-        case "premium":
-            return .premium
-        case "basic":
-            return .basic
-        default:
-            break
-        }
-
-        switch accessType {
-        case "lifetime":
-            return .founders
-        case "subscription":
-            return .premium
-        default:
-            return nil
-        }
+        BackendSubscriptionPlanResolver.preferredPlan(from: backendConfirmedPlans)
     }
 
     private var basicPackage: Package? {
@@ -363,10 +320,11 @@ struct TaskerBillingSheet: View {
     }
 
     private func paywallPlanCard(for plan: TaskerBillingPlan) -> some View {
-        TaskerPaywallOptionCard(
+        let price = priceDisplay(for: plan)
+        return TaskerPaywallOptionCard(
             title: plan.title,
-            priceAmount: plan.headline,
-            priceSuffix: plan.priceSuffix,
+            priceAmount: price.amount,
+            priceSuffix: price.suffix,
             detail: plan.supportingCopy,
             accent: plan.accent,
             badgeText: plan == .founders ? "Best Value" : nil,
@@ -570,6 +528,13 @@ struct TaskerBillingSheet: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
         )
+    }
+
+    private func priceDisplay(for plan: TaskerBillingPlan) -> (amount: String, suffix: String) {
+        guard let package = package(for: plan) else {
+            return (plan.headline, plan.priceSuffix)
+        }
+        return (package.storeProduct.localizedPriceString, plan.priceSuffix)
     }
 
     private var missingOfferingState: some View {

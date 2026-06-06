@@ -259,60 +259,16 @@ struct ProfileTaskerSection: View {
     }
 
     private func backendConfirmedPlans(for taskerProfile: TaskerProfileSelf) -> [SubscriptionPlanChoice] {
-        guard taskerProfile.hasActiveSubscription == true else {
-            return []
-        }
-
-        let rawAccessTypes = taskerProfile.subscriptionActiveAccessTypes ?? []
-        let mappedAccessTypes = rawAccessTypes.compactMap { planChoice(forBackendAccessType: $0) }
-        if !mappedAccessTypes.isEmpty {
-            return mappedAccessTypes
-        }
-
-        if let fallbackPlan = planChoice(
-            forBackendAccessType: taskerProfile.subscriptionAccessType,
+        BackendSubscriptionPlanResolver.confirmedPlans(
+            hasActiveSubscription: taskerProfile.hasActiveSubscription,
+            activeAccessTypes: taskerProfile.subscriptionActiveAccessTypes,
+            accessType: taskerProfile.subscriptionAccessType,
             tier: taskerProfile.subscriptionTier
-        ) {
-            return [fallbackPlan]
-        }
-
-        return []
+        )
     }
 
     private func backendConfirmedPlan(for taskerProfile: TaskerProfileSelf) -> SubscriptionPlanChoice? {
-        let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
-        if confirmedPlans.contains(.founders) {
-            return .founders
-        }
-        if confirmedPlans.contains(.premium) {
-            return .premium
-        }
-        if confirmedPlans.contains(.basic) {
-            return .basic
-        }
-        return nil
-    }
-
-    private func planChoice(forBackendAccessType accessType: String?, tier: String? = nil) -> SubscriptionPlanChoice? {
-        switch tier {
-        case "founders":
-            return .founders
-        case "premium":
-            return .premium
-        case "basic":
-            return .basic
-        default:
-            break
-        }
-
-        switch accessType {
-        case "lifetime":
-            return .founders
-        case "subscription":
-            return .premium
-        default:
-            return nil
-        }
+        BackendSubscriptionPlanResolver.preferredPlan(from: backendConfirmedPlans(for: taskerProfile))
     }
 
     private func planChipTitle(for taskerProfile: TaskerProfileSelf) -> String {
