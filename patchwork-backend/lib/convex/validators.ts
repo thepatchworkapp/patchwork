@@ -194,7 +194,13 @@ export const taskerProfileResponseValidator = v.object({
   subscriptionPlan: subscriptionPlanValidator,
   subscriptionAccessType: v.optional(subscriptionAccessTypeValidator),
   subscriptionTier: v.optional(subscriptionTierValidator),
-  premiumPin: v.optional(v.string()),
+  premiumPin: v.optional(
+    v.object({
+      code: v.string(),
+      status: v.literal("active"),
+      tier: v.union(v.literal("premium"), v.literal("founders")),
+    })
+  ),
   subscriptionActiveAccessTypes: v.optional(v.array(subscriptionAccessTypeValidator)),
   subscriptionStatus: v.optional(subscriptionStatusValidator),
   subscriptionEndsAt: v.optional(v.number()),

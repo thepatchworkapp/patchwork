@@ -7,6 +7,7 @@ import {
   getEffectiveSubscriptionPlan,
   getEffectiveSubscriptionStatus,
   getEffectiveSubscriptionTier,
+  hasActivePremiumPinAccess,
   hasActiveSubscription,
 } from "../lib/convex/subscriptionState";
 import {
@@ -53,6 +54,30 @@ function buildSubscriptionView(profile: {
     subscriptionEndsAt: profile.subscriptionEndsAt,
     hasActiveSubscription: hasActiveSubscription(profile),
     ghostMode: getEffectiveGhostMode(profile),
+  };
+}
+
+function buildPremiumPinView(profile: {
+  subscriptionPlan: "none" | "tasker";
+  subscriptionAccessType?: "subscription" | "lifetime";
+  subscriptionTier?: "basic" | "premium" | "founders";
+  subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
+  subscriptionEndsAt?: number;
+  ghostMode: boolean;
+  premiumPin?: string;
+}) {
+  if (
+    typeof profile.premiumPin !== "string" ||
+    !hasActivePremiumPinAccess(profile) ||
+    (profile.subscriptionTier !== "premium" && profile.subscriptionTier !== "founders")
+  ) {
+    return undefined;
+  }
+
+  return {
+    code: profile.premiumPin,
+    status: "active" as const,
+    tier: profile.subscriptionTier,
   };
 }
 
@@ -225,7 +250,7 @@ async function buildTaskerProfileResponse(
     subscriptionPlan: profile.subscriptionPlan,
     subscriptionAccessType: profile.subscriptionAccessType,
     subscriptionTier: profile.subscriptionTier,
-    premiumPin: profile.premiumPin,
+    premiumPin: buildPremiumPinView(profile),
     subscriptionActiveAccessTypes: profile.subscriptionActiveAccessTypes,
     subscriptionStatus: profile.subscriptionStatus,
     subscriptionEndsAt: profile.subscriptionEndsAt,

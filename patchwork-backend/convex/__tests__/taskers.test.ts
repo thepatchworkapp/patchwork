@@ -924,7 +924,9 @@ describe("taskers", () => {
      expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
-     expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+     expect(profile?.premiumPin?.code).toMatch(/^[0-9A-Z]{8}$/);
+     expect(profile?.premiumPin?.status).toBe("active");
+     expect(profile?.premiumPin?.tier).toBe("premium");
    });
 
    test("applyRevenueCatWebhookEvent activates basic monthly without a premium pin", async () => {
@@ -1024,7 +1026,9 @@ describe("taskers", () => {
      expect(profile?.subscriptionStatus).toBe("active");
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
-     expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+     expect(profile?.premiumPin?.code).toMatch(/^[0-9A-Z]{8}$/);
+     expect(profile?.premiumPin?.status).toBe("active");
+     expect(profile?.premiumPin?.tier).toBe("founders");
    });
 
    test("applyRevenueCatWebhookEvent clears ghostMode when activating subscription", async () => {
@@ -1119,6 +1123,9 @@ describe("taskers", () => {
        productId: PATCHWORK_ANNUAL_PRODUCT_ID,
        expirationAtMs: 1_900_000_000_000,
      });
+     const activeProfile = await asUser.query(api.taskers.getTaskerProfile);
+     const activePin = activeProfile?.premiumPin?.code;
+     expect(activePin).toMatch(/^[0-9A-Z]{8}$/);
 
      const result = await applyRevenueCatEvent(t, {
        type: "CANCELLATION",
@@ -1133,6 +1140,8 @@ describe("taskers", () => {
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
      expect(profile?.premiumPin).toBeUndefined();
+     const storedProfile = await t.run(async (ctx) => ctx.db.get(profile!._id));
+     expect(storedProfile?.premiumPin).toBe(activePin);
    });
 
    test("expired subscriptions become inactive and force ghost mode", async () => {

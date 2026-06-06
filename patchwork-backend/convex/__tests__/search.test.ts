@@ -971,7 +971,7 @@ describe("searchTaskers", () => {
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     const profile = await asTasker.query(api.taskers.getTaskerProfile);
-    expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+    expect(profile?.premiumPin?.code).toMatch(/^[0-9A-Z]{8}$/);
 
     const normalResults = await t.query(api.search.searchTaskers, {
       categorySlug: "interior-cleaning-services",
@@ -982,7 +982,7 @@ describe("searchTaskers", () => {
     expect(normalResults).toHaveLength(0);
 
     const pinResults = await t.query(api.search.searchTaskerByPremiumPin, {
-      pin: profile!.premiumPin!.toLowerCase(),
+      pin: profile!.premiumPin!.code.toLowerCase(),
     });
     expect(pinResults).toHaveLength(1);
     expect(pinResults[0].name).toBe("Pin Premium Pro");
@@ -1020,10 +1020,10 @@ describe("searchTaskers", () => {
     expect(premiumUser).not.toBeNull();
     await applyAnnualRevenueCatAccess(t, premiumUser!._id);
     const premiumProfile = await asPremium.query(api.taskers.getTaskerProfile);
-    expect(premiumProfile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+    expect(premiumProfile?.premiumPin?.code).toMatch(/^[0-9A-Z]{8}$/);
 
     const selfResults = await t.query(api.search.searchTaskerByPremiumPin, {
-      pin: premiumProfile!.premiumPin!,
+      pin: premiumProfile!.premiumPin!.code,
       excludeUserId: premiumUser!._id,
     });
     expect(selfResults).toHaveLength(0);
@@ -1034,7 +1034,7 @@ describe("searchTaskers", () => {
       });
     });
     const ghostResults = await t.query(api.search.searchTaskerByPremiumPin, {
-      pin: premiumProfile!.premiumPin!,
+      pin: premiumProfile!.premiumPin!.code,
     });
     expect(ghostResults).toHaveLength(0);
 
@@ -1052,7 +1052,7 @@ describe("searchTaskers", () => {
       expirationAtMs: Date.now() - 1_000,
     });
     const expiredResults = await t.query(api.search.searchTaskerByPremiumPin, {
-      pin: premiumProfile!.premiumPin!,
+      pin: premiumProfile!.premiumPin!.code,
     });
     expect(expiredResults).toHaveLength(0);
 

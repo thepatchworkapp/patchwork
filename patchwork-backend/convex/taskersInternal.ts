@@ -166,10 +166,7 @@ async function applyPremiumPinLifecycle(
 ) {
   if (shouldHaveActivePremiumPin(tier, status)) {
     updates.premiumPin = await getUniquePremiumPin(ctx, profile);
-    return;
   }
-
-  updates.premiumPin = undefined;
 }
 
 async function fetchRevenueCatSubscriber(
@@ -358,7 +355,6 @@ export const expireSubscriptionAtTermEnd = internalMutation({
       subscriptionStatus: "expired",
       subscriptionActiveAccessTypes: [],
       ghostMode: true,
-      premiumPin: undefined,
       updatedAt: Date.now(),
     });
   },
@@ -452,7 +448,6 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
       updates.subscriptionStatus = "inactive";
       updates.subscriptionEndsAt = undefined;
       updates.ghostMode = true;
-      updates.premiumPin = undefined;
       await ctx.db.patch(profile._id, updates);
       console.info("[RevenueCatWebhook] Applied canonical inactive tasker access", {
         profileId: profile._id,
