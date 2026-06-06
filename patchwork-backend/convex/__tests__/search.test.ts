@@ -230,6 +230,65 @@ describe("searchTaskers", () => {
     expect(explicitEmptyResults).toHaveLength(0);
   });
 
+  test("preserves index-order category selection for multi-category taskers", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
+    const plumbingCategory = categories.find((c) => c.slug === "plumber");
+    expect(cleaningCategory).toBeDefined();
+    expect(plumbingCategory).toBeDefined();
+
+    const matchingCategories = [cleaningCategory!, plumbingCategory!].sort((a, b) =>
+      a._id < b._id ? -1 : a._id > b._id ? 1 : 0
+    );
+    const requestedSlugs = [...matchingCategories].reverse().map((category) => category.slug);
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|multi-category-order",
+      email: "multi-category-order@example.com",
+    });
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Multi Category Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Multi Category Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 25,
+    });
+    await asTasker.mutation(api.taskers.addTaskerCategory, {
+      categoryId: plumbingCategory!._id,
+      categoryBio: "I fix pipes",
+      rateType: "hourly",
+      hourlyRate: 6000,
+      serviceRadius: 25,
+    });
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+    await asTasker.mutation(api.location.updateTaskerLocation, {
+      lat: 43.65107,
+      lng: -79.347015,
+    });
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlugs: requestedSlugs,
+      lat: 43.65,
+      lng: -79.38,
+      radiusKm: 50,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].name).toBe("Multi Category Pro");
+    expect(results[0].category).toBe(matchingCategories[0].name);
+  });
+
   test("syncs tasker geo when an existing located seeker creates a tasker profile", async () => {
     const t = createTest();
 

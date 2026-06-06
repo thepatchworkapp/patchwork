@@ -41,7 +41,7 @@ export const searchTaskers = query({
       return [];
     }
 
-    const categories = [];
+    const categories: Doc<"categories">[] = [];
     for (const categorySlug of requestedCategorySlugs) {
       const category = await ctx.db
         .query("categories")
@@ -90,15 +90,23 @@ export const searchTaskers = query({
       let currentCategory: Doc<"categories"> | null = categories[0] ?? null;
       
       if (categoryIds.size > 0) {
-        const taskerCategoryRows = await ctx.db
-          .query("taskerCategories")
-          .withIndex("by_taskerProfile_category", (q) => q.eq("taskerProfileId", profile._id))
-          .collect();
+        // Preserve the old by_taskerProfile_category scan order while avoiding
+        // loading every category row for this profile.
+        const categoriesByIndexOrder = [...categories].sort((a, b) =>
+          a._id < b._id ? -1 : a._id > b._id ? 1 : 0
+        );
 
-        for (const candidate of taskerCategoryRows) {
-          if (categoryIds.has(candidate.categoryId)) {
+        for (const category of categoriesByIndexOrder) {
+          const candidate = await ctx.db
+            .query("taskerCategories")
+            .withIndex("by_taskerProfile_category", (q) =>
+              q.eq("taskerProfileId", profile._id).eq("categoryId", category._id)
+            )
+            .first();
+
+          if (candidate) {
             categoryData = candidate;
-            currentCategory = categories.find((category) => category._id === candidate.categoryId) ?? null;
+            currentCategory = category;
             break;
           }
         }

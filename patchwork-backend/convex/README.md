@@ -1,90 +1,63 @@
-# Welcome to your Convex functions directory!
+# Patchwork Convex Backend
 
-Write your Convex functions here.
-See https://docs.convex.dev/functions for more.
+This directory contains Patchwork's Convex backend: schema, queries, mutations,
+internal actions, HTTP routes, Better Auth integration, geospatial discovery,
+notifications, admin maintenance functions, and backend tests.
 
-A query function that takes two arguments looks like:
+## Key Files
 
-```ts
-// convex/myFunctions.ts
-import { query } from "./_generated/server";
-import { v } from "convex/values";
+| File | Purpose |
+| --- | --- |
+| `schema.ts` | Data model, table validators, and indexes |
+| `auth.ts` / `http.ts` | Better Auth setup and HTTP routes |
+| `users.ts` | User profiles, push tokens, and account maintenance |
+| `taskers.ts` / `taskersInternal.ts` | Tasker profiles, subscriptions, and category state |
+| `search.ts` / `geospatial.ts` | Discover/search queries and geospatial indexing |
+| `messages.ts` / `conversations.ts` | Chat, unread counts, and message pagination |
+| `proposals.ts` / `jobs.ts` / `reviews.ts` | Job lifecycle and review flows |
+| `admin.ts` | Admin dashboard queries, reset, and maintenance operations |
+| `testing.ts` | Internal test helpers only |
+| `_generated/` | Convex-generated types; do not edit by hand |
 
-export const myQueryFunction = query({
-  // Validators for arguments.
-  args: {
-    first: v.number(),
-    second: v.string(),
-  },
+## Operating Rules
 
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Read the database as many times as you need here.
-    // See https://docs.convex.dev/database/reading-data.
-    const documents = await ctx.db.query("tablename").collect();
+- Read `AGENTS.md` before editing backend functions. It is the source of truth
+  for Patchwork-specific Convex patterns.
+- Check auth in every non-public query or mutation. Look up app users by
+  `identity.tokenIdentifier` through the `users.by_authId` index.
+- Keep queries bounded. Use `.take(n)` with clamped limits for fixed lists and
+  `.paginate()` for infinite-scroll flows such as chat history.
+- Do not use `.collect()` in production paths. The only normal exception is
+  bounded test or maintenance code where the caller explicitly chunks the work.
+- Filter server-side with schema indexes. Add composite indexes when a feature
+  needs to filter by more than one field.
+- Store Convex storage IDs in documents, not generated URLs. Resolve URLs at
+  read time only when the caller needs them.
+- Run `npm run codegen` after schema or function signature changes that affect
+  generated API/types.
 
-    // Arguments passed from the client are properties of the args object.
-    console.log(args.first, args.second);
+## Common Commands
 
-    // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects.
-    return documents;
-  },
-});
+Run these from `patchwork-backend`:
+
+```bash
+npm run codegen
+npm run test:run
+npm run deploy -- --dry-run -y
 ```
 
-Using this query function in a React component looks like:
+For focused backend verification, prefer targeted Vitest files first:
 
-```ts
-const data = useQuery(api.myFunctions.myQueryFunction, {
-  first: 10,
-  second: "hello",
-});
+```bash
+npm run test:run -- convex/__tests__/search.test.ts
+npm run test:run -- convex/__tests__/messages.test.ts
 ```
 
-A mutation function looks like:
+## Deployment Notes
 
-```ts
-// convex/myFunctions.ts
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+Use `convex deploy --dry-run -y` before production deploys to catch schema and
+function-contract problems. Production admin dashboard builds should point at
+the production Convex deployment URLs, not a local or preview deployment.
 
-export const myMutationFunction = mutation({
-  // Validators for arguments.
-  args: {
-    first: v.string(),
-    second: v.string(),
-  },
-
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Insert or modify documents in the database here.
-    // Mutations can also read from the database like queries.
-    // See https://docs.convex.dev/database/writing-data.
-    const message = { body: args.first, author: args.second };
-    const id = await ctx.db.insert("messages", message);
-
-    // Optionally, return a value from your mutation.
-    return await ctx.db.get("messages", id);
-  },
-});
-```
-
-Using this mutation function in a React component looks like:
-
-```ts
-const mutation = useMutation(api.myFunctions.myMutationFunction);
-function handleButtonPress() {
-  // fire and forget, the most common way to use mutations
-  mutation({ first: "Hello!", second: "me" });
-  // OR
-  // use the result once the mutation has completed
-  mutation({ first: "Hello!", second: "me" }).then((result) =>
-    console.log(result),
-  );
-}
-```
-
-Use the Convex CLI to push your functions to a deployment. See everything
-the Convex CLI can do by running `npx convex -h` in your project root
-directory. To learn more, launch the docs with `npx convex docs`.
+Backend changes that touch schema, validators, or public function signatures
+usually require regenerating types and checking dependent clients.
