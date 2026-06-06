@@ -229,7 +229,6 @@ final class PatchworkUITests: XCTestCase {
 
         let name = "Draft Resume Tester"
         let city = "Toronto"
-        let province = "ON"
 
         let nameField = app.textFields["ProfileSetup.nameField"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 30))
@@ -238,10 +237,9 @@ final class PatchworkUITests: XCTestCase {
 
         let cityField = app.textFields["ProfileSetup.cityField"]
         replaceText(in: cityField, with: city)
-        dismissKeyboardIfPresent()
-
-        let provinceField = app.textFields["ProfileSetup.provinceField"]
-        replaceText(in: provinceField, with: province)
+        let homeBaseSuggestion = app.buttons["ProfileSetup.homeBaseSuggestion.Toronto, ON"]
+        XCTAssertTrue(homeBaseSuggestion.waitForExistence(timeout: 10))
+        homeBaseSuggestion.tap()
         dismissKeyboardIfPresent()
 
         backgroundAndRestoreApp()
@@ -249,7 +247,7 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(app.textFields["ProfileSetup.nameField"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.textFields["ProfileSetup.nameField"].value as? String, name)
         XCTAssertEqual(app.textFields["ProfileSetup.cityField"].value as? String, city)
-        XCTAssertEqual(app.textFields["ProfileSetup.provinceField"].value as? String, province)
+        XCTAssertFalse(app.textFields["ProfileSetup.provinceField"].exists)
     }
 
     func testTaskerOnboardingDraftSurvivesBackgroundResume() throws {

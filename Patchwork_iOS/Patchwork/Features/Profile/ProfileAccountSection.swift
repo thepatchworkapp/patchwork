@@ -500,15 +500,26 @@ private struct ProfileAccountEditSheet: View {
     @State private var name: String
     @State private var city: String
     @State private var province: String
+    @State private var selectedHomeBase: HomeBaseOption?
     @State private var isSaving = false
     @State private var statusMessage: SubscriptionFeedbackMessage?
+    private let initialCity: String
+    private let initialProvince: String
 
     init(user: CurrentUser?, onSaved: @escaping (CurrentUser) -> Void) {
         self.user = user
         self.onSaved = onSaved
+        let city = user?.location?.city ?? ""
+        let province = user?.location?.province ?? ""
+        initialCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        initialProvince = province.trimmingCharacters(in: .whitespacesAndNewlines)
         _name = State(initialValue: user?.name ?? "")
-        _city = State(initialValue: user?.location?.city ?? "")
-        _province = State(initialValue: user?.location?.province ?? "")
+        _city = State(initialValue: city)
+        _province = State(initialValue: province)
+        _selectedHomeBase = State(initialValue: HomeBaseOptions.all.first { option in
+            option.city.caseInsensitiveCompare(initialCity) == .orderedSame
+                && option.province.caseInsensitiveCompare(initialProvince) == .orderedSame
+        })
     }
 
     var body: some View {
@@ -530,12 +541,12 @@ private struct ProfileAccountEditSheet: View {
                         .patchworkInputFieldStyle()
                         .textContentType(.addressCity)
                         .accessibilityIdentifier("ProfileEdit.cityField")
-
-                    TextField("Province", text: $province)
-                        .patchworkInputFieldStyle()
-                        .textInputAutocapitalization(.characters)
-                        .accessibilityIdentifier("ProfileEdit.provinceField")
+                        .onChange(of: city) { _, _ in
+                            clearHomeBaseSelectionIfNeeded()
+                        }
                 }
+
+                homeBaseSuggestionsContent
 
                 if let statusMessage {
                     PatchworkInlineStatusBanner(tone: statusMessage.tone, text: statusMessage.text)
@@ -564,6 +575,7 @@ private struct ProfileAccountEditSheet: View {
 
     private var isValid: Bool {
         !trimmedName.isEmpty && !trimmedCity.isEmpty && !trimmedProvince.isEmpty
+            && (hasSelectedValidHomeBase || isUsingPersistedHomeBase)
     }
 
     private var trimmedName: String {
@@ -576,6 +588,97 @@ private struct ProfileAccountEditSheet: View {
 
     private var trimmedProvince: String {
         province.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasSelectedValidHomeBase: Bool {
+        guard let selectedHomeBase else {
+            return false
+        }
+
+        return selectedHomeBase.city.caseInsensitiveCompare(trimmedCity) == .orderedSame
+    }
+
+    private var isUsingPersistedHomeBase: Bool {
+        !initialProvince.isEmpty
+            && initialCity.caseInsensitiveCompare(trimmedCity) == .orderedSame
+            && initialProvince.caseInsensitiveCompare(trimmedProvince) == .orderedSame
+    }
+
+    private var matchingHomeBaseSuggestions: [HomeBaseOption] {
+        let query = trimmedCity
+        guard query.count >= 3 else {
+            return []
+        }
+
+        let lowercasedQuery = query.lowercased()
+        return HomeBaseOptions.all
+            .filter { suggestion in
+                suggestion.city.lowercased().hasPrefix(lowercasedQuery)
+                    || suggestion.label.lowercased().contains(lowercasedQuery)
+            }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    @ViewBuilder
+    private var homeBaseSuggestionsContent: some View {
+        if trimmedCity.count >= 3 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Home base")
+                    .font(.patchworkCaption)
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+
+                if matchingHomeBaseSuggestions.isEmpty {
+                    Text("Select a suggested home base to save location changes.")
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.textTertiary)
+                        .accessibilityIdentifier("ProfileEdit.homeBaseNoResults")
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(matchingHomeBaseSuggestions) { suggestion in
+                            Button {
+                                selectHomeBase(suggestion)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: selectedHomeBase == suggestion ? "checkmark.circle.fill" : "mappin.and.ellipse")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(selectedHomeBase == suggestion ? PatchworkTheme.success : PatchworkTheme.brand)
+                                        .accessibilityHidden(true)
+
+                                    Text(suggestion.label)
+                                        .font(.patchworkBodyStrong)
+                                        .foregroundStyle(PatchworkTheme.textPrimary)
+
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 11)
+                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(selectedHomeBase == suggestion ? PatchworkTheme.success.opacity(0.5) : PatchworkTheme.stroke, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("ProfileEdit.homeBaseSuggestion.\(suggestion.id)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func selectHomeBase(_ suggestion: HomeBaseOption) {
+        selectedHomeBase = suggestion
+        city = suggestion.city
+        province = suggestion.province
+    }
+
+    private func clearHomeBaseSelectionIfNeeded() {
+        guard selectedHomeBase != nil, !hasSelectedValidHomeBase else {
+            return
+        }
+        selectedHomeBase = nil
     }
 
     private func save() async {

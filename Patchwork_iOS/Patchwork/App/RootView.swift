@@ -877,43 +877,7 @@ private struct ProfileSetupView: View {
     private enum Field: Hashable {
         case name
         case city
-        case province
     }
-
-    private struct HomeBaseSuggestion: Identifiable, Equatable {
-        let city: String
-        let province: String
-
-        var id: String { "\(city), \(province)" }
-        var label: String { id }
-    }
-
-    private let homeBaseSuggestions: [HomeBaseSuggestion] = [
-        .init(city: "Barrie", province: "ON"),
-        .init(city: "Brampton", province: "ON"),
-        .init(city: "Calgary", province: "AB"),
-        .init(city: "Edmonton", province: "AB"),
-        .init(city: "Guelph", province: "ON"),
-        .init(city: "Halifax", province: "NS"),
-        .init(city: "Hamilton", province: "ON"),
-        .init(city: "Kitchener", province: "ON"),
-        .init(city: "London", province: "ON"),
-        .init(city: "Mississauga", province: "ON"),
-        .init(city: "Montreal", province: "QC"),
-        .init(city: "Oakville", province: "ON"),
-        .init(city: "Oshawa", province: "ON"),
-        .init(city: "Ottawa", province: "ON"),
-        .init(city: "Quebec City", province: "QC"),
-        .init(city: "Richmond Hill", province: "ON"),
-        .init(city: "St. Catharines", province: "ON"),
-        .init(city: "Toronto", province: "ON"),
-        .init(city: "Vancouver", province: "BC"),
-        .init(city: "Vaughan", province: "ON"),
-        .init(city: "Victoria", province: "BC"),
-        .init(city: "Waterloo", province: "ON"),
-        .init(city: "Windsor", province: "ON"),
-        .init(city: "Winnipeg", province: "MB"),
-    ]
 
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
@@ -935,7 +899,7 @@ private struct ProfileSetupView: View {
     @State private var createdUserId: ConvexID?
     @State private var resolvedCoordinates: Coordinates?
     @State private var step: Step = .profile
-    @State private var selectedHomeBase: HomeBaseSuggestion?
+    @State private var selectedHomeBase: HomeBaseOption?
     @State private var isFinalizingNotifications = false
     @State private var fallbackNotificationsEnabled = false
     @FocusState private var focusedField: Field?
@@ -1073,18 +1037,6 @@ private struct ProfileSetupView: View {
                     clearHomeBaseSelectionIfNeeded()
                 }
 
-            TextField("Province", text: $province)
-                .patchworkInputFieldStyle()
-                .focused($focusedField, equals: .province)
-                .accessibilityIdentifier("ProfileSetup.provinceField")
-                .onChange(of: province) { _, newValue in
-                    let uppercased = newValue.uppercased()
-                    if province != uppercased {
-                        province = uppercased
-                    }
-                    clearHomeBaseSelectionIfNeeded()
-                }
-
             homeBaseSuggestionsContent
         }
     }
@@ -1154,7 +1106,7 @@ private struct ProfileSetupView: View {
                 message: "Allow location so Patchwork can show the nearest taskers and keep local matches relevant."
             )
 
-            Text("You can keep using the city and province from your profile if you don't want live GPS.")
+            Text("You can keep using your profile home base if you don't want live GPS.")
                 .font(.patchworkCaption)
                 .foregroundStyle(PatchworkTheme.textSecondary)
         }
@@ -1294,17 +1246,16 @@ private struct ProfileSetupView: View {
         }
 
         return selectedHomeBase.city.caseInsensitiveCompare(trimmedCity) == .orderedSame
-            && selectedHomeBase.province.caseInsensitiveCompare(trimmedProvince) == .orderedSame
     }
 
-    private var matchingHomeBaseSuggestions: [HomeBaseSuggestion] {
+    private var matchingHomeBaseSuggestions: [HomeBaseOption] {
         let query = trimmedCity
         guard query.count >= 3 else {
             return []
         }
 
         let lowercasedQuery = query.lowercased()
-        return homeBaseSuggestions
+        return HomeBaseOptions.all
             .filter { suggestion in
                 suggestion.city.lowercased().hasPrefix(lowercasedQuery)
                     || suggestion.label.lowercased().contains(lowercasedQuery)
@@ -1313,7 +1264,7 @@ private struct ProfileSetupView: View {
             .map { $0 }
     }
 
-    private func selectHomeBase(_ suggestion: HomeBaseSuggestion) {
+    private func selectHomeBase(_ suggestion: HomeBaseOption) {
         selectedHomeBase = suggestion
         city = suggestion.city
         province = suggestion.province
@@ -1542,7 +1493,7 @@ private struct ProfileSetupView: View {
         if let coordinate = await locationManager.geocode(city: city, province: province) {
             return await syncLocation(coordinate, source: "manual")
         } else {
-            appState.lastError = "Location unavailable. Update your profile city and province to continue."
+            appState.lastError = "Location unavailable. Update your profile home base to continue."
             return false
         }
     }

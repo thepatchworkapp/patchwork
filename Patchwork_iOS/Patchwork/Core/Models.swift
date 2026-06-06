@@ -603,3 +603,40 @@ struct ConvexEnvelope<T: Decodable>: Decodable {
     let value: T?
     let errorMessage: String?
 }
+
+struct HomeBaseOption: Identifiable, Equatable {
+    let city: String
+    let province: String
+
+    var id: String { "\(city), \(province)" }
+    var label: String { id }
+}
+
+enum HomeBaseOptions {
+    static let all: [HomeBaseOption] = [
+        .init(city: "Barrie", province: "ON"),
+        .init(city: "Brampton", province: "ON"),
+        .init(city: "Calgary", province: "AB"),
+        .init(city: "Edmonton", province: "AB"),
+        .init(city: "Guelph", province: "ON"),
+        .init(city: "Halifax", province: "NS"),
+        .init(city: "Hamilton", province: "ON"),
+        .init(city: "Kitchener", province: "ON"),
+        .init(city: "London", province: "ON"),
+        .init(city: "Mississauga", province: "ON"),
+        .init(city: "Montreal", province: "QC"),
+        .init(city: "Oakville", province: "ON"),
+        .init(city: "Oshawa", province: "ON"),
+        .init(city: "Ottawa", province: "ON"),
+        .init(city: "Quebec City", province: "QC"),
+        .init(city: "Richmond Hill", province: "ON"),
+        .init(city: "St. Catharines", province: "ON"),
+        .init(city: "Toronto", province: "ON"),
+        .init(city: "Vancouver", province: "BC"),
+        .init(city: "Vaughan", province: "ON"),
+        .init(city: "Victoria", province: "BC"),
+        .init(city: "Waterloo", province: "ON"),
+        .init(city: "Windsor", province: "ON"),
+        .init(city: "Winnipeg", province: "MB"),
+    ]
+}
