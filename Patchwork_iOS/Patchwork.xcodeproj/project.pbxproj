@@ -52,6 +52,7 @@
 		BE9959F6B20DEFA898B71792 /* TaskerPaywallOptionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF70B3C46EB199403985CDA /* TaskerPaywallOptionCard.swift */; };
 		C6DBFCBA574614DBBC3DBE00 /* LocalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EFBCD450AB7C1E102F8BA0 /* LocalMessage.swift */; };
 		CBDF12E8E71F8CE4E39E3F0F /* ProfileTaskerSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0CE7572C7A892BA52FE850 /* ProfileTaskerSection.swift */; };
+		CD75CCEE3B13C01A8B77CE0E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */; };
 		CE06B11AF1A22EC0BB873256 /* JobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FF7A5790E5506D5EF7226A /* JobsView.swift */; };
 		CEFA0F25083B68F7DF14465B /* PatchworkSectionIntro.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */; };
 		D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4858D666E2FE8B480005EB38 /* Assets.xcassets */; };
@@ -102,6 +103,7 @@
 		2A66478F5B38BB6151ADD41C /* ProfileSupportViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSupportViews.swift; sourceTree = "<group>"; };
 		2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFlowCoordinatorTests.swift; sourceTree = "<group>"; };
 		2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionFeedbackMessage.swift; sourceTree = "<group>"; };
+		34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 				4858D666E2FE8B480005EB38 /* Assets.xcassets */,
 				CFD2BD5E80A7F39881A464BE /* Info.plist */,
 				24FED5A166FE685DE6909B7F /* Patchwork.entitlements */,
+				34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */,
 				ACFA925DEF3DB45F1EC044C2 /* App */,
 				ABDD269F1001A16D6E6FCA01 /* Core */,
 				E4B1688165FAE14F2CD769C0 /* Features */,
@@ -465,6 +468,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D315EE2D02F5E9528ABE1F6A /* Assets.xcassets in Resources */,
+				CD75CCEE3B13C01A8B77CE0E /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -699,7 +703,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 71;
+				CURRENT_PROJECT_VERSION = 72;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -784,7 +788,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Patchwork/Patchwork.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 71;
+				CURRENT_PROJECT_VERSION = 72;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Patchwork/Info.plist;
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;

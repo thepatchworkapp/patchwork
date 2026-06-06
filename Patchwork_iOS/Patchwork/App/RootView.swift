@@ -1,6 +1,7 @@
 import CoreLocation
 import SwiftUI
 import UIKit
+import UserNotifications
 
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -14,6 +15,7 @@ struct RootView: View {
     @State private var isForegroundRefreshPending = false
     @State private var isResolvingPersistedMissingCurrentUser = false
     @State private var attemptedPersistedMissingCurrentUserValidationKey: String?
+    @State private var isProfileSetupInProgress = false
     @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 #if DEBUG
     @State private var didApplyVisualPreview = false
@@ -52,12 +54,17 @@ struct RootView: View {
                             }
                             storeCurrentUserSnapshotIfAvailable()
                         }
-                } else if appState.currentUser == nil {
+                } else if profileSetupRoutePolicy.shouldShowProfileSetup {
                     if shouldShowPersistedCurrentUserResolutionLoading
                         || shouldShowPersistedMissingCurrentUserValidationLoading {
                         PatchworkBrandLoadingCard()
                     } else {
-                        ProfileSetupView()
+                        ProfileSetupView {
+                            isProfileSetupInProgress = false
+                        }
+                        .onAppear {
+                            startProfileSetup()
+                        }
                     }
                 } else if needsLocationPrompt {
                     LocationPermissionGateView(
@@ -133,6 +140,7 @@ struct RootView: View {
                 isForegroundRefreshPending = false
                 isResolvingPersistedMissingCurrentUser = false
                 attemptedPersistedMissingCurrentUserValidationKey = nil
+                isProfileSetupInProgress = false
             }
         }
         .onChange(of: appState.currentUser?.id) { _, newUserId in
@@ -186,6 +194,13 @@ struct RootView: View {
             launchedWithPersistedSession: sessionStore.launchedWithPersistedSession,
             hasConfirmedMissingCurrentUser: appState.hasConfirmedMissingCurrentUser,
             hasFailedCurrentUserRefreshWithoutPrevious: appState.hasFailedCurrentUserRefreshWithoutPrevious
+        )
+    }
+
+    private var profileSetupRoutePolicy: ProfileSetupRoutePolicy {
+        ProfileSetupRoutePolicy(
+            hasCurrentUser: appState.currentUser != nil,
+            isProfileSetupInProgress: isProfileSetupInProgress
         )
     }
 
@@ -422,6 +437,13 @@ struct RootView: View {
         }
         locationPromptCompletedForSession = true
         locationPromptSessionUserId = user.id
+    }
+
+    private func startProfileSetup() {
+        guard !isProfileSetupInProgress else {
+            return
+        }
+        isProfileSetupInProgress = true
     }
 
     private func requestAndSyncCurrentLocation(source: String) async -> Bool {
@@ -871,6 +893,53 @@ struct RootLoadingPolicy: Equatable {
     }
 }
 
+struct ProfileSetupRoutePolicy: Equatable {
+    var hasCurrentUser: Bool
+    var isProfileSetupInProgress: Bool
+
+    var shouldShowProfileSetup: Bool {
+        !hasCurrentUser || isProfileSetupInProgress
+    }
+
+    var shouldStartProfileSetup: Bool {
+        !hasCurrentUser && !isProfileSetupInProgress
+    }
+}
+
+struct ProfileSetupNotificationPrompt: Equatable {
+    var authorizationStatus: UNAuthorizationStatus
+
+    var isSystemAuthorized: Bool {
+        PatchworkNotificationCenter.isAuthorizationEnabled(authorizationStatus)
+    }
+
+    var title: String {
+        isSystemAuthorized ? "Notifications are already enabled" : "Stay in the loop"
+    }
+
+    var message: String {
+        if isSystemAuthorized {
+            return "Patchwork works better with notifications enabled for messages, quote updates, and accepted jobs. Keep them on, or disable app notifications for now."
+        }
+        return "Turn on notifications for messages, quote updates, and accepted jobs."
+    }
+
+    var note: String {
+        if isSystemAuthorized {
+            return "Disabling here only pauses Patchwork notifications. You can change the iOS permission later in Settings."
+        }
+        return "You can always change notification preferences later from your profile settings."
+    }
+
+    var primaryActionTitle: String {
+        isSystemAuthorized ? "Keep notifications enabled" : "Allow notifications"
+    }
+
+    var secondaryActionTitle: String {
+        isSystemAuthorized ? "Disable for now" : "Maybe later"
+    }
+}
+
 private struct ProfileSetupView: View {
     private enum Step {
         case profile
@@ -904,6 +973,7 @@ private struct ProfileSetupView: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
     @Environment(LocationManager.self) private var locationManager
+    let onFinished: () -> Void
 
     @State private var name = ""
     @State private var city = ""
@@ -924,6 +994,8 @@ private struct ProfileSetupView: View {
     @State private var selectedHomeBase: HomeBaseOption?
     @State private var isFinalizingNotifications = false
     @State private var fallbackNotificationsEnabled = false
+    @State private var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var notificationActionsAreReady = false
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -940,6 +1012,16 @@ private struct ProfileSetupView: View {
         }
         .onChange(of: step) { _, newValue in
             focusedField = newValue == .profile ? .name : nil
+            if newValue != .notifications {
+                notificationActionsAreReady = false
+            }
+        }
+        .task(id: step) {
+            guard step == .notifications else {
+                return
+            }
+            await refreshNotificationAuthorizationStatus()
+            await armNotificationActionsAfterTransition()
         }
         .confirmationDialog("Profile photo", isPresented: $showsPhotoOptions, titleVisibility: .visible) {
             if CameraCaptureView.isCameraAvailable {
@@ -1094,18 +1176,20 @@ private struct ProfileSetupView: View {
     }
 
     private var notificationsStepContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let prompt = ProfileSetupNotificationPrompt(authorizationStatus: notificationAuthorizationStatus)
+
+        return VStack(alignment: .leading, spacing: 18) {
             onboardingProgress
 
             profileStepIcon(systemName: "bell.badge.fill", tint: PatchworkTheme.brandBright)
 
             PatchworkSectionIntro(
                 eyebrow: "Step 3",
-                title: "Stay in the loop",
-                message: "Turn on notifications for messages, quote updates, and accepted jobs."
+                title: prompt.title,
+                message: prompt.message
             )
 
-            Text("You can always change notification preferences later from your profile settings.")
+            Text(prompt.note)
                 .font(.patchworkCaption)
                 .foregroundStyle(PatchworkTheme.textSecondary)
         }
@@ -1148,20 +1232,23 @@ private struct ProfileSetupView: View {
             .buttonStyle(PatchworkSecondaryButtonStyle())
             .accessibilityIdentifier("ProfileSetup.locationSkipButton")
         case .notifications:
-            Button("Allow notifications") {
+            let prompt = ProfileSetupNotificationPrompt(authorizationStatus: notificationAuthorizationStatus)
+
+            Button(prompt.primaryActionTitle) {
                 Task {
                     guard !isFinalizingNotifications else { return }
                     isFinalizingNotifications = true
                     defer { isFinalizingNotifications = false }
                     let notificationsEnabled = await PatchworkNotificationCenter.requestAuthorizationAndRegister()
+                    await refreshNotificationAuthorizationStatus()
                     await saveNotificationPreferenceAndFinalize(notificationsEnabled: notificationsEnabled)
                 }
             }
             .buttonStyle(PatchworkPrimaryButtonStyle())
-            .disabled(isFinalizingNotifications)
+            .disabled(isFinalizingNotifications || !notificationActionsAreReady)
             .accessibilityIdentifier("ProfileSetup.notificationsAllowButton")
 
-            Button("Maybe later") {
+            Button(prompt.secondaryActionTitle) {
                 Task {
                     guard !isFinalizingNotifications else { return }
                     isFinalizingNotifications = true
@@ -1170,7 +1257,7 @@ private struct ProfileSetupView: View {
                 }
             }
             .buttonStyle(PatchworkSecondaryButtonStyle())
-            .disabled(isFinalizingNotifications)
+            .disabled(isFinalizingNotifications || !notificationActionsAreReady)
             .accessibilityIdentifier("ProfileSetup.notificationsSkipButton")
         }
     }
@@ -1283,6 +1370,7 @@ private struct ProfileSetupView: View {
             applyLocalNotificationPreference(notificationsEnabled)
         }
         await finalizeSetup()
+        onFinished()
     }
 
     private func applyLocalNotificationPreference(_ notificationsEnabled: Bool) {
@@ -1349,6 +1437,19 @@ private struct ProfileSetupView: View {
             return
         }
         UserDefaults.standard.set(true, forKey: "Patchwork.locationPromptCompleted.\(createdUserId)")
+    }
+
+    private func refreshNotificationAuthorizationStatus() async {
+        notificationAuthorizationStatus = await PatchworkNotificationCenter.authorizationStatus()
+    }
+
+    private func armNotificationActionsAfterTransition() async {
+        notificationActionsAreReady = false
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        guard step == .notifications else {
+            return
+        }
+        notificationActionsAreReady = true
     }
 
     private var avatarPickerPlaceholder: some View {

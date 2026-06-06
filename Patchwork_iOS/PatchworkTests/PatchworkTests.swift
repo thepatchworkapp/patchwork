@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 import XCTest
 @testable import Patchwork
 
@@ -127,6 +128,46 @@ final class PatchworkTests: XCTestCase {
         )
 
         XCTAssertFalse(policy.shouldShowPersistedCurrentUserResolutionLoading)
+    }
+
+    func testProfileSetupRoutePolicyKeepsSetupMountedWhileInProgress() {
+        let policy = ProfileSetupRoutePolicy(
+            hasCurrentUser: true,
+            isProfileSetupInProgress: true
+        )
+
+        XCTAssertTrue(policy.shouldShowProfileSetup)
+        XCTAssertFalse(policy.shouldStartProfileSetup)
+    }
+
+    func testProfileSetupRoutePolicyStartsSetupWhenCurrentUserIsMissing() {
+        let policy = ProfileSetupRoutePolicy(
+            hasCurrentUser: false,
+            isProfileSetupInProgress: false
+        )
+
+        XCTAssertTrue(policy.shouldShowProfileSetup)
+        XCTAssertTrue(policy.shouldStartProfileSetup)
+    }
+
+    func testProfileSetupRoutePolicyReleasesSetupAfterCompletion() {
+        let policy = ProfileSetupRoutePolicy(
+            hasCurrentUser: true,
+            isProfileSetupInProgress: false
+        )
+
+        XCTAssertFalse(policy.shouldShowProfileSetup)
+        XCTAssertFalse(policy.shouldStartProfileSetup)
+    }
+
+    func testProfileSetupNotificationPromptUsesAlreadyEnabledCopy() {
+        let prompt = ProfileSetupNotificationPrompt(authorizationStatus: .authorized)
+
+        XCTAssertTrue(prompt.isSystemAuthorized)
+        XCTAssertEqual(prompt.title, "Notifications are already enabled")
+        XCTAssertEqual(prompt.primaryActionTitle, "Keep notifications enabled")
+        XCTAssertEqual(prompt.secondaryActionTitle, "Disable for now")
+        XCTAssertTrue(prompt.message.contains("Patchwork works better"))
     }
 
     func testVerifyOTPPropagatesBetterAuthCookieToConvexTokenRequest() async throws {

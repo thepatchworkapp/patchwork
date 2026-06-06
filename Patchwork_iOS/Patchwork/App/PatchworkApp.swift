@@ -48,6 +48,15 @@ enum PatchworkNotificationCenter {
     @MainActor
     @discardableResult
     static func requestAuthorizationAndRegister() async -> Bool {
+        let currentStatus = await authorizationStatus()
+        if isAuthorizationEnabled(currentStatus) {
+            UIApplication.shared.registerForRemoteNotifications()
+            return true
+        }
+        guard currentStatus == .notDetermined else {
+            return false
+        }
+
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(
                 options: [.alert, .badge, .sound]
@@ -57,6 +66,23 @@ enum PatchworkNotificationCenter {
             }
             return granted
         } catch {
+            return false
+        }
+    }
+
+    @MainActor
+    static func authorizationStatus() async -> UNAuthorizationStatus {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.authorizationStatus
+    }
+
+    static func isAuthorizationEnabled(_ status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .notDetermined, .denied:
+            return false
+        @unknown default:
             return false
         }
     }
