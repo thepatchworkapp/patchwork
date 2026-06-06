@@ -20,11 +20,11 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
     var headline: String {
         switch self {
         case .basic:
-            return "$4.99"
+            return "CA$4.99"
         case .premium:
-            return "$47.99"
+            return "CA$47.99"
         case .founders:
-            return "$95.99"
+            return "CA$95.99"
         }
     }
 
@@ -44,7 +44,7 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
         case .basic:
             return "Flexible monthly access.\nCancel anytime."
         case .premium:
-            return "Billed yearly.\nOnly $3.99 per month."
+            return "Billed yearly.\nBest for steady taskers."
         case .founders:
             return "Pay once for\npermanent tasker access."
         }
@@ -333,6 +333,7 @@ struct TaskerBillingSheet: View {
         ) {
             selectedPlan = plan
         }
+        .accessibilityIdentifier("Subscription.plan.\(plan.rawValue)")
     }
 
     private var restoreSection: some View {

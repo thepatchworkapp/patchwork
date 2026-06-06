@@ -1599,6 +1599,7 @@ private struct OnboardingStageLayout<Content: View, Actions: View>: View {
     let tint: Color
     @ViewBuilder let content: Content
     @ViewBuilder let actions: Actions
+    @State private var isKeyboardVisible = false
 
     var body: some View {
         ZStack {
@@ -1615,23 +1616,36 @@ private struct OnboardingStageLayout<Content: View, Actions: View>: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 10) {
-                actions
+            if !isKeyboardVisible {
+                VStack(spacing: 10) {
+                    actions
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 14)
+                .padding(.bottom, 14)
+                .background {
+                    LinearGradient(
+                        colors: [
+                            PatchworkTheme.surface.opacity(0),
+                            PatchworkTheme.surface.opacity(0.8),
+                            PatchworkTheme.surface.opacity(0.96),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 14)
-            .padding(.bottom, 14)
-            .background {
-                LinearGradient(
-                    colors: [
-                        PatchworkTheme.surface.opacity(0),
-                        PatchworkTheme.surface.opacity(0.8),
-                        PatchworkTheme.surface.opacity(0.96),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea(edges: .bottom)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.18)) {
+                isKeyboardVisible = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.18)) {
+                isKeyboardVisible = false
             }
         }
     }

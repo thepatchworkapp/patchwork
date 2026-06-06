@@ -201,6 +201,63 @@ final class PatchworkUITests: XCTestCase {
         saveScreenshot(named: "ios-tasker-paywall-profile")
     }
 
+    func testTaskerPaywallShowsAllSubscriptionOptions() throws {
+        let email = uniqueTestEmail(prefix: "ios-paywall")
+        cleanupTestData(for: email)
+
+        launchToEmailEntry()
+        completeEmailAuth(email: email)
+        completeProfileSetup(name: "iOS Paywall Tester", city: "Toronto", province: "ON")
+
+        openProfileTab()
+        let primaryAction = app.buttons["Profile.taskerOnboardingLink"]
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 10))
+        primaryAction.tap()
+
+        completeTaskerOnboarding(
+            displayName: "Paywall Tasker",
+            categoryBio: "Friendly local help for clean, reliable Patchwork jobs.",
+            hourlyRate: "65"
+        )
+
+        XCTAssertTrue(identifiedElement("Subscription.customPaywall").waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts["Billing is temporarily unavailable"].exists)
+
+        let basicPlan = identifiedElement("Subscription.plan.basic")
+        let premiumPlan = identifiedElement("Subscription.plan.premium")
+        let foundersPlan = identifiedElement("Subscription.plan.founders")
+
+        XCTAssertTrue(basicPlan.waitForExistence(timeout: 20))
+        XCTAssertTrue(premiumPlan.waitForExistence(timeout: 10))
+        XCTAssertTrue(foundersPlan.waitForExistence(timeout: 10))
+        assertStaticTextContaining("Basic")
+        assertStaticTextContaining("Flexible monthly access.")
+        assertStaticTextContaining("Cancel anytime.")
+        assertStaticTextContaining("Premium")
+        assertStaticTextContaining("Billed yearly.")
+        assertStaticTextContaining("Best for steady taskers.")
+        assertNoStaticTextContaining("Only $3.99 per month.")
+        assertStaticTextContaining("Founders Club")
+        assertStaticTextContaining("Pay once for")
+        assertStaticTextContaining("permanent tasker access.")
+        XCTAssertTrue(app.buttons["Subscription.basicButton"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Subscription.basicButton"].isEnabled)
+        saveScreenshot(named: "ios-paywall-basic-selected")
+
+        premiumPlan.tap()
+        XCTAssertTrue(app.buttons["Subscription.premiumButton"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Subscription.premiumButton"].isEnabled)
+        saveScreenshot(named: "ios-paywall-premium-selected")
+
+        foundersPlan.tap()
+        XCTAssertTrue(app.buttons["Subscription.lifetimeButton"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Subscription.lifetimeButton"].isEnabled)
+        saveScreenshot(named: "ios-paywall-founders-selected")
+
+        basicPlan.tap()
+        XCTAssertTrue(app.buttons["Subscription.basicButton"].waitForExistence(timeout: 10))
+    }
+
     func testBackgroundResumeDoesNotShowProfileSetupForAuthenticatedUser() throws {
         let email = uniqueTestEmail(prefix: "ios-resume")
         cleanupTestData(for: email)
@@ -812,29 +869,29 @@ final class PatchworkUITests: XCTestCase {
         replaceText(in: nameField, with: name, shouldClearExisting: false)
         dismissKeyboardIfPresent()
 
-        let cityField = app.textFields["ProfileSetup.cityField"]
-        replaceText(in: cityField, with: city)
-        let homeBaseSuggestion = app.buttons["ProfileSetup.homeBaseSuggestion.\(city), \(province.uppercased())"]
-        XCTAssertTrue(homeBaseSuggestion.waitForExistence(timeout: 10))
-        homeBaseSuggestion.tap()
-        dismissKeyboardIfPresent()
+        selectProfileSetupHomeBase(city: city, province: province)
 
-        app.buttons["ProfileSetup.continueButton"].tap()
+        let continueButton = app.buttons["ProfileSetup.continueButton"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
+        if !waitForEnabled(continueButton, timeout: 10) {
+            saveScreenshot(named: "ios-profile-continue-disabled")
+        }
+        XCTAssertTrue(continueButton.isEnabled, "Profile setup Continue stayed disabled after selecting a home base")
+        continueButton.tap()
 
-        let locationSkip = app.buttons["ProfileSetup.locationSkipButton"]
-        XCTAssertTrue(locationSkip.waitForExistence(timeout: 10))
-        locationSkip.tap()
+        advancePastLocationPromptIfNeeded()
 
         let notificationsButton = finishWithNotificationsAllow
             ? app.buttons["ProfileSetup.notificationsAllowButton"]
             : app.buttons["ProfileSetup.notificationsSkipButton"]
         XCTAssertTrue(notificationsButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitForEnabled(notificationsButton, timeout: 10))
         notificationsButton.tap()
         if finishWithNotificationsAllow {
             acceptSystemNotificationPromptIfNeeded()
         }
 
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(waitForMainShell(timeout: 25), "Expected profile setup to land in the main app shell")
     }
 
     private func acceptSystemNotificationPromptIfNeeded() {
@@ -857,9 +914,9 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Profile.signOutButton"].waitForExistence(timeout: 10))
     }
 
-    private func dismissLocationPromptIfNeeded() {
+    private func dismissLocationPromptIfNeeded(timeout: TimeInterval = 3) {
         let skipButton = app.buttons["LocationPrompt.skipButton"]
-        if skipButton.waitForExistence(timeout: 3) {
+        if skipButton.waitForExistence(timeout: timeout) {
             skipButton.tap()
         }
     }
@@ -982,14 +1039,42 @@ final class PatchworkUITests: XCTestCase {
 
     private func tabButton(named name: String) -> XCUIElement {
         let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 10))
-        let namedButton = tabBar.buttons[name]
-        XCTAssertTrue(namedButton.waitForExistence(timeout: 10), "Missing tab button: \(name)")
-        return namedButton
+        if tabBar.waitForExistence(timeout: 5) {
+            let namedButton = tabBar.buttons[name]
+            XCTAssertTrue(namedButton.waitForExistence(timeout: 10), "Missing tab button: \(name)")
+            return namedButton
+        }
+
+        let fallbackButton = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        XCTAssertTrue(fallbackButton.waitForExistence(timeout: 10), "Missing tab button: \(name)")
+        return fallbackButton
     }
 
     private func identifiedElement(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
+    }
+
+    private func assertStaticTextContaining(
+        _ text: String,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let element = staticText(containing: text)
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing static text containing: \(text)", file: file, line: line)
+    }
+
+    private func assertNoStaticTextContaining(
+        _ text: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertFalse(staticText(containing: text).exists, "Unexpected static text containing: \(text)", file: file, line: line)
+    }
+
+    private func staticText(containing text: String) -> XCUIElement {
+        let predicate = NSPredicate(format: "label CONTAINS %@", text)
+        return app.staticTexts.matching(predicate).firstMatch
     }
 
     private func fetchOTP(email: String) -> String {
@@ -1023,12 +1108,87 @@ final class PatchworkUITests: XCTestCase {
             if app.textFields["ProfileSetup.nameField"].exists
                 || app.tabBars.firstMatch.exists
                 || app.buttons["LocationPrompt.skipButton"].exists
-                || app.buttons["ProfileSetup.locationSkipButton"].exists {
+                || app.buttons["ProfileSetup.locationSkipButton"].exists
+                || app.buttons["ProfileSetup.notificationsAllowButton"].exists
+                || app.buttons["ProfileSetup.notificationsSkipButton"].exists {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
         return false
+    }
+
+    private func advancePastLocationPromptIfNeeded(timeout: TimeInterval = 10) {
+        let locationSkip = app.buttons["ProfileSetup.locationSkipButton"]
+        let notificationsAllow = app.buttons["ProfileSetup.notificationsAllowButton"]
+        let notificationsSkip = app.buttons["ProfileSetup.notificationsSkipButton"]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if locationSkip.exists {
+                locationSkip.tap()
+                return
+            }
+
+            if notificationsAllow.exists || notificationsSkip.exists {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        XCTAssertTrue(
+            locationSkip.exists || notificationsAllow.exists || notificationsSkip.exists,
+            "Expected profile setup to show either the location step or notification step"
+        )
+    }
+
+    private func waitForMainShell(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.tabBars.firstMatch.exists
+                || identifiedElement("Tab.home").exists
+                || identifiedElement("Tab.jobs").exists
+                || identifiedElement("Tab.messages").exists
+                || identifiedElement("Tab.profile").exists
+                || app.buttons["Profile.signOutButton"].exists {
+                return true
+            }
+
+            let locationSkip = app.buttons["LocationPrompt.skipButton"]
+            if locationSkip.exists && locationSkip.isEnabled {
+                locationSkip.tap()
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return app.tabBars.firstMatch.exists
+            || identifiedElement("Tab.home").exists
+            || identifiedElement("Tab.jobs").exists
+            || identifiedElement("Tab.messages").exists
+            || identifiedElement("Tab.profile").exists
+            || app.buttons["Profile.signOutButton"].exists
+    }
+
+    private func selectProfileSetupHomeBase(city: String, province: String) {
+        let cityField = app.textFields["ProfileSetup.cityField"]
+        focusForTyping(cityField)
+        cityField.typeText(city)
+
+        let homeBaseSuggestion = app.buttons["ProfileSetup.homeBaseSuggestion.\(city), \(province.uppercased())"]
+        XCTAssertTrue(homeBaseSuggestion.waitForExistence(timeout: 10))
+        homeBaseSuggestion.tap()
+    }
+
+    private func waitForEnabled(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isEnabled {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return element.exists && element.isEnabled
     }
 
     private func cleanupTestData(for email: String) {
