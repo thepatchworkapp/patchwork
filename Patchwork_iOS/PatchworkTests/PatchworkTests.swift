@@ -638,7 +638,7 @@ final class PatchworkTests: XCTestCase {
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
         let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
 
-        var observedAuthorizations: [String] = []
+        let observedAuthorizations = LockedArrayBox<String>()
         let refreshedToken = LockedBox<String?>(nil)
 
         TestURLProtocol.requestHandler = { request in
@@ -694,7 +694,70 @@ final class PatchworkTests: XCTestCase {
         let jobs: [String] = try await client.query("jobs:listJobs", args: [:])
 
         XCTAssertEqual(jobs, [])
-        XCTAssertEqual(observedAuthorizations, ["Bearer expired-token", "Bearer fresh-token"])
+        XCTAssertEqual(observedAuthorizations.get(), ["Bearer expired-token", "Bearer fresh-token"])
+        XCTAssertEqual(refreshedToken.get(), "fresh-token")
+    }
+
+    func testQueryRefreshesExpiredConvexTokenAfterGenericAuthEnvelopeFailure() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let observedAuthorizations = LockedArrayBox<String>()
+        let refreshedToken = LockedBox<String?>(nil)
+
+        TestURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/api/query":
+                let authorization = request.value(forHTTPHeaderField: "Authorization") ?? ""
+                observedAuthorizations.append(authorization)
+
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+
+                if authorization == "Bearer expired-token" {
+                    return (response, Data("{\"status\":\"error\",\"errorMessage\":\"Authentication request failed.\"}".utf8))
+                }
+
+                XCTAssertEqual(authorization, "Bearer fresh-token")
+                return (response, Data("{\"status\":\"success\",\"value\":[]}".utf8))
+            case "/api/auth/convex/token":
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Better-Auth-Cookie"), "session=abc")
+                let response = try XCTUnwrap(
+                    HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                )
+                return (response, Data("{\"token\":\"fresh-token\"}".utf8))
+            default:
+                throw PatchworkError.invalidResponse
+            }
+        }
+
+        let client = ConvexHTTPClient(
+            cloudURL: cloudURL,
+            siteURL: siteURL,
+            session: session,
+            authToken: "expired-token",
+            betterAuthCookie: "session=abc",
+            onAuthTokenRefresh: { token in
+                refreshedToken.set(token)
+            }
+        )
+
+        let jobs: [String] = try await client.query("jobs:listJobs", args: [:])
+
+        XCTAssertEqual(jobs, [])
+        XCTAssertEqual(observedAuthorizations.get(), ["Bearer expired-token", "Bearer fresh-token"])
         XCTAssertEqual(refreshedToken.get(), "fresh-token")
     }
 
@@ -1994,6 +2057,132 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(store.token, "new-token")
         XCTAssertEqual(persistence.session?.convexAuthToken, "new-token")
         XCTAssertNil(store.errorMessage)
+    }
+
+    @MainActor
+    func testSearchTaskersAuthRequestFailureSignalsSignInRequiredWithoutVisibleError() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "search:searchTaskers")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"error\",\"errorMessage\":\"Authentication request failed.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "expired-token")
+        let appState = AppState()
+        appState.currentUser = Self.makeCurrentUser(id: "user_search")
+        appState.taskers = [
+            TaskerSummary(
+                id: "tasker_previous",
+                userId: "user_previous",
+                displayName: "Previous Tasker",
+                websiteLinks: [],
+                socialLinks: [],
+                averageRating: nil,
+                reviewCount: nil,
+                distanceLabel: nil,
+                categoryName: nil,
+                rateLabel: nil,
+                verified: false,
+                bio: nil,
+                completedJobs: nil,
+                avatarUrl: nil,
+                categoryPhotoUrl: nil,
+                avatarImage: nil,
+                categoryCoverImage: nil
+            ),
+        ]
+
+        await appState.searchTaskers(
+            client: client,
+            categorySlug: nil,
+            radiusKm: 25,
+            excludeCurrentUserWhenTasker: true
+        )
+
+        XCTAssertNil(appState.lastError)
+        XCTAssertNil(appState.categoriesErrorMessage)
+        XCTAssertNotNil(appState.signInRequiredAuthFailureID)
+        XCTAssertEqual(appState.taskers.map(\.id), ["tasker_previous"])
+    }
+
+    @MainActor
+    func testRefreshCategoriesAuthRequestFailureSignalsSignInRequiredWithoutVisibleError() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"error\",\"errorMessage\":\"Authentication request failed.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "expired-token")
+        let appState = AppState()
+
+        await appState.refreshCategories(client: client)
+
+        XCTAssertNil(appState.lastError)
+        XCTAssertNil(appState.categoriesErrorMessage)
+        XCTAssertNotNil(appState.signInRequiredAuthFailureID)
+        XCTAssertEqual(appState.categories, [])
+        XCTAssertEqual(appState.categoryGroups, [])
+    }
+
+    @MainActor
+    func testSearchTaskersPreservesNonAuthErrors() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"error\":\"Service temporarily unavailable.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+        appState.currentUser = Self.makeCurrentUser(id: "user_search")
+
+        await appState.searchTaskers(
+            client: client,
+            categorySlug: nil,
+            radiusKm: 25,
+            excludeCurrentUserWhenTasker: true
+        )
+
+        XCTAssertEqual(appState.lastError, "Failed to search taskers: Service temporarily unavailable.")
+        XCTAssertNil(appState.signInRequiredAuthFailureID)
     }
 
     @MainActor

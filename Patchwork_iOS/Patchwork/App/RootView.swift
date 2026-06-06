@@ -98,6 +98,9 @@ struct RootView: View {
         .task(id: persistedMissingCurrentUserValidationKey) {
             await validatePersistedMissingCurrentUserIfNeeded(validationKey: persistedMissingCurrentUserValidationKey)
         }
+        .task(id: appState.signInRequiredAuthFailureID) {
+            clearInvalidPersistedCredentialAfterAuthFailureIfNeeded()
+        }
         .task(id: revenueCatIdentityKey) {
             let userID = sessionStore.isAuthenticated ? appState.currentUser?.id : nil
             await revenueCatManager.syncIdentity(
@@ -761,8 +764,17 @@ struct RootView: View {
 
     @discardableResult
     private func clearInvalidPersistedCredentialIfNeeded() -> Bool {
-        guard sessionStore.isAuthenticated,
-              appState.currentUser == nil,
+        guard sessionStore.isAuthenticated else {
+            return false
+        }
+
+        if appState.signInRequiredAuthFailureID != nil {
+            sessionStore.clearInvalidPersistedCredential()
+            appState.resetForSignedOutSession()
+            return true
+        }
+
+        guard appState.currentUser == nil,
               appState.hasConfirmedMissingCurrentUser || appState.hasFailedCurrentUserRefreshWithoutPrevious else {
             return false
         }
@@ -796,6 +808,16 @@ struct RootView: View {
         }
 
         sessionStore.storeCurrentUserSnapshot(appState.currentUser)
+    }
+
+    private func clearInvalidPersistedCredentialAfterAuthFailureIfNeeded() {
+        guard sessionStore.isAuthenticated,
+              appState.signInRequiredAuthFailureID != nil else {
+            return
+        }
+
+        sessionStore.clearInvalidPersistedCredential()
+        appState.resetForSignedOutSession()
     }
 }
 

@@ -437,7 +437,23 @@ struct ConvexHTTPClient {
             return true
         }
 
+        if 200 ..< 300 ~= statusCode,
+           Self.isGenericAuthenticationRequestFailure(errorMessage) {
+            return true
+        }
+
         return authFailurePhrase(in: errorMessage) != nil
+    }
+
+    private static func isGenericAuthenticationRequestFailure(_ errorMessage: String?) -> Bool {
+        guard let errorMessage else {
+            return false
+        }
+
+        let normalized = errorMessage
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized == "authentication request failed." || normalized == "authentication request failed"
     }
 
     private func authFailurePhrase(in errorMessage: String?) -> String? {
@@ -448,7 +464,7 @@ struct ConvexHTTPClient {
         let normalized = errorMessage
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        if normalized == "authentication request failed." || normalized == "authentication request failed" {
+        if Self.isGenericAuthenticationRequestFailure(errorMessage) {
             return nil
         }
 

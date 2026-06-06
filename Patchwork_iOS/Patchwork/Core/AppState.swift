@@ -47,6 +47,7 @@ final class AppState {
     var taskerHourlyRate = ""
 
     var lastError: String?
+    private(set) var signInRequiredAuthFailureID: UUID?
     private var latestTaskerSearchRequestID: UUID?
 
     private enum CurrentUserRefreshResult {
@@ -70,6 +71,11 @@ final class AppState {
             return
         }
 
+        if isAuthRequestFailure(error) {
+            recordSignInRequiredAuthFailure()
+            return
+        }
+
         if let prefix {
             lastError = "\(prefix): \(error.localizedDescription)"
         } else {
@@ -77,11 +83,74 @@ final class AppState {
         }
     }
 
+    private func isAuthRequestFailure(_ error: Error) -> Bool {
+        if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
+            if statusCode == 401 || statusCode == 403 {
+                return true
+            }
+            return Self.isTerminalAuthFailureMessage(message, includesGenericAuthRequestFailure: false)
+        }
+
+        if case PatchworkError.missingToken = error {
+            return true
+        }
+
+        return Self.isTerminalAuthFailureMessage(
+            error.localizedDescription,
+            includesGenericAuthRequestFailure: true
+        )
+    }
+
+    private static func isTerminalAuthFailureMessage(
+        _ message: String,
+        includesGenericAuthRequestFailure: Bool
+    ) -> Bool {
+        let normalized = message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if includesGenericAuthRequestFailure,
+           (normalized == "authentication request failed." || normalized == "authentication request failed") {
+            return true
+        }
+
+        let authFailurePhrases = [
+            "unauthorized",
+            "forbidden",
+            "not authenticated",
+            "authentication expired",
+            "authentication required",
+            "session expired",
+            "expired session",
+            "invalid session",
+            "session is invalid",
+            "token expired",
+            "expired token",
+            "invalid token",
+            "token is invalid",
+            "invalid jwt",
+            "jwt expired",
+        ]
+        return authFailurePhrases.contains(where: { normalized.contains($0) })
+    }
+
+    private func recordSignInRequiredAuthFailure() {
+        lastError = nil
+        categoriesErrorMessage = nil
+        signInRequiredAuthFailureID = UUID()
+    }
+
     func loadBootstrapData(client: ConvexHTTPClient) async {
         isBootstrapped = false
         hasConfirmedMissingCurrentUser = false
         await refreshCategories(client: client)
+        guard signInRequiredAuthFailureID == nil else {
+            return
+        }
         await refreshAuthedData(client: client, surfaceErrors: false, shouldRefreshCategories: false)
+        guard signInRequiredAuthFailureID == nil else {
+            return
+        }
         if currentUser != nil {
             await searchTaskers(
                 client: client,
@@ -91,6 +160,9 @@ final class AppState {
             )
         } else {
             taskers = []
+        }
+        guard signInRequiredAuthFailureID == nil else {
+            return
         }
         isBootstrapped = true
     }
@@ -109,6 +181,10 @@ final class AppState {
         } catch {
             categories = []
             categoryGroups = []
+            if isAuthRequestFailure(error) {
+                recordSignInRequiredAuthFailure()
+                return
+            }
             categoriesErrorMessage = error.localizedDescription
         }
     }
@@ -401,6 +477,7 @@ final class AppState {
         activeCategorySlug = nil
         activeCategorySlugs = []
         lastError = nil
+        signInRequiredAuthFailureID = nil
     }
 
     private func prefetchTaskerImages(_ taskers: [TaskerSummary]) {
