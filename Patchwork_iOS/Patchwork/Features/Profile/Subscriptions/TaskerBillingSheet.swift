@@ -2,13 +2,16 @@ import RevenueCat
 import SwiftUI
 
 private enum TaskerBillingPlan: String, CaseIterable, Hashable {
-    case subscription
+    case basic
+    case premium
     case founders
 
     var title: String {
         switch self {
-        case .subscription:
-            return "Subscribe"
+        case .basic:
+            return "Basic"
+        case .premium:
+            return "Premium"
         case .founders:
             return "Founders Club"
         }
@@ -16,7 +19,9 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var headline: String {
         switch self {
-        case .subscription:
+        case .basic:
+            return "$4.99"
+        case .premium:
             return "$47.99"
         case .founders:
             return "$95.99"
@@ -25,7 +30,9 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var priceSuffix: String {
         switch self {
-        case .subscription:
+        case .basic:
+            return "/month"
+        case .premium:
             return "/year"
         case .founders:
             return "one-time"
@@ -34,7 +41,9 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var supportingCopy: String {
         switch self {
-        case .subscription:
+        case .basic:
+            return "Flexible monthly access.\nCancel anytime."
+        case .premium:
             return "Billed yearly.\nOnly $3.99 per month."
         case .founders:
             return "Pay once for\npermanent tasker access."
@@ -43,8 +52,10 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var buttonTitle: String {
         switch self {
-        case .subscription:
-            return "Start subscription"
+        case .basic:
+            return "Start Basic"
+        case .premium:
+            return "Start Premium"
         case .founders:
             return "Join Founders Club"
         }
@@ -52,7 +63,9 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var productIdentifier: String {
         switch self {
-        case .subscription:
+        case .basic:
+            return AppConfig.revenueCatBasicMonthlyProductID
+        case .premium:
             return AppConfig.revenueCatAnnualProductID
         case .founders:
             return AppConfig.revenueCatLifetimeProductID
@@ -61,8 +74,10 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var accent: Color {
         switch self {
-        case .subscription:
+        case .basic:
             return PatchworkTheme.brand
+        case .premium:
+            return PatchworkTheme.brandBright
         case .founders:
             return PatchworkTheme.accent
         }
@@ -70,7 +85,9 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
 
     var softFill: Color {
         switch self {
-        case .subscription:
+        case .basic:
+            return PatchworkTheme.brandSoft.opacity(0.72)
+        case .premium:
             return PatchworkTheme.brandSoft.opacity(0.72)
         case .founders:
             return Color.white.opacity(0.92)
@@ -88,7 +105,7 @@ struct TaskerBillingSheet: View {
     @State private var feedbackMessage: SubscriptionFeedbackMessage?
     @State private var isSyncingBackend = false
     @State private var pendingPurchasePlan: TaskerBillingPlan?
-    @State private var selectedPlan: TaskerBillingPlan = .subscription
+    @State private var selectedPlan: TaskerBillingPlan = .basic
 
     private func log(_ message: String) {
         print("[TaskerBillingSheet] \(message)")
@@ -113,7 +130,10 @@ struct TaskerBillingSheet: View {
             return mappedAccessTypes
         }
 
-        if let fallbackPlan = planChoice(forBackendAccessType: appState.taskerProfile?.subscriptionAccessType) {
+        if let fallbackPlan = planChoice(
+            forBackendAccessType: appState.taskerProfile?.subscriptionAccessType,
+            tier: appState.taskerProfile?.subscriptionTier
+        ) {
             return [fallbackPlan]
         }
 
@@ -121,23 +141,43 @@ struct TaskerBillingSheet: View {
     }
 
     private var backendConfirmedPlan: SubscriptionPlanChoice? {
-        if backendConfirmedPlans.contains(.lifetime) {
-            return .lifetime
+        if backendConfirmedPlans.contains(.founders) {
+            return .founders
         }
-        if backendConfirmedPlans.contains(.subscription) {
-            return .subscription
+        if backendConfirmedPlans.contains(.premium) {
+            return .premium
+        }
+        if backendConfirmedPlans.contains(.basic) {
+            return .basic
         }
         return nil
     }
 
-    private func planChoice(forBackendAccessType accessType: String?) -> SubscriptionPlanChoice? {
+    private func planChoice(forBackendAccessType accessType: String?, tier: String? = nil) -> SubscriptionPlanChoice? {
+        switch tier {
+        case "founders":
+            return .founders
+        case "premium":
+            return .premium
+        case "basic":
+            return .basic
+        default:
+            break
+        }
+
         switch accessType {
         case "lifetime":
-            return .lifetime
+            return .founders
         case "subscription":
-            return .subscription
+            return .premium
         default:
             return nil
+        }
+    }
+
+    private var basicPackage: Package? {
+        revenueCatManager.currentOffering?.availablePackages.first {
+            $0.storeProduct.productIdentifier == AppConfig.revenueCatBasicMonthlyProductID
         }
     }
 
@@ -304,7 +344,8 @@ struct TaskerBillingSheet: View {
 
     private var planLayout: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paywallPlanCard(for: .subscription)
+            paywallPlanCard(for: .basic)
+            paywallPlanCard(for: .premium)
             paywallPlanCard(for: .founders)
         }
     }
@@ -357,8 +398,17 @@ struct TaskerBillingSheet: View {
 
     private var primaryButtonGradient: LinearGradient {
         switch selectedPlan {
-        case .subscription:
+        case .basic:
             return PatchworkTheme.heroGradient
+        case .premium:
+            return LinearGradient(
+                colors: [
+                    PatchworkTheme.brand,
+                    PatchworkTheme.brandBright
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .founders:
             return LinearGradient(
                 colors: [
@@ -407,12 +457,16 @@ struct TaskerBillingSheet: View {
             return "Tasker access active"
         }
 
-        if backendConfirmedPlan == .lifetime {
+        if backendConfirmedPlan == .founders {
             return "Founders Club active"
         }
 
-        if backendConfirmedPlan == .subscription {
-            return "Subscription active"
+        if backendConfirmedPlan == .premium {
+            return "Premium active"
+        }
+
+        if backendConfirmedPlan == .basic {
+            return "Basic active"
         }
 
         if appState.taskerProfile?.hasActiveSubscription == true {
@@ -431,7 +485,7 @@ struct TaskerBillingSheet: View {
             return "Multiple App Store billing products are active on this account. Patchwork is using the broadest access level while keeping restores and renewals available."
         }
 
-        if backendConfirmedPlan == .lifetime {
+        if backendConfirmedPlan == .founders {
             return "You have permanent tasker access through the App Store."
         }
 
@@ -440,8 +494,12 @@ struct TaskerBillingSheet: View {
             return "Your subscription stays active until \(formattedDate(endsAt))."
         }
 
-        if backendConfirmedPlan == .subscription {
-            return "Your yearly tasker access is active and managed through the App Store."
+        if backendConfirmedPlan == .premium {
+            return "Your Premium yearly tasker access is active and managed through the App Store."
+        }
+
+        if backendConfirmedPlan == .basic {
+            return "Your Basic monthly tasker access is active and managed through the App Store."
         }
 
         if appState.taskerProfile?.hasActiveSubscription == true {
@@ -491,7 +549,7 @@ struct TaskerBillingSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let managementURL = revenueCatManager.managementURL,
-               revenueCatManager.storeState.hasRenewableAccess || backendConfirmedPlans.contains(.subscription) {
+               revenueCatManager.storeState.hasRenewableAccess || backendConfirmedPlans.contains(where: \.isRenewable) {
                 Button("Manage subscription in App Store") {
                     openURL(managementURL)
                 }
@@ -545,7 +603,9 @@ struct TaskerBillingSheet: View {
 
     private func package(for plan: TaskerBillingPlan) -> Package? {
         switch plan {
-        case .subscription:
+        case .basic:
+            return basicPackage
+        case .premium:
             return annualPackage
         case .founders:
             return foundersPackage
@@ -554,8 +614,10 @@ struct TaskerBillingSheet: View {
 
     private func buttonIdentifier(for plan: TaskerBillingPlan) -> String {
         switch plan {
-        case .subscription:
-            return "Subscription.subscriptionButton"
+        case .basic:
+            return "Subscription.basicButton"
+        case .premium:
+            return "Subscription.premiumButton"
         case .founders:
             return "Subscription.lifetimeButton"
         }

@@ -587,9 +587,11 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
     let subscriptionPlan: String
     let subscriptionAccessType: String?
     let subscriptionActiveAccessTypes: [String]?
+    let subscriptionTier: String?
     let subscriptionStatus: String?
     let subscriptionEndsAt: Int?
     let hasActiveSubscription: Bool?
+    let premiumPin: TaskerPremiumPin?
     let ghostMode: Bool
     let rating: Double?
     let reviewCount: Int?
@@ -610,9 +612,11 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case subscriptionPlan
         case subscriptionAccessType
         case subscriptionActiveAccessTypes
+        case subscriptionTier
         case subscriptionStatus
         case subscriptionEndsAt
         case hasActiveSubscription
+        case premiumPin
         case ghostMode
         case rating
         case reviewCount
@@ -624,6 +628,12 @@ struct TaskerProfileSelf: Identifiable, Codable, Hashable {
         case photoImage
         case categories
     }
+}
+
+struct TaskerPremiumPin: Codable, Hashable {
+    let code: String
+    let status: String
+    let tier: String
 }
 
 struct TaskerManagedCategory: Identifiable, Codable, Hashable {

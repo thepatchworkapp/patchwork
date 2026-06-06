@@ -1579,6 +1579,7 @@ private struct TaskerProfileManageView: View {
     @State private var pendingTaskerPhotoAsset: RemoteImageAsset?
     @State private var taskerPhotoStatusMessage: SubscriptionFeedbackMessage?
     @State private var isUpdatingTaskerPhoto = false
+    @State private var premiumPinCopyMessage: String?
 
     var body: some View {
         ZStack {
@@ -1615,6 +1616,7 @@ private struct TaskerProfileManageView: View {
                             )
 
                             taskerPublicProfilePreview
+                            premiumPinCard
                             taskerPhotoSourceControls
 
                             if let feedbackMessage {
@@ -1806,6 +1808,76 @@ private struct TaskerProfileManageView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var premiumPinCard: some View {
+        if let pin = activePremiumPin {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(PatchworkTheme.brand)
+                        .frame(width: 34, height: 34)
+                        .background(PatchworkTheme.brandSoft, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Premium pin")
+                            .font(.patchworkBodyStrong)
+                            .foregroundStyle(PatchworkTheme.textPrimary)
+
+                        Text(pin.code)
+                            .font(.system(size: 20, weight: .bold, design: .monospaced))
+                            .foregroundStyle(PatchworkTheme.brand)
+                            .textSelection(.enabled)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        UIPasteboard.general.string = pin.code
+                        premiumPinCopyMessage = "Copied"
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(PatchworkTheme.brand)
+                            .frame(width: 34, height: 34)
+                            .background(PatchworkTheme.surface.opacity(0.94), in: Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("TaskerProfile.premiumPinCopyButton")
+                    .accessibilityLabel("Copy premium pin")
+                }
+
+                if let premiumPinCopyMessage {
+                    Text(premiumPinCopyMessage)
+                        .font(.patchworkCaption)
+                        .foregroundStyle(PatchworkTheme.success)
+                        .accessibilityIdentifier("TaskerProfile.premiumPinCopyMessage")
+                }
+            }
+            .padding(14)
+            .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(PatchworkTheme.stroke, lineWidth: 1)
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("TaskerProfile.premiumPinCard")
+        }
+    }
+
+    private var activePremiumPin: TaskerPremiumPin? {
+        guard let pin = appState.taskerProfile?.premiumPin,
+              pin.status == "active",
+              !pin.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return pin
     }
 
     private var taskerPhotoSourceControls: some View {

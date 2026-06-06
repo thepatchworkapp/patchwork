@@ -147,6 +147,15 @@ struct PatchworkAPI {
 
             return try await client.query("search:searchTaskers", args: args)
         }
+
+        func taskerByPremiumPin(pin: String, excludeUserId: ConvexID?) async throws -> [TaskerSummary] {
+            var args: [String: Any] = ["pin": pin]
+            if let excludeUserId {
+                args["excludeUserId"] = excludeUserId
+            }
+
+            return try await client.query("search:searchTaskerByPremiumPin", args: args)
+        }
     }
 
     struct Taskers {

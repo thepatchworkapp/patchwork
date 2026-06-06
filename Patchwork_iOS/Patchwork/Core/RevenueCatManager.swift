@@ -151,10 +151,12 @@ final class RevenueCatManager {
 
         let orderedActivePlans = SubscriptionPlanChoice.allCases.filter { activePlans.contains($0) }
         let effectivePlan: SubscriptionPlanChoice?
-        if activePlans.contains(.lifetime) {
-            effectivePlan = .lifetime
-        } else if activePlans.contains(.subscription) {
-            effectivePlan = .subscription
+        if activePlans.contains(.founders) {
+            effectivePlan = .founders
+        } else if activePlans.contains(.premium) {
+            effectivePlan = .premium
+        } else if activePlans.contains(.basic) {
+            effectivePlan = .basic
         } else {
             effectivePlan = nil
         }

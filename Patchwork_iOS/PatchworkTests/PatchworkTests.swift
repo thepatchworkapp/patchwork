@@ -523,6 +523,80 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(taskers, [])
     }
 
+    func testPatchworkAPISearchTaskerByPremiumPinBuildsSeparateQuery() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "search:searchTaskerByPremiumPin")
+            let args = try XCTUnwrap(object["args"] as? [String: Any])
+            XCTAssertEqual(args["pin"] as? String, "ABCD1234")
+            XCTAssertEqual(args["excludeUserId"] as? String, "user_123")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":[]}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let api = PatchworkAPI(client: client)
+
+        let taskers = try await api.search.taskerByPremiumPin(pin: "ABCD1234", excludeUserId: "user_123")
+
+        XCTAssertEqual(taskers, [])
+    }
+
+    func testTaskerProfileSelfDecodesSubscriptionTierAndPremiumPin() throws {
+        let json = """
+        {
+          "_id": "tasker_123",
+          "displayName": "Pinned Tasker",
+          "bio": null,
+          "websiteLinks": [],
+          "socialLinks": [],
+          "subscriptionPlan": "tasker",
+          "subscriptionAccessType": "subscription",
+          "subscriptionActiveAccessTypes": ["subscription"],
+          "subscriptionTier": "premium",
+          "subscriptionStatus": "active",
+          "subscriptionEndsAt": null,
+          "hasActiveSubscription": true,
+          "premiumPin": {
+            "code": "ABCD1234",
+            "status": "active",
+            "tier": "premium"
+          },
+          "ghostMode": false,
+          "rating": null,
+          "reviewCount": null,
+          "completedJobs": null,
+          "verified": true,
+          "responseTime": null,
+          "createdAt": null,
+          "photoSource": null,
+          "photoImage": null,
+          "categories": []
+        }
+        """
+
+        let profile = try JSONDecoder().decode(TaskerProfileSelf.self, from: Data(json.utf8))
+
+        XCTAssertEqual(profile.subscriptionTier, "premium")
+        XCTAssertEqual(profile.premiumPin?.code, "ABCD1234")
+        XCTAssertEqual(profile.premiumPin?.status, "active")
+        XCTAssertEqual(profile.premiumPin?.tier, "premium")
+    }
+
     func testPatchworkAPISearchTaskersIncludesCategorySlugs() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -2571,9 +2645,11 @@ final class PatchworkTests: XCTestCase {
             subscriptionPlan: "free",
             subscriptionAccessType: nil,
             subscriptionActiveAccessTypes: nil,
+            subscriptionTier: nil,
             subscriptionStatus: nil,
             subscriptionEndsAt: nil,
             hasActiveSubscription: false,
+            premiumPin: nil,
             ghostMode: false,
             rating: nil,
             reviewCount: nil,

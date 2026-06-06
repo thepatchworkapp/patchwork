@@ -32,6 +32,12 @@ struct HomeView: View {
     @State private var selectedSearchHomeBase: HomeBaseOption?
     @State private var isResolvingSearchOrigin = false
     @State private var searchOriginErrorMessage: String?
+    @State private var isPremiumPinExpanded = false
+    @State private var premiumPinText = ""
+    @State private var premiumPinResultTaskers: [TaskerSummary] = []
+    @State private var isSearchingPremiumPin = false
+    @State private var premiumPinErrorMessage: String?
+    @State private var lastSubmittedPremiumPin: String?
     private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
 
     var body: some View {
@@ -41,6 +47,16 @@ struct HomeView: View {
             VStack(spacing: 0) {
                 header
                 spotlightContent
+            }
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    premiumPinSearchControl
+                }
+                .padding(.horizontal, MainLayout.horizontalGutter)
+                .padding(.bottom, 18)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -221,6 +237,79 @@ struct HomeView: View {
             await reload(resetDismissedTaskers: false)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private var premiumPinSearchControl: some View {
+        HStack(spacing: 10) {
+            if isPremiumPinExpanded {
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 8) {
+                        if isSearchingPremiumPin {
+                            ProgressView()
+                                .tint(PatchworkTheme.brand)
+                                .scaleEffect(0.82)
+                        }
+
+                        TextField("8-char pin", text: Binding(
+                            get: { premiumPinText },
+                            set: { updatePremiumPinText($0) }
+                        ))
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled(true)
+                        .submitLabel(.search)
+                        .frame(width: 104)
+                        .accessibilityIdentifier("Home.premiumPinField")
+                        .onSubmit {
+                            Task { await searchPremiumPinIfReady(force: true) }
+                        }
+
+                        if !premiumPinText.isEmpty || !premiumPinResultTaskers.isEmpty {
+                            Button {
+                                clearPremiumPinSearch()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(PatchworkTheme.textSecondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear premium pin search")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 44)
+                    .background(PatchworkTheme.surface.opacity(0.96), in: Capsule())
+                    .overlay(Capsule().stroke(PatchworkTheme.strokeStrong, lineWidth: 1))
+
+                    if let premiumPinErrorMessage {
+                        Text(premiumPinErrorMessage)
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.warning)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(PatchworkTheme.surface.opacity(0.96), in: Capsule())
+                            .accessibilityIdentifier("Home.premiumPinMessage")
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                    isPremiumPinExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(PatchworkTheme.surface)
+                    .frame(width: 46, height: 46)
+                    .background(PatchworkTheme.heroGradient, in: Circle())
+                    .shadow(color: PatchworkTheme.brand.opacity(0.18), radius: 12, y: 6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Home.premiumPinButton")
+            .accessibilityLabel("Search premium pin")
+        }
     }
 
     private func spotlightCard(_ tasker: TaskerSummary) -> some View {
@@ -1107,7 +1196,11 @@ struct HomeView: View {
     }
 
     private var visibleTaskers: [TaskerSummary] {
-        appState.taskers.filter { !dismissedTaskerIDs.contains($0.id) }
+        taskerCardSource.filter { !dismissedTaskerIDs.contains($0.id) }
+    }
+
+    private var taskerCardSource: [TaskerSummary] {
+        premiumPinResultTaskers.isEmpty ? appState.taskers : premiumPinResultTaskers
     }
 
     private func dismissCurrentCard() {
@@ -1180,6 +1273,65 @@ struct HomeView: View {
                 role: "seeker"
             )
         } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func updatePremiumPinText(_ value: String) {
+        let normalized = normalizePremiumPin(value)
+        premiumPinText = normalized
+        premiumPinErrorMessage = nil
+
+        if normalized.count < 8 {
+            premiumPinResultTaskers = []
+            lastSubmittedPremiumPin = nil
+            currentCardIndex = 0
+            dismissedTaskerIDs.removeAll()
+        } else if normalized.count == 8, normalized != lastSubmittedPremiumPin {
+            Task { await searchPremiumPinIfReady(force: false) }
+        }
+    }
+
+    private func normalizePremiumPin(_ value: String) -> String {
+        String(value.uppercased().filter { $0.isNumber || $0.isLetter }.prefix(8))
+    }
+
+    private func clearPremiumPinSearch() {
+        premiumPinText = ""
+        premiumPinResultTaskers = []
+        premiumPinErrorMessage = nil
+        lastSubmittedPremiumPin = nil
+        currentCardIndex = 0
+        dismissedTaskerIDs.removeAll()
+    }
+
+    private func searchPremiumPinIfReady(force: Bool) async {
+        let pin = normalizePremiumPin(premiumPinText)
+        guard pin.count == 8 else {
+            return
+        }
+        guard force || pin != lastSubmittedPremiumPin else {
+            return
+        }
+
+        isSearchingPremiumPin = true
+        premiumPinErrorMessage = nil
+        defer { isSearchingPremiumPin = false }
+
+        do {
+            let taskers = try await PatchworkAPI(client: sessionStore.client).search.taskerByPremiumPin(
+                pin: pin,
+                excludeUserId: appState.currentUser?.id
+            )
+            lastSubmittedPremiumPin = pin
+            premiumPinResultTaskers = taskers
+            currentCardIndex = 0
+            dismissedTaskerIDs.removeAll()
+            if taskers.isEmpty {
+                premiumPinErrorMessage = "No match for \(pin)."
+            }
+        } catch {
+            premiumPinErrorMessage = "Pin search failed."
             appState.lastError = error.localizedDescription
         }
     }

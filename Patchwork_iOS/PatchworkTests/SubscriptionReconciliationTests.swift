@@ -2,22 +2,35 @@ import XCTest
 @testable import Patchwork
 
 final class SubscriptionReconciliationTests: XCTestCase {
-    func testSubscriptionPlanChoiceMapsAnnualProductIdentifier() {
+    func testBasicPlanChoiceMapsMonthlyProductIdentifier() {
         XCTAssertEqual(
-            SubscriptionPlanChoice.subscription.productIdentifier,
-            AppConfig.revenueCatAnnualProductID
+            SubscriptionPlanChoice.basic.productIdentifier,
+            AppConfig.revenueCatBasicMonthlyProductID
         )
-        XCTAssertEqual(SubscriptionPlanChoice.subscription.backendAccessType, "subscription")
-        XCTAssertTrue(SubscriptionPlanChoice.subscription.isRenewable)
+        XCTAssertEqual(SubscriptionPlanChoice.basic.backendAccessType, "subscription")
+        XCTAssertEqual(SubscriptionPlanChoice.basic.backendTier, "basic")
+        XCTAssertTrue(SubscriptionPlanChoice.basic.isRenewable)
     }
 
-    func testLifetimePlanChoiceMapsLifetimeProductIdentifier() {
+    func testPremiumPlanChoiceMapsAnnualProductIdentifier() {
         XCTAssertEqual(
-            SubscriptionPlanChoice.lifetime.productIdentifier,
+            SubscriptionPlanChoice.premium.productIdentifier,
+            AppConfig.revenueCatAnnualProductID
+        )
+        XCTAssertEqual(SubscriptionPlanChoice.premium.title, "Premium yearly")
+        XCTAssertEqual(SubscriptionPlanChoice.premium.backendAccessType, "subscription")
+        XCTAssertEqual(SubscriptionPlanChoice.premium.backendTier, "premium")
+        XCTAssertTrue(SubscriptionPlanChoice.premium.isRenewable)
+    }
+
+    func testFoundersPlanChoiceMapsLifetimeProductIdentifier() {
+        XCTAssertEqual(
+            SubscriptionPlanChoice.founders.productIdentifier,
             AppConfig.revenueCatLifetimeProductID
         )
-        XCTAssertEqual(SubscriptionPlanChoice.lifetime.backendAccessType, "lifetime")
-        XCTAssertFalse(SubscriptionPlanChoice.lifetime.isRenewable)
+        XCTAssertEqual(SubscriptionPlanChoice.founders.backendAccessType, "lifetime")
+        XCTAssertEqual(SubscriptionPlanChoice.founders.backendTier, "founders")
+        XCTAssertFalse(SubscriptionPlanChoice.founders.isRenewable)
     }
 
     func testEmptyStoreSubscriptionStateHasNoActivePlan() {

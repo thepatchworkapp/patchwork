@@ -12,6 +12,7 @@ enum AppConfig {
     static let revenueCatPublicAPIKey = "appl_KVrqPtiNVMghtWZGRGrnCnBQyfh"
     static let revenueCatEntitlementID = "tasker_access"
     static let revenueCatOfferingLookupKey = "tasker_access_paywall"
+    static let revenueCatBasicMonthlyProductID = "ltd.ddga.patchwork.tasker.subscription.basic.monthly"
     static let revenueCatAnnualProductID = "ltd.ddga.patchwork.tasker.subscription.yearly"
     static let revenueCatLifetimeProductID = "ltd.ddga.patchwork.tasker.lifetime"
 

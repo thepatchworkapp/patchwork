@@ -1,33 +1,47 @@
 import Foundation
 
 enum SubscriptionPlanChoice: String, CaseIterable, Hashable {
-    case subscription
-    case lifetime
+    case basic
+    case premium
+    case founders
 
     var title: String {
         switch self {
-        case .subscription:
-            return "Subscribe"
-        case .lifetime:
+        case .basic:
+            return "Basic"
+        case .premium:
+            return "Premium yearly"
+        case .founders:
             return "Founders Club"
         }
     }
 
     var productIdentifier: String {
         switch self {
-        case .subscription:
+        case .basic:
+            return AppConfig.revenueCatBasicMonthlyProductID
+        case .premium:
             return AppConfig.revenueCatAnnualProductID
-        case .lifetime:
+        case .founders:
             return AppConfig.revenueCatLifetimeProductID
         }
     }
 
     var backendAccessType: String {
+        switch self {
+        case .basic, .premium:
+            return "subscription"
+        case .founders:
+            return "lifetime"
+        }
+    }
+
+    var backendTier: String {
         rawValue
     }
 
     var isRenewable: Bool {
-        self == .subscription
+        self == .basic || self == .premium
     }
 }
 
@@ -42,7 +56,7 @@ struct StoreSubscriptionState: Equatable {
     }
 
     var hasRenewableAccess: Bool {
-        activePlans.contains(.subscription) || willRenew == true
+        activePlans.contains(where: \.isRenewable) || willRenew == true
     }
 
     var hasMultipleActivePlans: Bool {

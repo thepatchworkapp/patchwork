@@ -269,7 +269,10 @@ struct ProfileTaskerSection: View {
             return mappedAccessTypes
         }
 
-        if let fallbackPlan = planChoice(forBackendAccessType: taskerProfile.subscriptionAccessType) {
+        if let fallbackPlan = planChoice(
+            forBackendAccessType: taskerProfile.subscriptionAccessType,
+            tier: taskerProfile.subscriptionTier
+        ) {
             return [fallbackPlan]
         }
 
@@ -278,21 +281,35 @@ struct ProfileTaskerSection: View {
 
     private func backendConfirmedPlan(for taskerProfile: TaskerProfileSelf) -> SubscriptionPlanChoice? {
         let confirmedPlans = backendConfirmedPlans(for: taskerProfile)
-        if confirmedPlans.contains(.lifetime) {
-            return .lifetime
+        if confirmedPlans.contains(.founders) {
+            return .founders
         }
-        if confirmedPlans.contains(.subscription) {
-            return .subscription
+        if confirmedPlans.contains(.premium) {
+            return .premium
+        }
+        if confirmedPlans.contains(.basic) {
+            return .basic
         }
         return nil
     }
 
-    private func planChoice(forBackendAccessType accessType: String?) -> SubscriptionPlanChoice? {
+    private func planChoice(forBackendAccessType accessType: String?, tier: String? = nil) -> SubscriptionPlanChoice? {
+        switch tier {
+        case "founders":
+            return .founders
+        case "premium":
+            return .premium
+        case "basic":
+            return .basic
+        default:
+            break
+        }
+
         switch accessType {
         case "lifetime":
-            return .lifetime
+            return .founders
         case "subscription":
-            return .subscription
+            return .premium
         default:
             return nil
         }
@@ -311,10 +328,12 @@ struct ProfileTaskerSection: View {
         switch taskerProfile.subscriptionStatus ?? "inactive" {
         case "active":
             switch backendConfirmedPlan(for: taskerProfile) {
-            case .lifetime:
-                return SubscriptionPlanChoice.lifetime.title
-            case .subscription:
-                return "Subscribed"
+            case .founders:
+                return SubscriptionPlanChoice.founders.title
+            case .premium:
+                return "Premium"
+            case .basic:
+                return "Basic"
             default:
                 return "Active"
             }
