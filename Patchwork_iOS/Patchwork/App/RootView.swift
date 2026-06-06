@@ -1029,69 +1029,28 @@ private struct ProfileSetupView: View {
                 .focused($focusedField, equals: .name)
                 .accessibilityIdentifier("ProfileSetup.nameField")
 
-            TextField("Home base", text: $city)
-                .patchworkInputFieldStyle()
-                .focused($focusedField, equals: .city)
-                .accessibilityIdentifier("ProfileSetup.cityField")
-                .onChange(of: city) { _, _ in
+            HomeBaseDropdownField(
+                placeholder: "Home base",
+                text: $city,
+                selectedHomeBase: $selectedHomeBase,
+                fieldAccessibilityIdentifier: "ProfileSetup.cityField",
+                suggestionAccessibilityPrefix: "ProfileSetup.homeBaseSuggestion",
+                noResultsAccessibilityIdentifier: "ProfileSetup.homeBaseNoResults",
+                noResultsMessage: "Select a suggested home base to continue.",
+                onTextChanged: {
                     clearHomeBaseSelectionIfNeeded()
+                },
+                onSelect: { suggestion in
+                    selectHomeBase(suggestion)
+                    focusedField = nil
                 }
-
-            homeBaseSuggestionsContent
+            )
         }
     }
 
     private var isProfileStepValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && hasSelectedValidHomeBase
-    }
-
-    @ViewBuilder
-    private var homeBaseSuggestionsContent: some View {
-        if trimmedCity.count >= 3 {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Home base")
-                    .font(.patchworkCaption)
-                    .foregroundStyle(PatchworkTheme.textSecondary)
-
-                if matchingHomeBaseSuggestions.isEmpty {
-                    Text("Select a suggested home base to continue.")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.textTertiary)
-                        .accessibilityIdentifier("ProfileSetup.homeBaseNoResults")
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(matchingHomeBaseSuggestions) { suggestion in
-                            Button {
-                                selectHomeBase(suggestion)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: selectedHomeBase == suggestion ? "checkmark.circle.fill" : "mappin.and.ellipse")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(selectedHomeBase == suggestion ? PatchworkTheme.success : PatchworkTheme.brand)
-                                        .accessibilityHidden(true)
-
-                                    Text(suggestion.label)
-                                        .font(.patchworkBodyStrong)
-                                        .foregroundStyle(PatchworkTheme.textPrimary)
-
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 11)
-                                .background(PatchworkTheme.surfaceMuted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(selectedHomeBase == suggestion ? PatchworkTheme.success.opacity(0.5) : PatchworkTheme.stroke, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("ProfileSetup.homeBaseSuggestion.\(suggestion.id)")
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private var locationStepContent: some View {
@@ -1246,22 +1205,6 @@ private struct ProfileSetupView: View {
         }
 
         return selectedHomeBase.city.caseInsensitiveCompare(trimmedCity) == .orderedSame
-    }
-
-    private var matchingHomeBaseSuggestions: [HomeBaseOption] {
-        let query = trimmedCity
-        guard query.count >= 3 else {
-            return []
-        }
-
-        let lowercasedQuery = query.lowercased()
-        return HomeBaseOptions.all
-            .filter { suggestion in
-                suggestion.city.lowercased().hasPrefix(lowercasedQuery)
-                    || suggestion.label.lowercased().contains(lowercasedQuery)
-            }
-            .prefix(6)
-            .map { $0 }
     }
 
     private func selectHomeBase(_ suggestion: HomeBaseOption) {
