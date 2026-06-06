@@ -15,6 +15,14 @@ import {
   getTaskerProfileImageAssetDto,
   getUserPhotoImageAssetDto,
 } from "./imageAssetHelpers";
+import {
+  getEffectiveGhostMode,
+  getEffectiveSubscriptionPlan,
+  getEffectiveSubscriptionStatus,
+  getEffectiveSubscriptionTier,
+  hasActivePremiumPinAccess,
+  hasActiveSubscription,
+} from "../lib/convex/subscriptionState";
 
 function getAdminEmailAllowlist(): Set<string> {
   // Support both ADMIN_EMAILS (comma-separated) and legacy ADMIN_EMAIL (single).
@@ -222,6 +230,54 @@ const adminUserDetailValidator = v.object({
   reportsSubmitted: v.array(userReportAdminValidator),
   reportsReceived: v.array(userReportAdminValidator),
 });
+
+function buildTaskerSubscriptionAdminView(profile: any) {
+  const now = Date.now();
+  const effectiveStatus = getEffectiveSubscriptionStatus(profile, now);
+  const storedPin =
+    typeof profile.premiumPin === "string" && /^[0-9A-Z]{8}$/.test(profile.premiumPin)
+      ? profile.premiumPin
+      : null;
+  const inactiveReason = (() => {
+    if (!storedPin) return null;
+    if (effectiveStatus === "cancel_at_period_end") return "cancelled";
+    if (effectiveStatus === "expired") return "expired";
+    if (effectiveStatus !== "active") return "inactive_subscription";
+    if (profile.subscriptionTier !== "premium" && profile.subscriptionTier !== "founders") {
+      return "not_premium";
+    }
+    if (!profile.isOnboarded) return "not_onboarded";
+    if (getEffectiveGhostMode(profile, now)) return "ghost_mode";
+    return null;
+  })();
+  const pinSearchable = Boolean(
+    storedPin &&
+      inactiveReason === null &&
+      hasActivePremiumPinAccess(profile, now) &&
+      profile.isOnboarded &&
+      !getEffectiveGhostMode(profile, now)
+  );
+
+  return {
+    subscriptionPlan: profile.subscriptionPlan,
+    effectiveSubscriptionPlan: getEffectiveSubscriptionPlan(profile, now),
+    subscriptionAccessType: profile.subscriptionAccessType ?? null,
+    subscriptionTier: profile.subscriptionTier ?? null,
+    effectiveSubscriptionTier: getEffectiveSubscriptionTier(profile, now) ?? null,
+    subscriptionActiveAccessTypes: profile.subscriptionActiveAccessTypes ?? [],
+    subscriptionStatus: effectiveStatus,
+    storedSubscriptionStatus: profile.subscriptionStatus ?? null,
+    subscriptionEndsAt: profile.subscriptionEndsAt ?? null,
+    hasActiveSubscription: hasActiveSubscription(profile, now),
+    premiumPin: storedPin
+      ? {
+          code: storedPin,
+          searchStatus: pinSearchable ? "active" : "inactive",
+          inactiveReason,
+        }
+      : null,
+  };
+}
 
 async function deleteStorageIds(ctx: any, storageIds: Set<any>) {
   let deleted = 0;
@@ -1198,6 +1254,7 @@ export const getUserDetail = query({
       taskerProfileWithCategories = {
         ...taskerProfile,
         photoImage: taskerPhotoImage,
+        subscriptionAdmin: buildTaskerSubscriptionAdminView(taskerProfile),
         categories: categoriesWithNames,
       };
     }

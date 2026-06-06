@@ -650,6 +650,77 @@ function formatTaskerDiscoverability(taskerProfile: any | null): string {
   return formatCheckedInCoordinates(taskerProfile.location, taskerProfile.locationCheckedInAt);
 }
 
+type TaskerSubscriptionAdmin = {
+  subscriptionPlan?: string | null;
+  effectiveSubscriptionPlan?: string | null;
+  subscriptionAccessType?: string | null;
+  subscriptionTier?: string | null;
+  effectiveSubscriptionTier?: string | null;
+  subscriptionActiveAccessTypes?: string[];
+  subscriptionStatus?: string | null;
+  storedSubscriptionStatus?: string | null;
+  subscriptionEndsAt?: number | null;
+  hasActiveSubscription?: boolean;
+  premiumPin?: {
+    code?: string | null;
+    searchStatus?: "active" | "inactive" | string;
+    inactiveReason?: string | null;
+  } | null;
+};
+
+function formatSubscriptionValue(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) return "—";
+  return value.replaceAll("_", " ");
+}
+
+function formatSubscriptionDate(value: unknown): string {
+  return value === null || value === undefined ? "—" : formatDate(value);
+}
+
+function formatActiveAccessTypes(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "—";
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map(formatSubscriptionValue)
+    .join(", ") || "—";
+}
+
+function getTaskerSubscriptionAdmin(taskerProfile: any | null): TaskerSubscriptionAdmin | null {
+  if (!taskerProfile) return null;
+  const summary = taskerProfile.subscriptionAdmin as TaskerSubscriptionAdmin | undefined;
+  if (summary) return summary;
+
+  const storedPin = typeof taskerProfile.premiumPin === "string" ? taskerProfile.premiumPin : null;
+  return {
+    subscriptionPlan: taskerProfile.subscriptionPlan ?? null,
+    effectiveSubscriptionPlan: taskerProfile.subscriptionPlan ?? null,
+    subscriptionAccessType: taskerProfile.subscriptionAccessType ?? null,
+    subscriptionTier: taskerProfile.subscriptionTier ?? null,
+    effectiveSubscriptionTier: taskerProfile.subscriptionTier ?? null,
+    subscriptionActiveAccessTypes: Array.isArray(taskerProfile.subscriptionActiveAccessTypes)
+      ? taskerProfile.subscriptionActiveAccessTypes
+      : [],
+    subscriptionStatus: taskerProfile.subscriptionStatus ?? null,
+    storedSubscriptionStatus: taskerProfile.subscriptionStatus ?? null,
+    subscriptionEndsAt: taskerProfile.subscriptionEndsAt ?? null,
+    hasActiveSubscription: taskerProfile.subscriptionPlan === "tasker",
+    premiumPin: storedPin
+      ? {
+          code: storedPin,
+          searchStatus: "inactive",
+          inactiveReason: "unknown",
+        }
+      : null,
+  };
+}
+
+function formatPremiumPinSearchStatus(summary: TaskerSubscriptionAdmin | null): string {
+  const pin = summary?.premiumPin;
+  if (!pin?.code) return "No stored pin";
+  if (pin.searchStatus === "active") return "Search active";
+  return `Search inactive${pin.inactiveReason ? `: ${formatSubscriptionValue(pin.inactiveReason)}` : ""}`;
+}
+
 type AdminUserDetail = {
   user: any;
   userPhotoUrl?: string | null;
@@ -1490,6 +1561,7 @@ function UserDetailView({
   const taskerCategories = Array.isArray((detail.taskerProfile as any)?.categories)
     ? (((detail.taskerProfile as any).categories ?? []) as any[])
     : [];
+  const taskerSubscriptionAdmin = getTaskerSubscriptionAdmin(detail.taskerProfile);
 
   const taskerCategoryCount = taskerCategories.length;
   const taskerPhotoCount = taskerCategories.reduce((acc, c) => {
@@ -2011,13 +2083,72 @@ function UserDetailView({
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="outline">plan: {detail.taskerProfile.subscriptionPlan ?? "—"}</Badge>
+                <Badge variant={taskerSubscriptionAdmin?.hasActiveSubscription ? "secondary" : "outline"}>
+                  access {taskerSubscriptionAdmin?.hasActiveSubscription ? "active" : "inactive"}
+                </Badge>
+                <Badge variant="outline">
+                  tier: {formatSubscriptionValue(taskerSubscriptionAdmin?.effectiveSubscriptionTier ?? taskerSubscriptionAdmin?.subscriptionTier)}
+                </Badge>
+                <Badge variant="outline">
+                  status: {formatSubscriptionValue(taskerSubscriptionAdmin?.subscriptionStatus)}
+                </Badge>
                 <Badge variant={detail.taskerProfile.ghostMode ? "destructive" : "secondary"}>
                   ghost mode {detail.taskerProfile.ghostMode ? "on" : "off"}
                 </Badge>
-                {detail.taskerProfile.premiumPin && (
-                  <Badge variant="outline">pin: {detail.taskerProfile.premiumPin}</Badge>
-                )}
+                <Badge variant={taskerSubscriptionAdmin?.premiumPin?.searchStatus === "active" ? "secondary" : "outline"}>
+                  {formatPremiumPinSearchStatus(taskerSubscriptionAdmin)}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid gap-2 md:grid-cols-4">
+                <div className="pw-microcard">
+                  <div className="pw-mono text-xs text-kumo-muted">Plan</div>
+                  <div className="text-sm text-kumo-strong">
+                    {formatSubscriptionValue(taskerSubscriptionAdmin?.effectiveSubscriptionPlan ?? taskerSubscriptionAdmin?.subscriptionPlan)}
+                  </div>
+                  <div className="mt-1 text-xs text-kumo-muted">
+                    stored {formatSubscriptionValue(taskerSubscriptionAdmin?.subscriptionPlan)}
+                  </div>
+                </div>
+                <div className="pw-microcard">
+                  <div className="pw-mono text-xs text-kumo-muted">Tier</div>
+                  <div className="text-sm text-kumo-strong">
+                    {formatSubscriptionValue(taskerSubscriptionAdmin?.effectiveSubscriptionTier ?? taskerSubscriptionAdmin?.subscriptionTier)}
+                  </div>
+                  <div className="mt-1 text-xs text-kumo-muted">
+                    stored {formatSubscriptionValue(taskerSubscriptionAdmin?.subscriptionTier)}
+                  </div>
+                </div>
+                <div className="pw-microcard">
+                  <div className="pw-mono text-xs text-kumo-muted">Access type</div>
+                  <div className="text-sm text-kumo-strong">
+                    {formatSubscriptionValue(taskerSubscriptionAdmin?.subscriptionAccessType)}
+                  </div>
+                  <div className="mt-1 text-xs text-kumo-muted">
+                    active {formatActiveAccessTypes(taskerSubscriptionAdmin?.subscriptionActiveAccessTypes)}
+                  </div>
+                </div>
+                <div className="pw-microcard">
+                  <div className="pw-mono text-xs text-kumo-muted">Term end</div>
+                  <div className="text-sm text-kumo-strong">
+                    {formatSubscriptionDate(taskerSubscriptionAdmin?.subscriptionEndsAt)}
+                  </div>
+                  <div className="mt-1 text-xs text-kumo-muted">
+                    stored status {formatSubscriptionValue(taskerSubscriptionAdmin?.storedSubscriptionStatus)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-[var(--pw-radius-sm)] border border-kumo-fill bg-kumo-subtle p-3">
+                <div className="pw-mono text-xs text-kumo-muted">Premium pin</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="pw-mono text-sm font-semibold text-kumo-strong">
+                    {taskerSubscriptionAdmin?.premiumPin?.code ?? "—"}
+                  </span>
+                  <Badge variant={taskerSubscriptionAdmin?.premiumPin?.searchStatus === "active" ? "secondary" : "outline"}>
+                    {formatPremiumPinSearchStatus(taskerSubscriptionAdmin)}
+                  </Badge>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">

@@ -159,6 +159,30 @@ describe("feedback", () => {
         city: "Toronto",
         province: "ON",
       });
+      const now = Date.now();
+      await t.run(async (ctx) => {
+        await ctx.db.insert("taskerProfiles", {
+          userId,
+          displayName: "Feedback Detail Tasker",
+          websiteLinks: [],
+          socialLinks: [],
+          isOnboarded: true,
+          rating: 0,
+          reviewCount: 0,
+          completedJobs: 0,
+          verified: false,
+          subscriptionPlan: "tasker",
+          subscriptionAccessType: "subscription",
+          subscriptionTier: "premium",
+          premiumPin: "ADMIN123",
+          subscriptionActiveAccessTypes: ["subscription"],
+          subscriptionStatus: "cancel_at_period_end",
+          subscriptionEndsAt: 1_900_000_000_000,
+          ghostMode: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
       await asUser.mutation((api as any).users.checkInGpsLocation, {
         lat: 43.6532,
         lng: -79.3832,
@@ -213,6 +237,19 @@ describe("feedback", () => {
       expect(detail?.feedbackSubmissions).toHaveLength(1);
       expect(detail?.feedbackSubmissions[0]?.message).toBe("The feedback form should not error after sending.");
       expect(detail?.user?.location?.gpsCoordinates?.lat).toBe(43.6532);
+      expect(detail?.taskerProfile?.subscriptionAdmin).toMatchObject({
+        subscriptionPlan: "tasker",
+        effectiveSubscriptionPlan: "tasker",
+        subscriptionTier: "premium",
+        effectiveSubscriptionTier: "premium",
+        subscriptionStatus: "cancel_at_period_end",
+        hasActiveSubscription: true,
+        premiumPin: {
+          code: "ADMIN123",
+          searchStatus: "inactive",
+          inactiveReason: "cancelled",
+        },
+      });
       expect(detail?.blocksCreated).toHaveLength(1);
       expect(detail?.blocksCreated[0]?.blockedId).toBe(reportedUserId);
       expect(detail?.reportsSubmitted).toHaveLength(1);
