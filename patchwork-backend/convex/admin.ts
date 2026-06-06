@@ -9,7 +9,7 @@ import {
 } from "./reviewAccess";
 import { taskerGeo } from "./geospatial";
 import { internal } from "./_generated/api";
-import { imageAssetValidator } from "../lib/convex/validators";
+import { imageAssetValidator, userLocationValidator } from "../lib/convex/validators";
 import {
   getTaskerCategoryPortfolioImageDtos,
   getTaskerProfileImageAssetDto,
@@ -815,16 +815,7 @@ export const listAllUsers = query({
         photoAssetId: v.optional(v.id("imageAssets")),
         photoImage: v.union(imageAssetValidator, v.null()),
         photoUrl: v.union(v.string(), v.null()),
-        location: v.object({
-          city: v.string(),
-          province: v.string(),
-          coordinates: v.optional(
-            v.object({
-              lat: v.number(),
-              lng: v.number(),
-            })
-          ),
-        }),
+        location: userLocationValidator,
         roles: v.object({
           isSeeker: v.boolean(),
           isTasker: v.boolean(),

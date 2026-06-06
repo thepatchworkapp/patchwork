@@ -159,6 +159,10 @@ describe("feedback", () => {
         city: "Toronto",
         province: "ON",
       });
+      await asUser.mutation((api as any).users.checkInGpsLocation, {
+        lat: 43.6532,
+        lng: -79.3832,
+      });
       const reportedUserId = await asReportedUser.mutation(api.users.createProfile, {
         name: "Reported Detail User",
         city: "Toronto",
@@ -202,9 +206,13 @@ describe("feedback", () => {
       const listedUser = users.users.find((row: any) => row._id === userId);
       expect(listedUser?.photoImage).toBeNull();
       expect(listedUser?.photoAssetId).toBeUndefined();
+      expect(listedUser?.location?.gpsCoordinates?.lat).toBe(43.6532);
+      expect(listedUser?.location?.gpsCoordinates?.lng).toBe(-79.3832);
+      expect(listedUser?.location?.gpsCoordinates?.checkedInAt).toBeGreaterThan(0);
 
       expect(detail?.feedbackSubmissions).toHaveLength(1);
       expect(detail?.feedbackSubmissions[0]?.message).toBe("The feedback form should not error after sending.");
+      expect(detail?.user?.location?.gpsCoordinates?.lat).toBe(43.6532);
       expect(detail?.blocksCreated).toHaveLength(1);
       expect(detail?.blocksCreated[0]?.blockedId).toBe(reportedUserId);
       expect(detail?.reportsSubmitted).toHaveLength(1);

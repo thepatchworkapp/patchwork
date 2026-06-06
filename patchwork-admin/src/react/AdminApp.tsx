@@ -635,6 +635,21 @@ function formatCoordinates(coordinates: unknown): string {
   return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
+function formatCheckedInCoordinates(coordinates: unknown, checkedInAt: unknown): string {
+  const formattedCoordinates = formatCoordinates(coordinates);
+  if (formattedCoordinates === "—") return "—";
+  const formattedDate = formatDate(checkedInAt);
+  return formattedDate === "—" ? formattedCoordinates : `${formattedCoordinates} - ${formattedDate}`;
+}
+
+function formatTaskerDiscoverability(taskerProfile: any | null): string {
+  if (!taskerProfile) return "—";
+  if (!taskerProfile.location || typeof taskerProfile.locationCheckedInAt !== "number") {
+    return "Not geographically discoverable";
+  }
+  return formatCheckedInCoordinates(taskerProfile.location, taskerProfile.locationCheckedInAt);
+}
+
 type AdminUserDetail = {
   user: any;
   userPhotoUrl?: string | null;
@@ -1462,6 +1477,7 @@ function UserDetailView({
     city?: string | null;
     province?: string | null;
     coordinates?: unknown;
+    gpsCoordinates?: unknown;
   };
   const settings = (user.settings ?? {}) as { notificationsEnabled?: boolean; locationEnabled?: boolean };
 
@@ -1844,12 +1860,24 @@ function UserDetailView({
             </div>
             <div className="grid gap-2 text-sm">
               <div className="pw-microcard">
-                <div className="pw-mono text-xs text-kumo-muted">Configured location</div>
+                <div className="pw-mono text-xs text-kumo-muted">Home base</div>
                 <div className="text-sm text-kumo-strong">{formatConfiguredLocation(location)}</div>
               </div>
               <div className="pw-microcard">
-                <div className="pw-mono text-xs text-kumo-muted">Geo coordinates</div>
+                <div className="pw-mono text-xs text-kumo-muted">Profile/manual coordinates</div>
                 <div className="pw-mono text-sm text-kumo-strong">{formatCoordinates(location.coordinates)}</div>
+              </div>
+              <div className="pw-microcard">
+                <div className="pw-mono text-xs text-kumo-muted">Last GPS check-in</div>
+                <div className="pw-mono text-sm text-kumo-strong">
+                  {formatCheckedInCoordinates(location.gpsCoordinates, (location.gpsCoordinates as any)?.checkedInAt)}
+                </div>
+              </div>
+              <div className="pw-microcard">
+                <div className="pw-mono text-xs text-kumo-muted">Tasker discoverability</div>
+                <div className="pw-mono text-sm text-kumo-strong">
+                  {formatTaskerDiscoverability(detail.taskerProfile)}
+                </div>
               </div>
             </div>
           </div>
