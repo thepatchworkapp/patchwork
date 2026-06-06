@@ -69,6 +69,7 @@ const createTest = () => {
 };
 
 const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
+const PATCHWORK_BASIC_MONTHLY_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.basic.monthly";
 const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
 
 async function applyAnnualRevenueCatAccess(
@@ -80,6 +81,21 @@ async function applyAnnualRevenueCatAccess(
     type: "INITIAL_PURCHASE",
     appId: PATCHWORK_REVENUECAT_APP_ID,
     productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+    appUserId: userId,
+    aliases: [],
+    expirationAtMs: expirationAtMs ?? null,
+  });
+}
+
+async function applyBasicRevenueCatAccess(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  expirationAtMs?: number,
+) {
+  return await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+    type: "INITIAL_PURCHASE",
+    appId: PATCHWORK_REVENUECAT_APP_ID,
+    productId: PATCHWORK_BASIC_MONTHLY_PRODUCT_ID,
     appUserId: userId,
     aliases: [],
     expirationAtMs: expirationAtMs ?? null,
@@ -920,5 +936,147 @@ describe("searchTaskers", () => {
 
     expect(results.length).toBe(1);
     expect(results[0].name).toBe("Tasker 8 Pro");
+  });
+
+  test("searchTaskerByPremiumPin bypasses location and category filters for active premium taskers", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const plumbingCategory = categories.find((c) => c.slug === "plumber");
+    expect(plumbingCategory).toBeDefined();
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|pin-premium",
+      email: "pin-premium@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Pin Premium",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Pin Premium Pro",
+      categoryId: plumbingCategory!._id,
+      categoryBio: "I fix pipes",
+      rateType: "hourly",
+      hourlyRate: 6000,
+      serviceRadius: 1,
+    });
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+
+    const profile = await asTasker.query(api.taskers.getTaskerProfile);
+    expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+
+    const normalResults = await t.query(api.search.searchTaskers, {
+      categorySlug: "interior-cleaning-services",
+      lat: 0,
+      lng: 0,
+      radiusKm: 1,
+    });
+    expect(normalResults).toHaveLength(0);
+
+    const pinResults = await t.query(api.search.searchTaskerByPremiumPin, {
+      pin: profile!.premiumPin!.toLowerCase(),
+    });
+    expect(pinResults).toHaveLength(1);
+    expect(pinResults[0].name).toBe("Pin Premium Pro");
+    expect(pinResults[0].category).toBe("Plumber");
+    expect(pinResults[0].distance).toBe("Premium match");
+    expect(Object.prototype.hasOwnProperty.call(pinResults[0], "premiumPin")).toBe(false);
+  });
+
+  test("searchTaskerByPremiumPin blocks inactive, ghosted, basic, and self matches", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
+    expect(cleaningCategory).toBeDefined();
+
+    const asPremium = t.withIdentity({
+      tokenIdentifier: "google|pin-block-premium",
+      email: "pin-block-premium@example.com",
+    });
+    await asPremium.mutation(api.users.createProfile, {
+      name: "Pin Block Premium",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asPremium.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Pin Block Premium Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+    const premiumUser = await asPremium.query(api.users.getCurrentUser);
+    expect(premiumUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, premiumUser!._id);
+    const premiumProfile = await asPremium.query(api.taskers.getTaskerProfile);
+    expect(premiumProfile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+
+    const selfResults = await t.query(api.search.searchTaskerByPremiumPin, {
+      pin: premiumProfile!.premiumPin!,
+      excludeUserId: premiumUser!._id,
+    });
+    expect(selfResults).toHaveLength(0);
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(premiumProfile!._id, {
+        ghostMode: true,
+      });
+    });
+    const ghostResults = await t.query(api.search.searchTaskerByPremiumPin, {
+      pin: premiumProfile!.premiumPin!,
+    });
+    expect(ghostResults).toHaveLength(0);
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(premiumProfile!._id, {
+        ghostMode: false,
+      });
+    });
+    await t.mutation(internal.taskersInternal.applyRevenueCatWebhookEvent, {
+      type: "EXPIRATION",
+      appId: PATCHWORK_REVENUECAT_APP_ID,
+      productId: PATCHWORK_ANNUAL_PRODUCT_ID,
+      appUserId: premiumUser!._id,
+      aliases: [],
+      expirationAtMs: Date.now() - 1_000,
+    });
+    const expiredResults = await t.query(api.search.searchTaskerByPremiumPin, {
+      pin: premiumProfile!.premiumPin!,
+    });
+    expect(expiredResults).toHaveLength(0);
+
+    const asBasic = t.withIdentity({
+      tokenIdentifier: "google|pin-block-basic",
+      email: "pin-block-basic@example.com",
+    });
+    await asBasic.mutation(api.users.createProfile, {
+      name: "Pin Block Basic",
+      city: "Toronto",
+      province: "ON",
+    });
+    await asBasic.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Pin Block Basic Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+    const basicUser = await asBasic.query(api.users.getCurrentUser);
+    expect(basicUser).not.toBeNull();
+    await applyBasicRevenueCatAccess(t, basicUser!._id);
+    const basicProfile = await asBasic.query(api.taskers.getTaskerProfile);
+    expect(basicProfile?.premiumPin).toBeUndefined();
   });
 });

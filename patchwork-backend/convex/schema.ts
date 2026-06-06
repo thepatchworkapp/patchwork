@@ -163,6 +163,10 @@ export default defineSchema({
     subscriptionAccessType: v.optional(
       v.union(v.literal("subscription"), v.literal("lifetime"))
     ),
+    subscriptionTier: v.optional(
+      v.union(v.literal("basic"), v.literal("premium"), v.literal("founders"))
+    ),
+    premiumPin: v.optional(v.string()),
     subscriptionActiveAccessTypes: v.optional(
       v.array(v.union(v.literal("subscription"), v.literal("lifetime")))
     ),
@@ -199,6 +203,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
   .index("by_userId", ["userId"])
+  .index("by_premiumPin", ["premiumPin"])
   .index("by_ghostMode", ["ghostMode"])
   .index("by_location", ["location.lat", "location.lng"]),
 

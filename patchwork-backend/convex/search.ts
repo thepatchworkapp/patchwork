@@ -3,7 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { taskerGeo } from "./geospatial";
 import { buildTaskerSummaryDto } from "../lib/convex/dtoTaskers";
-import { getEffectiveGhostMode, hasActiveSubscription } from "../lib/convex/subscriptionState";
+import { getEffectiveGhostMode, hasActivePremiumPinAccess, hasActiveSubscription } from "../lib/convex/subscriptionState";
 import { searchTaskerResultValidator } from "../lib/convex/validators";
 import { getAppUserOrNull } from "./authHelpers";
 
@@ -150,6 +150,73 @@ export const searchTaskers = query({
     }
 
     return results;
+  },
+});
+
+export const searchTaskerByPremiumPin = query({
+  args: {
+    pin: v.string(),
+    excludeUserId: v.optional(v.id("users")),
+  },
+  returns: v.array(searchTaskerResultValidator),
+  handler: async (ctx, args) => {
+    const normalizedPin = args.pin.trim().toUpperCase();
+    if (!/^[0-9A-Z]{8}$/.test(normalizedPin)) {
+      return [];
+    }
+
+    const profile = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_premiumPin", (q) => q.eq("premiumPin", normalizedPin))
+      .first();
+
+    if (!profile) {
+      return [];
+    }
+    if (args.excludeUserId && profile.userId === args.excludeUserId) {
+      return [];
+    }
+    if (
+      !profile.isOnboarded ||
+      !hasActivePremiumPinAccess(profile) ||
+      getEffectiveGhostMode(profile) ||
+      profile.premiumPin !== normalizedPin
+    ) {
+      return [];
+    }
+
+    const user = await ctx.db.get(profile.userId);
+    if (!user) {
+      return [];
+    }
+
+    const categoryData = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile_category", (q) =>
+        q.eq("taskerProfileId", profile._id)
+      )
+      .first();
+    if (!categoryData) {
+      return [];
+    }
+
+    const category = await ctx.db.get(categoryData.categoryId);
+    if (!category?.isActive) {
+      return [];
+    }
+
+    const session = await getAppUserOrNull(ctx);
+    return [
+      await buildTaskerSummaryDto(ctx, {
+        profile,
+        user,
+        category,
+        categoryData,
+        distance: "Premium match",
+        completedJobs: categoryData.completedJobs,
+        includeUrls: !!session,
+      }),
+    ];
   },
 });
 

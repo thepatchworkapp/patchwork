@@ -10,6 +10,12 @@ export const subscriptionAccessTypeValidator = v.union(
   v.literal("lifetime")
 );
 
+export const subscriptionTierValidator = v.union(
+  v.literal("basic"),
+  v.literal("premium"),
+  v.literal("founders")
+);
+
 export const subscriptionStatusValidator = v.union(
   v.literal("inactive"),
   v.literal("active"),
@@ -187,6 +193,8 @@ export const taskerProfileResponseValidator = v.object({
   photoImage: v.union(imageAssetValidator, v.null()),
   subscriptionPlan: subscriptionPlanValidator,
   subscriptionAccessType: v.optional(subscriptionAccessTypeValidator),
+  subscriptionTier: v.optional(subscriptionTierValidator),
+  premiumPin: v.optional(v.string()),
   subscriptionActiveAccessTypes: v.optional(v.array(subscriptionAccessTypeValidator)),
   subscriptionStatus: v.optional(subscriptionStatusValidator),
   subscriptionEndsAt: v.optional(v.number()),

@@ -7,13 +7,17 @@ import {
   dedupeRevenueCatAppUserIds,
   isRevenueCatAnonymousAppUserId,
   mapRevenueCatProduct,
+  mapRevenueCatProductTier,
   PATCHWORK_REVENUECAT_APP_ID,
   REVENUECAT_SUBSCRIBER_API_BASE_URL,
   resolveRevenueCatCustomerState,
   type RevenueCatResolvedCustomerState,
+  type RevenueCatSubscriptionTier,
 } from "../lib/convex/revenueCat";
 
 const MAX_SCHEDULER_DELAY_MS = 2_147_483_647;
+const PREMIUM_PIN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const PREMIUM_PIN_LENGTH = 8;
 
 type RevenueCatWebhookFallbackArgs = {
   type: string;
@@ -36,6 +40,10 @@ function revenueCatSubscriptionStatusValidator() {
     v.literal("cancel_at_period_end"),
     v.literal("expired"),
   );
+}
+
+function revenueCatSubscriptionTierValidator() {
+  return v.union(v.literal("basic"), v.literal("premium"), v.literal("founders"));
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -112,6 +120,56 @@ async function syncTaskerGeoFromLastGpsCheckIn(ctx: any, profile: any) {
     lng: coordinates.lng,
     checkedInAt: coordinates.checkedInAt,
   });
+}
+
+function shouldHaveActivePremiumPin(tier?: RevenueCatSubscriptionTier, status?: string) {
+  return status === "active" && (tier === "premium" || tier === "founders");
+}
+
+function generatePremiumPinCandidate() {
+  let pin = "";
+  for (let index = 0; index < PREMIUM_PIN_LENGTH; index += 1) {
+    pin += PREMIUM_PIN_ALPHABET[Math.floor(Math.random() * PREMIUM_PIN_ALPHABET.length)];
+  }
+  return pin;
+}
+
+async function getUniquePremiumPin(ctx: any, profile: any) {
+  if (
+    typeof profile.premiumPin === "string" &&
+    /^[0-9A-Z]{8}$/.test(profile.premiumPin)
+  ) {
+    return profile.premiumPin;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidate = generatePremiumPinCandidate();
+    const existing = await ctx.db
+      .query("taskerProfiles")
+      .withIndex("by_premiumPin", (q: any) => q.eq("premiumPin", candidate))
+      .first();
+
+    if (!existing || existing._id === profile._id) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Unable to generate unique premium pin");
+}
+
+async function applyPremiumPinLifecycle(
+  ctx: any,
+  profile: any,
+  updates: Record<string, unknown>,
+  tier?: RevenueCatSubscriptionTier,
+  status?: string,
+) {
+  if (shouldHaveActivePremiumPin(tier, status)) {
+    updates.premiumPin = await getUniquePremiumPin(ctx, profile);
+    return;
+  }
+
+  updates.premiumPin = undefined;
 }
 
 async function fetchRevenueCatSubscriber(
@@ -246,9 +304,11 @@ async function reconcileRevenueCatCustomerState(
       sourceAppUserId: resolvedCustomer.sourceAppUserId,
       activeAccessTypes: resolvedCustomer.resolved.activeAccessTypes,
       effectiveAccessType: resolvedCustomer.resolved.effectiveAccessType,
+      effectiveTier: resolvedCustomer.resolved.effectiveTier,
       effectiveStatus: resolvedCustomer.resolved.effectiveStatus,
       subscriptionEndsAt: resolvedCustomer.resolved.subscriptionEndsAt ?? null,
       lastKnownAccessType: resolvedCustomer.resolved.lastKnownAccessType,
+      lastKnownTier: resolvedCustomer.resolved.lastKnownTier,
       hasTrackedPurchase: resolvedCustomer.resolved.hasTrackedPurchase,
     });
   } catch (error) {
@@ -298,6 +358,7 @@ export const expireSubscriptionAtTermEnd = internalMutation({
       subscriptionStatus: "expired",
       subscriptionActiveAccessTypes: [],
       ghostMode: true,
+      premiumPin: undefined,
       updatedAt: Date.now(),
     });
   },
@@ -309,9 +370,11 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
     sourceAppUserId: v.optional(v.string()),
     activeAccessTypes: v.array(revenueCatAccessTypeValidator()),
     effectiveAccessType: v.optional(revenueCatAccessTypeValidator()),
+    effectiveTier: v.optional(revenueCatSubscriptionTierValidator()),
     effectiveStatus: revenueCatSubscriptionStatusValidator(),
     subscriptionEndsAt: v.optional(v.union(v.number(), v.null())),
     lastKnownAccessType: v.optional(revenueCatAccessTypeValidator()),
+    lastKnownTier: v.optional(revenueCatSubscriptionTierValidator()),
     hasTrackedPurchase: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -333,6 +396,7 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
     if (args.effectiveStatus === "active" || args.effectiveStatus === "cancel_at_period_end") {
       updates.subscriptionPlan = "tasker";
       updates.subscriptionAccessType = args.effectiveAccessType;
+      updates.subscriptionTier = args.effectiveTier;
       updates.subscriptionStatus = args.effectiveStatus;
       updates.subscriptionEndsAt =
         args.effectiveAccessType === "subscription"
@@ -345,6 +409,7 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
               })
           : undefined;
       updates.ghostMode = false;
+      await applyPremiumPinLifecycle(ctx, profile, updates, args.effectiveTier, args.effectiveStatus);
       await ctx.db.patch(profile._id, updates);
       await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
 
@@ -365,10 +430,12 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
     if (args.effectiveStatus === "expired") {
       updates.subscriptionPlan = "tasker";
       updates.subscriptionAccessType = args.lastKnownAccessType;
+      updates.subscriptionTier = args.lastKnownTier;
       updates.subscriptionStatus = "expired";
       updates.subscriptionEndsAt =
         args.lastKnownAccessType === "subscription" ? args.subscriptionEndsAt ?? profile.subscriptionEndsAt : undefined;
       updates.ghostMode = true;
+      await applyPremiumPinLifecycle(ctx, profile, updates, args.lastKnownTier, "expired");
       await ctx.db.patch(profile._id, updates);
       console.info("[RevenueCatWebhook] Applied canonical expired tasker access", {
         profileId: profile._id,
@@ -381,9 +448,11 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
     if (!args.hasTrackedPurchase) {
       updates.subscriptionPlan = "none";
       updates.subscriptionAccessType = undefined;
+      updates.subscriptionTier = undefined;
       updates.subscriptionStatus = "inactive";
       updates.subscriptionEndsAt = undefined;
       updates.ghostMode = true;
+      updates.premiumPin = undefined;
       await ctx.db.patch(profile._id, updates);
       console.info("[RevenueCatWebhook] Applied canonical inactive tasker access", {
         profileId: profile._id,
@@ -460,9 +529,14 @@ export const applyRevenueCatWebhookEvent = internalMutation({
     }
 
     const mappedProduct = mapRevenueCatProduct(args.productId);
+    const mappedTier = mapRevenueCatProductTier(args.productId);
     if (mappedProduct === "legacy_weekly") {
       console.info("[RevenueCatWebhook] Ignoring legacy weekly product", { productId: args.productId });
       return { applied: false, reason: "legacy_weekly_ignored" };
+    }
+    if (mappedTier === "legacy_weekly" || !mappedTier) {
+      console.info("[RevenueCatWebhook] Ignoring untracked tier product", { productId: args.productId });
+      return { applied: false, reason: "untracked_product" };
     }
     if (!mappedProduct) {
       console.info("[RevenueCatWebhook] Ignoring untracked product", { productId: args.productId });
@@ -501,6 +575,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
     const updates: Record<string, unknown> = {
       subscriptionPlan: "tasker",
       subscriptionAccessType: mappedProduct,
+      subscriptionTier: mappedTier,
       subscriptionActiveAccessTypes: [mappedProduct],
       updatedAt: Date.now(),
     };
@@ -518,6 +593,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
               })
           : undefined;
       updates.ghostMode = false;
+      await applyPremiumPinLifecycle(ctx, profile, updates, mappedTier, "active");
       await ctx.db.patch(profile._id, updates);
       await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
       console.info("[RevenueCatWebhook] Activated tasker access", {
@@ -541,6 +617,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
       updates.subscriptionStatus = "cancel_at_period_end";
       updates.subscriptionEndsAt = endsAt;
       updates.ghostMode = false;
+      await applyPremiumPinLifecycle(ctx, profile, updates, mappedTier, "cancel_at_period_end");
       await ctx.db.patch(profile._id, updates);
       await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
       await scheduleTermEndExpiration(ctx, profile._id, endsAt);
@@ -558,6 +635,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
         mappedProduct === "subscription" ? expirationAt ?? profile.subscriptionEndsAt : undefined;
       updates.subscriptionActiveAccessTypes = [];
       updates.ghostMode = true;
+      await applyPremiumPinLifecycle(ctx, profile, updates, mappedTier, "expired");
       await ctx.db.patch(profile._id, updates);
       console.info("[RevenueCatWebhook] Expired tasker access", {
         profileId: profile._id,

@@ -6,6 +6,7 @@ import {
   getEffectiveGhostMode,
   getEffectiveSubscriptionPlan,
   getEffectiveSubscriptionStatus,
+  getEffectiveSubscriptionTier,
   hasActiveSubscription,
 } from "../lib/convex/subscriptionState";
 import {
@@ -39,6 +40,7 @@ const favouriteStatusValidator = v.object({
 function buildSubscriptionView(profile: {
   subscriptionPlan: "none" | "tasker";
   subscriptionAccessType?: "subscription" | "lifetime";
+  subscriptionTier?: "basic" | "premium" | "founders";
   subscriptionActiveAccessTypes?: Array<"subscription" | "lifetime">;
   subscriptionStatus?: "inactive" | "active" | "cancel_at_period_end" | "expired";
   subscriptionEndsAt?: number;
@@ -46,6 +48,7 @@ function buildSubscriptionView(profile: {
 }) {
   return {
     subscriptionPlan: getEffectiveSubscriptionPlan(profile),
+    subscriptionTier: getEffectiveSubscriptionTier(profile),
     subscriptionStatus: getEffectiveSubscriptionStatus(profile),
     subscriptionEndsAt: profile.subscriptionEndsAt,
     hasActiveSubscription: hasActiveSubscription(profile),
@@ -221,6 +224,8 @@ async function buildTaskerProfileResponse(
     photoImage,
     subscriptionPlan: profile.subscriptionPlan,
     subscriptionAccessType: profile.subscriptionAccessType,
+    subscriptionTier: profile.subscriptionTier,
+    premiumPin: profile.premiumPin,
     subscriptionActiveAccessTypes: profile.subscriptionActiveAccessTypes,
     subscriptionStatus: profile.subscriptionStatus,
     subscriptionEndsAt: profile.subscriptionEndsAt,

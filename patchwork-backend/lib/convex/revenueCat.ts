@@ -1,11 +1,13 @@
 export const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
 export const PATCHWORK_REVENUECAT_ENTITLEMENT_ID = "tasker_access";
+export const PATCHWORK_BASIC_MONTHLY_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.basic.monthly";
 export const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
 export const PATCHWORK_LIFETIME_PRODUCT_ID = "ltd.ddga.patchwork.tasker.lifetime";
 export const PATCHWORK_LEGACY_WEEKLY_PRODUCT_ID = "ltd.ddga.patchwork.tasker.weekly";
 export const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
 
 export type RevenueCatAccessType = "subscription" | "lifetime";
+export type RevenueCatSubscriptionTier = "basic" | "premium" | "founders";
 export type RevenueCatSubscriptionStatus =
   | "inactive"
   | "active"
@@ -15,9 +17,11 @@ export type RevenueCatSubscriptionStatus =
 export type RevenueCatResolvedCustomerState = {
   activeAccessTypes: RevenueCatAccessType[];
   effectiveAccessType?: RevenueCatAccessType;
+  effectiveTier?: RevenueCatSubscriptionTier;
   effectiveStatus: RevenueCatSubscriptionStatus;
   subscriptionEndsAt?: number;
   lastKnownAccessType?: RevenueCatAccessType;
+  lastKnownTier?: RevenueCatSubscriptionTier;
   hasTrackedPurchase: boolean;
 };
 
@@ -84,6 +88,34 @@ function getSubscriptionRecord(
   return subscriptions ? asRecord(subscriptions[productId]) : null;
 }
 
+function getSubscriptionActivity(
+  subscriber: RevenueCatSubscriberRecord,
+  productId: string,
+) {
+  const record = getSubscriptionRecord(subscriber, productId);
+  const expiresAt =
+    parseRevenueCatDateMs(record?.expires_date_ms)
+    ?? parseRevenueCatDateMs(record?.expiration_at_ms)
+    ?? parseRevenueCatDateMs(record?.expires_date)
+    ?? parseRevenueCatDateMs(record?.expiration_at);
+  const purchaseAt =
+    parseRevenueCatDateMs(record?.purchase_date_ms)
+    ?? parseRevenueCatDateMs(record?.purchase_date)
+    ?? parseRevenueCatDateMs(record?.original_purchase_date_ms)
+    ?? parseRevenueCatDateMs(record?.original_purchase_date);
+  const cancellationDetectedAt =
+    parseRevenueCatDateMs(record?.unsubscribe_detected_at_ms)
+    ?? parseRevenueCatDateMs(record?.unsubscribe_detected_at);
+
+  return {
+    record,
+    expiresAt,
+    purchaseAt,
+    cancellationDetectedAt,
+    isActive: expiresAt !== undefined && expiresAt > Date.now(),
+  };
+}
+
 function getNonSubscriptionRecords(
   subscriber: RevenueCatSubscriberRecord,
   productId: string,
@@ -121,12 +153,38 @@ export function mapRevenueCatProduct(
     return null;
   }
 
-  if (productId === PATCHWORK_ANNUAL_PRODUCT_ID) {
+  if (productId === PATCHWORK_BASIC_MONTHLY_PRODUCT_ID || productId === PATCHWORK_ANNUAL_PRODUCT_ID) {
     return "subscription";
   }
 
   if (productId === PATCHWORK_LIFETIME_PRODUCT_ID) {
     return "lifetime";
+  }
+
+  if (productId === PATCHWORK_LEGACY_WEEKLY_PRODUCT_ID) {
+    return "legacy_weekly";
+  }
+
+  return null;
+}
+
+export function mapRevenueCatProductTier(
+  productId: string | undefined,
+): RevenueCatSubscriptionTier | "legacy_weekly" | null {
+  if (!productId) {
+    return null;
+  }
+
+  if (productId === PATCHWORK_BASIC_MONTHLY_PRODUCT_ID) {
+    return "basic";
+  }
+
+  if (productId === PATCHWORK_ANNUAL_PRODUCT_ID) {
+    return "premium";
+  }
+
+  if (productId === PATCHWORK_LIFETIME_PRODUCT_ID) {
+    return "founders";
   }
 
   if (productId === PATCHWORK_LEGACY_WEEKLY_PRODUCT_ID) {
@@ -162,6 +220,7 @@ export function resolveRevenueCatCustomerState(
   const entitlement = getEntitlementRecord(subscriber);
   const entitlementProductId = asString(entitlement?.product_identifier) ?? asString(entitlement?.product_id);
   const mappedEntitlementProduct = mapRevenueCatProduct(entitlementProductId);
+  const mappedEntitlementTier = mapRevenueCatProductTier(entitlementProductId);
   const entitlementExpiresAt =
     parseRevenueCatDateMs(entitlement?.expires_date_ms)
     ?? parseRevenueCatDateMs(entitlement?.expiration_at_ms)
@@ -178,22 +237,18 @@ export function resolveRevenueCatCustomerState(
   const entitlementIsActive = Boolean(entitlement)
     && (entitlementExpiresAt === undefined || entitlementExpiresAt > now);
 
-  const annualSubscription = getSubscriptionRecord(subscriber, PATCHWORK_ANNUAL_PRODUCT_ID);
-  const annualSubscriptionExpiresAt =
-    parseRevenueCatDateMs(annualSubscription?.expires_date_ms)
-    ?? parseRevenueCatDateMs(annualSubscription?.expiration_at_ms)
-    ?? parseRevenueCatDateMs(annualSubscription?.expires_date)
-    ?? parseRevenueCatDateMs(annualSubscription?.expiration_at);
-  const annualSubscriptionPurchaseAt =
-    parseRevenueCatDateMs(annualSubscription?.purchase_date_ms)
-    ?? parseRevenueCatDateMs(annualSubscription?.purchase_date)
-    ?? parseRevenueCatDateMs(annualSubscription?.original_purchase_date_ms)
-    ?? parseRevenueCatDateMs(annualSubscription?.original_purchase_date);
-  const annualCancellationDetectedAt =
-    parseRevenueCatDateMs(annualSubscription?.unsubscribe_detected_at_ms)
-    ?? parseRevenueCatDateMs(annualSubscription?.unsubscribe_detected_at);
+  const annualSubscription = getSubscriptionActivity(subscriber, PATCHWORK_ANNUAL_PRODUCT_ID);
+  const basicMonthlySubscription = getSubscriptionActivity(subscriber, PATCHWORK_BASIC_MONTHLY_PRODUCT_ID);
+  const annualSubscriptionExpiresAt = annualSubscription.expiresAt;
+  const annualSubscriptionPurchaseAt = annualSubscription.purchaseAt;
+  const annualCancellationDetectedAt = annualSubscription.cancellationDetectedAt;
+  const basicMonthlySubscriptionExpiresAt = basicMonthlySubscription.expiresAt;
+  const basicMonthlySubscriptionPurchaseAt = basicMonthlySubscription.purchaseAt;
+  const basicMonthlyCancellationDetectedAt = basicMonthlySubscription.cancellationDetectedAt;
   const annualSubscriptionIsActive =
     annualSubscriptionExpiresAt !== undefined && annualSubscriptionExpiresAt > now;
+  const basicMonthlySubscriptionIsActive =
+    basicMonthlySubscriptionExpiresAt !== undefined && basicMonthlySubscriptionExpiresAt > now;
 
   const lifetimePurchaseRecords = getNonSubscriptionRecords(subscriber, PATCHWORK_LIFETIME_PRODUCT_ID);
   const latestLifetimePurchaseAt = latestDefined([
@@ -210,6 +265,8 @@ export function resolveRevenueCatCustomerState(
   const latestSubscriptionActivityAt = latestDefined([
     annualSubscriptionPurchaseAt,
     annualSubscriptionExpiresAt,
+    basicMonthlySubscriptionPurchaseAt,
+    basicMonthlySubscriptionExpiresAt,
     mappedEntitlementProduct === "subscription" ? entitlementPurchaseAt : undefined,
     mappedEntitlementProduct === "subscription" ? entitlementExpiresAt : undefined,
   ]);
@@ -219,6 +276,9 @@ export function resolveRevenueCatCustomerState(
     activeAccessTypes.add(mappedEntitlementProduct);
   }
   if (annualSubscriptionIsActive) {
+    activeAccessTypes.add("subscription");
+  }
+  if (basicMonthlySubscriptionIsActive) {
     activeAccessTypes.add("subscription");
   }
 
@@ -238,15 +298,56 @@ export function resolveRevenueCatCustomerState(
       ? mappedEntitlementProduct
       : undefined;
 
+  const activeTiers = new Set<RevenueCatSubscriptionTier>();
+  if (entitlementIsActive && mappedEntitlementTier && mappedEntitlementTier !== "legacy_weekly") {
+    activeTiers.add(mappedEntitlementTier);
+  }
+  if (annualSubscriptionIsActive) {
+    activeTiers.add("premium");
+  }
+  if (basicMonthlySubscriptionIsActive) {
+    activeTiers.add("basic");
+  }
+  if (latestLifetimePurchaseAt !== undefined) {
+    activeTiers.add("founders");
+  }
+
+  const effectiveTier: RevenueCatSubscriptionTier | undefined = activeTiers.has("founders")
+    ? "founders"
+    : activeTiers.has("premium")
+      ? "premium"
+      : activeTiers.has("basic")
+        ? "basic"
+        : undefined;
+
+  const lastKnownTier = latestLifetimePurchaseAt !== undefined || latestSubscriptionActivityAt !== undefined
+    ? latestLifetimePurchaseAt !== undefined
+        && (latestSubscriptionActivityAt === undefined || latestLifetimePurchaseAt >= latestSubscriptionActivityAt)
+      ? "founders"
+      : annualSubscriptionPurchaseAt !== undefined
+          && (
+            basicMonthlySubscriptionPurchaseAt === undefined
+            || annualSubscriptionPurchaseAt >= basicMonthlySubscriptionPurchaseAt
+          )
+        ? "premium"
+        : "basic"
+    : mappedEntitlementTier && mappedEntitlementTier !== "legacy_weekly"
+      ? mappedEntitlementTier
+      : undefined;
+
   let effectiveStatus: RevenueCatSubscriptionStatus = "inactive";
   let subscriptionEndsAt: number | undefined;
 
   if (effectiveAccessType === "lifetime") {
     effectiveStatus = "active";
   } else if (effectiveAccessType === "subscription") {
-    subscriptionEndsAt = annualSubscriptionExpiresAt ?? entitlementExpiresAt;
+    subscriptionEndsAt = effectiveTier === "basic"
+      ? basicMonthlySubscriptionExpiresAt ?? entitlementExpiresAt
+      : annualSubscriptionExpiresAt ?? entitlementExpiresAt ?? basicMonthlySubscriptionExpiresAt;
     effectiveStatus =
-      annualCancellationDetectedAt !== undefined || entitlementCancellationDetectedAt !== undefined
+      annualCancellationDetectedAt !== undefined
+        || basicMonthlyCancellationDetectedAt !== undefined
+        || entitlementCancellationDetectedAt !== undefined
         ? "cancel_at_period_end"
         : "active";
   } else if (lastKnownAccessType) {
@@ -259,9 +360,11 @@ export function resolveRevenueCatCustomerState(
   return {
     activeAccessTypes: orderedActiveAccessTypes,
     effectiveAccessType,
+    effectiveTier,
     effectiveStatus,
     subscriptionEndsAt,
     lastKnownAccessType,
+    lastKnownTier,
     hasTrackedPurchase: lastKnownAccessType !== undefined,
   };
 }

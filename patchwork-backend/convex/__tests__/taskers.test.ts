@@ -24,6 +24,7 @@ const modules: Record<string, () => Promise<any>> = {
 };
 
 const PATCHWORK_REVENUECAT_APP_ID = "app6be2ab0fb8";
+const PATCHWORK_BASIC_MONTHLY_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.basic.monthly";
 const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.yearly";
 const PATCHWORK_LIFETIME_PRODUCT_ID = "ltd.ddga.patchwork.tasker.lifetime";
 const originalRevenueCatSecretApiKey = process.env.REVENUECAT_SECRET_API_KEY;
@@ -918,10 +919,61 @@ describe("taskers", () => {
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionPlan).toBe("tasker");
      expect(profile?.subscriptionAccessType).toBe("subscription");
+     expect(profile?.subscriptionTier).toBe("premium");
      expect(profile?.subscriptionStatus).toBe("active");
      expect(profile?.subscriptionEndsAt).toBe(1_900_000_000_000);
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
+     expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
+   });
+
+   test("applyRevenueCatWebhookEvent activates basic monthly without a premium pin", async () => {
+     const t = convexTest(schema, modules);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|601-basic",
+       email: "basic-subscription@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Basic Plan Test",
+       city: "Toronto",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const category = await t.query(api.categories.getCategoryBySlug, {
+       slug: "plumber",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Basic Subscriber",
+       categoryId: category!._id,
+       categoryBio: "Plumbing services",
+       rateType: "hourly",
+       hourlyRate: 7000,
+       serviceRadius: 20,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+
+     const result = await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_BASIC_MONTHLY_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
+     });
+
+     expect(result).toEqual({ applied: true, reason: "activated" });
+
+     const profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.subscriptionPlan).toBe("tasker");
+     expect(profile?.subscriptionAccessType).toBe("subscription");
+     expect(profile?.subscriptionTier).toBe("basic");
+     expect(profile?.subscriptionStatus).toBe("active");
+     expect(profile?.hasActiveSubscription).toBe(true);
+     expect(profile?.premiumPin).toBeUndefined();
    });
 
    test("applyRevenueCatWebhookEvent activates lifetime tasker access", async () => {
@@ -968,9 +1020,11 @@ describe("taskers", () => {
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionPlan).toBe("tasker");
      expect(profile?.subscriptionAccessType).toBe("lifetime");
+     expect(profile?.subscriptionTier).toBe("founders");
      expect(profile?.subscriptionStatus).toBe("active");
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
+     expect(profile?.premiumPin).toMatch(/^[0-9A-Z]{8}$/);
    });
 
    test("applyRevenueCatWebhookEvent clears ghostMode when activating subscription", async () => {
@@ -1078,6 +1132,7 @@ describe("taskers", () => {
      expect(profile?.subscriptionStatus).toBe("cancel_at_period_end");
      expect(profile?.hasActiveSubscription).toBe(true);
      expect(profile?.ghostMode).toBe(false);
+     expect(profile?.premiumPin).toBeUndefined();
    });
 
    test("expired subscriptions become inactive and force ghost mode", async () => {
@@ -1132,6 +1187,7 @@ describe("taskers", () => {
      expect(profile?.subscriptionStatus).toBe("expired");
      expect(profile?.hasActiveSubscription).toBe(false);
      expect(profile?.ghostMode).toBe(true);
+     expect(profile?.premiumPin).toBeUndefined();
    });
 
    test("setGhostMode fails without active subscription", async () => {
@@ -1272,6 +1328,7 @@ describe("taskers", () => {
 
      const profile = await asUser.query(api.taskers.getTaskerProfile);
      expect(profile?.subscriptionStatus).toBe("expired");
+     expect(profile?.premiumPin).toBeUndefined();
      expect(profile?.hasActiveSubscription).toBe(false);
    });
 

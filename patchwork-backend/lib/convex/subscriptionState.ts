@@ -1,5 +1,6 @@
 export type TaskerSubscriptionPlan = "none" | "tasker";
 export type TaskerSubscriptionAccessType = "subscription" | "lifetime";
+export type TaskerSubscriptionTier = "basic" | "premium" | "founders";
 export type TaskerSubscriptionStatus =
   | "inactive"
   | "active"
@@ -9,6 +10,7 @@ export type TaskerSubscriptionStatus =
 type TaskerSubscriptionFields = {
   subscriptionPlan: TaskerSubscriptionPlan;
   subscriptionAccessType?: TaskerSubscriptionAccessType;
+  subscriptionTier?: TaskerSubscriptionTier;
   subscriptionStatus?: TaskerSubscriptionStatus;
   subscriptionEndsAt?: number;
   ghostMode: boolean;
@@ -50,6 +52,24 @@ export function getEffectiveSubscriptionPlan(
   now = Date.now(),
 ): TaskerSubscriptionPlan {
   return hasActiveSubscription(profile, now) ? profile.subscriptionPlan : "none";
+}
+
+export function getEffectiveSubscriptionTier(
+  profile: TaskerSubscriptionFields,
+  now = Date.now(),
+): TaskerSubscriptionTier | undefined {
+  return hasActiveSubscription(profile, now) ? profile.subscriptionTier : undefined;
+}
+
+export function hasActivePremiumPinAccess(
+  profile: TaskerSubscriptionFields,
+  now = Date.now(),
+): boolean {
+  if (getEffectiveSubscriptionStatus(profile, now) !== "active") {
+    return false;
+  }
+
+  return profile.subscriptionTier === "premium" || profile.subscriptionTier === "founders";
 }
 
 export function getEffectiveGhostMode(
