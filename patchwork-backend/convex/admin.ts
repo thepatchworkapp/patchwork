@@ -54,6 +54,7 @@ const resetTableNameValidator = v.union(
   v.literal("userBlocks"),
   v.literal("userReports"),
   v.literal("reviewAccess"),
+  v.literal("pushTokens"),
   v.literal("otps"),
   v.literal("adminOtps"),
   v.literal("users"),
@@ -77,6 +78,7 @@ const RESET_TABLES = [
   "userBlocks",
   "userReports",
   "reviewAccess",
+  "pushTokens",
   "otps",
   "adminOtps",
   "users",
@@ -106,6 +108,7 @@ type ResetCounts = {
   deletedUserBlocks: number;
   deletedUserReports: number;
   deletedReviewAccess: number;
+  deletedPushTokens: number;
   deletedOtps: number;
   deletedAdminOtps: number;
   deletedUsers: number;
@@ -284,6 +287,7 @@ function createEmptyResetCounts(): ResetCounts {
     deletedUserBlocks: 0,
     deletedUserReports: 0,
     deletedReviewAccess: 0,
+    deletedPushTokens: 0,
     deletedOtps: 0,
     deletedAdminOtps: 0,
     deletedUsers: 0,
@@ -349,6 +353,9 @@ function incrementResetCount(resetCounts: ResetCounts, tableName: ResetTableName
       return;
     case "reviewAccess":
       resetCounts.deletedReviewAccess += count;
+      return;
+    case "pushTokens":
+      resetCounts.deletedPushTokens += count;
       return;
     case "otps":
       resetCounts.deletedOtps += count;
@@ -437,6 +444,7 @@ const resetDatabaseResultValidator = v.object({
   deletedUserBlocks: v.number(),
   deletedUserReports: v.number(),
   deletedReviewAccess: v.number(),
+  deletedPushTokens: v.number(),
   deletedOtps: v.number(),
   deletedAdminOtps: v.number(),
   deletedUsers: v.number(),

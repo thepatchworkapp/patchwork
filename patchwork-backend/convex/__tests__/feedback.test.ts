@@ -243,6 +243,14 @@ describe("feedback", () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
+        await ctx.db.insert("pushTokens", {
+          userId,
+          token: "reset-token",
+          platform: "ios",
+          environment: "production",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
       });
 
       const [legacyPhotoStorageId, thumbStorageId, displayStorageId, largeStorageId] = await Promise.all([
@@ -297,6 +305,7 @@ describe("feedback", () => {
 
       const firstReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(firstReset.deletedFavouriteTaskers).toBe(1);
+      expect(firstReset.deletedPushTokens).toBe(1);
       expect(firstReset.deletedImageAssets).toBe(1);
       expect(firstReset.deletedStorageFiles).toBe(4);
       expect(firstReset.missingStorageFiles).toBe(0);
@@ -304,10 +313,16 @@ describe("feedback", () => {
 
       const secondReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(secondReset.deletedFavouriteTaskers).toBe(0);
+      expect(secondReset.deletedPushTokens).toBe(0);
       expect(secondReset.deletedImageAssets).toBe(0);
       expect(secondReset.deletedStorageFiles).toBe(0);
       expect(secondReset.missingStorageFiles).toBe(0);
       expect(secondReset.failedStorageFiles).toBe(0);
+
+      const remainingPushTokens = await t.run(async (ctx) =>
+        await ctx.db.query("pushTokens").take(10)
+      );
+      expect(remainingPushTokens).toHaveLength(0);
 
       const [legacyUrl, thumbUrl, displayUrl, largeUrl] = await Promise.all([
         t.run(async (ctx) => await ctx.storage.getUrl(legacyPhotoStorageId)),

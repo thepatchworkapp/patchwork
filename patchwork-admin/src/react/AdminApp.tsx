@@ -236,6 +236,7 @@ type ResetDatabaseResult = {
   deletedDiscoverCategorySearchDailyTerms?: number;
   deletedUserBlocks: number;
   deletedUserReports: number;
+  deletedPushTokens: number;
   deletedStorageFiles: number;
   missingStorageFiles?: number;
   failedStorageFiles?: number;
@@ -290,6 +291,7 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
     ["Search analytics", result.deletedDiscoverCategorySearchDailyTerms],
     ["User blocks", result.deletedUserBlocks],
     ["User reports", result.deletedUserReports],
+    ["Push tokens", result.deletedPushTokens],
     ["Image assets", result.deletedImageAssets],
     ["Storage files", result.deletedStorageFiles],
     ["Missing storage files", result.missingStorageFiles],
@@ -405,7 +407,7 @@ function AdminMaintenanceCard() {
       setResetResult(result);
       setShowResetConfirm(false);
       setResetConfirmText("");
-      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
+      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedPushTokens} push tokens, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files.`;
       if (result.failedStorageFiles && result.failedStorageFiles > 0) {
         nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
       }
