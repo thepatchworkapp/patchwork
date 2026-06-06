@@ -22,10 +22,17 @@ export const locationCoordinatesValidator = v.object({
   lng: v.number(),
 });
 
+export const gpsCoordinatesValidator = v.object({
+  lat: v.number(),
+  lng: v.number(),
+  checkedInAt: v.number(),
+});
+
 export const userLocationValidator = v.object({
   city: v.string(),
   province: v.string(),
   coordinates: v.optional(locationCoordinatesValidator),
+  gpsCoordinates: v.optional(gpsCoordinatesValidator),
 });
 
 export const userRolesValidator = v.object({
@@ -191,6 +198,7 @@ export const taskerProfileResponseValidator = v.object({
     })
   ),
   location: v.optional(locationCoordinatesValidator),
+  locationCheckedInAt: v.optional(v.number()),
   geoPoint: v.optional(v.string()),
   createdAt: v.number(),
   updatedAt: v.number(),

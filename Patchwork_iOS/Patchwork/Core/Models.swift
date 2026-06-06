@@ -260,6 +260,7 @@ struct UserLocation: Codable, Hashable {
     let city: String?
     let province: String?
     let coordinates: Coordinates?
+    let gpsCoordinates: GPSCoordinates?
 }
 
 struct UserSettings: Codable, Hashable {
@@ -270,6 +271,69 @@ struct UserSettings: Codable, Hashable {
 struct Coordinates: Codable, Hashable {
     let lat: Double
     let lng: Double
+}
+
+struct GPSCoordinates: Codable, Hashable {
+    let lat: Double
+    let lng: Double
+    let checkedInAt: Int
+}
+
+enum DiscoverSearchOriginMode: String, Hashable {
+    case currentLocation
+    case selectedCity
+}
+
+enum DiscoverSearchOriginSource: String, Hashable {
+    case gps
+    case city
+}
+
+struct DiscoverSearchOrigin: Hashable {
+    let mode: DiscoverSearchOriginMode
+    let coordinates: Coordinates
+    let city: String?
+    let province: String?
+    let source: DiscoverSearchOriginSource
+
+    var displayLabel: String {
+        let trimmedCity = city?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedProvince = province?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if trimmedCity.isEmpty && trimmedProvince.isEmpty {
+            return mode == .currentLocation ? "Current location" : "Selected city"
+        }
+        if trimmedCity.isEmpty {
+            return trimmedProvince
+        }
+        if trimmedProvince.isEmpty {
+            return trimmedCity
+        }
+        return "\(trimmedCity), \(trimmedProvince)"
+    }
+
+    static func currentLocation(from user: CurrentUser?) -> DiscoverSearchOrigin? {
+        guard let gpsCoordinates = user?.location?.gpsCoordinates else {
+            return nil
+        }
+        return DiscoverSearchOrigin(
+            mode: .currentLocation,
+            coordinates: Coordinates(lat: gpsCoordinates.lat, lng: gpsCoordinates.lng),
+            city: nil,
+            province: nil,
+            source: .gps
+        )
+    }
+
+    static func selectedCity(_ option: HomeBaseOption, coordinates: Coordinates) -> DiscoverSearchOrigin {
+        DiscoverSearchOrigin(
+            mode: .selectedCity,
+            coordinates: coordinates,
+            city: option.city,
+            province: option.province,
+            source: .city
+        )
+    }
 }
 
 struct ConversationSummary: Identifiable, Codable, Hashable {

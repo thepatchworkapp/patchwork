@@ -17,6 +17,11 @@ export default defineSchema({
         lat: v.number(),
         lng: v.number(),
       })),
+      gpsCoordinates: v.optional(v.object({
+        lat: v.number(),
+        lng: v.number(),
+        checkedInAt: v.number(),
+      })),
     }),
     roles: v.object({
       isSeeker: v.boolean(),
@@ -186,6 +191,7 @@ export default defineSchema({
         lng: v.number(),
       })
     ),
+    locationCheckedInAt: v.optional(v.number()),
     geoPoint: v.optional(v.string()), // for @get-convex/geospatial
 
     // Timestamps

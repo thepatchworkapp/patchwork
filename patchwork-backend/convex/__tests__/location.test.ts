@@ -105,7 +105,7 @@ describe("location", () => {
     ).rejects.toThrow("Unauthorized");
   });
 
-  test("updateTaskerLocation updates taskerProfiles.location", async () => {
+  test("checkInGpsLocation updates taskerProfiles.location", async () => {
     const t = createTest();
 
     const asUser = t.withIdentity({
@@ -133,7 +133,7 @@ describe("location", () => {
       serviceRadius: 10,
     });
 
-    await asUser.mutation(api.location.updateTaskerLocation, {
+    await asUser.mutation(api.users.checkInGpsLocation, {
       lat: 49.2827,
       lng: -123.1207,
     });
@@ -143,6 +143,90 @@ describe("location", () => {
     expect(taskerProfile?.location).toBeDefined();
     expect(taskerProfile?.location?.lat).toBe(49.2827);
     expect(taskerProfile?.location?.lng).toBe(-123.1207);
+    expect(taskerProfile?.locationCheckedInAt).toBeDefined();
+  });
+
+  test("manual user location updates do not update tasker discoverability location", async () => {
+    const t = createTest();
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|location-test-manual-tasker",
+      email: "manual-tasker-location@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Manual Location Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asUser.mutation(internal.categories.seedCategories, {});
+    const categories = await asUser.query(api.categories.listCategories);
+    const categoryId = categories[0]._id;
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Manual Tasker",
+      bio: "Test bio",
+      categoryId,
+      categoryBio: "Category bio",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    await asUser.mutation(api.users.updateLocation, {
+      lat: 45.4215,
+      lng: -75.6972,
+      source: "manual",
+    });
+
+    const taskerProfile = await asUser.query(api.taskers.getTaskerProfile);
+    expect(taskerProfile?.location).toBeUndefined();
+    expect(taskerProfile?.locationCheckedInAt).toBeUndefined();
+  });
+
+  test("GPS check-in updates user GPS coordinates and tasker discoverability location", async () => {
+    const t = createTest();
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|location-test-gps-tasker",
+      email: "gps-tasker-location@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "GPS Location Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asUser.mutation(internal.categories.seedCategories, {});
+    const categories = await asUser.query(api.categories.listCategories);
+    const categoryId = categories[0]._id;
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "GPS Tasker",
+      bio: "Test bio",
+      categoryId,
+      categoryBio: "Category bio",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    await asUser.mutation(api.users.checkInGpsLocation, {
+      lat: 43.6532,
+      lng: -79.3832,
+    });
+
+    const user = await asUser.query(api.users.getCurrentUser);
+    expect(user?.location.gpsCoordinates?.lat).toBe(43.6532);
+    expect(user?.location.gpsCoordinates?.lng).toBe(-79.3832);
+    expect(user?.location.gpsCoordinates?.checkedInAt).toBeGreaterThan(0);
+
+    const taskerProfile = await asUser.query(api.taskers.getTaskerProfile);
+    expect(taskerProfile?.location?.lat).toBe(43.6532);
+    expect(taskerProfile?.location?.lng).toBe(-79.3832);
+    expect(taskerProfile?.locationCheckedInAt).toBe(user?.location.gpsCoordinates?.checkedInAt);
   });
 
   test("Location update respects 500m threshold (skip if too close)", async () => {

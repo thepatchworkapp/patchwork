@@ -1,4 +1,3 @@
-import CoreLocation
 import SwiftUI
 import UIKit
 
@@ -491,7 +490,6 @@ struct ProfileAccountSection: View {
 private struct ProfileAccountEditSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(SessionStore.self) private var sessionStore
-    @Environment(LocationManager.self) private var locationManager
     @Environment(\.dismiss) private var dismiss
 
     let user: CurrentUser?
@@ -637,65 +635,10 @@ private struct ProfileAccountEditSheet: View {
             )
             onSaved(updatedUser)
             appState.currentUser = updatedUser
-            await resyncPreferredLocation()
             dismiss()
         } catch {
             statusMessage = SubscriptionFeedbackMessage(tone: .error, text: error.localizedDescription)
         }
     }
 
-    private func resyncPreferredLocation() async {
-        if let coordinate = await currentDeviceCoordinateIfAllowed() {
-            await syncLocation(coordinate, source: "gps")
-            return
-        }
-
-        if let coordinate = await locationManager.geocode(city: trimmedCity, province: trimmedProvince) {
-            await syncLocation(coordinate, source: "manual")
-        }
-    }
-
-    private func currentDeviceCoordinateIfAllowed() async -> CLLocationCoordinate2D? {
-        switch locationManager.authorizationStatus {
-        case .authorizedAlways:
-            return await locationManager.requestCurrentCoordinate()
-#if os(iOS) || os(tvOS) || targetEnvironment(macCatalyst)
-        case .authorizedWhenInUse:
-            return await locationManager.requestCurrentCoordinate()
-#endif
-        default:
-            return nil
-        }
-    }
-
-    private func syncLocation(_ coordinate: CLLocationCoordinate2D, source: String) async {
-        let didSync = await appState.syncLocation(
-            client: sessionStore.client,
-            lat: coordinate.latitude,
-            lng: coordinate.longitude,
-            source: source
-        )
-        guard didSync, let currentUser = appState.currentUser else {
-            return
-        }
-
-        appState.currentUser = CurrentUser(
-            id: currentUser.id,
-            email: currentUser.email,
-            name: currentUser.name,
-            roles: currentUser.roles,
-            location: UserLocation(
-                city: currentUser.location?.city,
-                province: currentUser.location?.province,
-                coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
-            ),
-            settings: UserSettings(
-                notificationsEnabled: currentUser.settings?.notificationsEnabled,
-                locationEnabled: true
-            ),
-            createdAt: currentUser.createdAt,
-            photoImage: currentUser.photoImage
-        )
-        LocationSyncCache.store(coordinate, for: currentUser.id)
-    }
 }

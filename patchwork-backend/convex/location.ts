@@ -83,86 +83,12 @@ export const updateUserLocation = mutation({
   },
 });
 
-export const updateTaskerLocation = mutation({
-  args: {
-    lat: v.number(),
-    lng: v.number(),
-  },
-  returns: locationUpdateResultValidator,
-  handler: async (ctx, args) => {
-    const { user } = await requireAppUser(ctx);
-
-    // Coordinate validation
-    if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
-    if (args.lng < -180 || args.lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
-
-    const taskerProfile = await ctx.db
-      .query("taskerProfiles")
-      .withIndex("by_userId", (q) => q.eq("userId", user._id))
-      .unique();
-    if (!taskerProfile) throw new ConvexError("Tasker profile not found");
-
-    const currentLocation = taskerProfile.location;
-    if (currentLocation) {
-      const distance = haversineDistance(
-        currentLocation.lat,
-        currentLocation.lng,
-        args.lat,
-        args.lng
-      );
-
-      if (distance < 500) {
-        return {
-          updated: false,
-          reason: "threshold",
-          distance,
-        };
-      }
-    }
-
-    await ctx.db.patch(taskerProfile._id, {
-      location: {
-        lat: args.lat,
-        lng: args.lng,
-      },
-      updatedAt: Date.now(),
-    });
-
-    const primaryCategory = await ctx.db
-      .query("taskerCategories")
-      .withIndex("by_taskerProfile_category", (q) =>
-        q.eq("taskerProfileId", taskerProfile._id)
-      )
-      .first();
-
-    if (primaryCategory) {
-      await taskerGeo.insert(
-        ctx,
-        taskerProfile._id,
-        {
-          latitude: args.lat,
-          longitude: args.lng,
-        },
-        {
-          categoryId: primaryCategory.categoryId,
-        }
-      );
-    }
-
-    return {
-      updated: true,
-      distance: currentLocation
-        ? haversineDistance(currentLocation.lat, currentLocation.lng, args.lat, args.lng)
-        : null,
-    };
-  },
-});
-
 export const syncTaskerGeo = internalMutation({
   args: {
     userId: v.id("users"),
     lat: v.number(),
     lng: v.number(),
+    checkedInAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const taskerProfile = await ctx.db
@@ -171,8 +97,11 @@ export const syncTaskerGeo = internalMutation({
       .unique();
     if (!taskerProfile) return;
 
+    const checkedInAt = args.checkedInAt ?? Date.now();
+
     await ctx.db.patch(taskerProfile._id, {
       location: { lat: args.lat, lng: args.lng },
+      locationCheckedInAt: checkedInAt,
       updatedAt: Date.now(),
     });
 

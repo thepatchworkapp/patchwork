@@ -9,7 +9,6 @@ struct RootView: View {
     @Environment(AppState.self) private var appState
     @Environment(LocationManager.self) private var locationManager
     @Environment(RevenueCatManager.self) private var revenueCatManager
-    @State private var attemptedLocationRecoveryKey: String?
     @State private var locationPromptCompletedForSession = false
     @State private var locationPromptSessionUserId: ConvexID?
     @State private var isForegroundRefreshPending = false
@@ -150,15 +149,6 @@ struct RootView: View {
         .onChange(of: appState.currentUser) { _, currentUser in
             sessionStore.storeCurrentUserSnapshot(currentUser)
         }
-        .task(id: locationRecoveryKey) {
-            guard let locationRecoveryKey,
-                  attemptedLocationRecoveryKey != locationRecoveryKey else {
-                return
-            }
-
-            attemptedLocationRecoveryKey = locationRecoveryKey
-            await recoverLocationIfNeeded()
-        }
         .task(id: periodicLocationSyncKey) {
             await periodicallySyncAuthorizedLocation()
         }
@@ -247,7 +237,8 @@ struct RootView: View {
             location: UserLocation(
                 city: "Waterloo",
                 province: "On",
-                coordinates: Coordinates(lat: 43.4643, lng: -80.5204)
+                coordinates: Coordinates(lat: 43.4643, lng: -80.5204),
+                gpsCoordinates: GPSCoordinates(lat: 43.4643, lng: -80.5204, checkedInAt: 1)
             ),
             settings: UserSettings(notificationsEnabled: true, locationEnabled: true),
             createdAt: nil,
@@ -376,23 +367,6 @@ struct RootView: View {
         "Patchwork.locationPromptCompleted.\(userId)"
     }
 
-    private var locationRecoveryKey: String? {
-        guard sessionStore.isAuthenticated,
-              let user = appState.currentUser,
-              !needsLocationPrompt,
-              user.location?.coordinates == nil else {
-            return nil
-        }
-
-        let city = user.location?.city?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let province = user.location?.province?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !city.isEmpty || !province.isEmpty else {
-            return nil
-        }
-
-        return "\(user.id)|\(city)|\(province)"
-    }
-
     private var periodicLocationSyncKey: String? {
         guard sessionStore.isAuthenticated,
               let userId = appState.currentUser?.id,
@@ -453,10 +427,11 @@ struct RootView: View {
 
         if let coordinate {
             didSync = await syncLocation(coordinate, source: source)
-        } else if status == .denied || status == .restricted {
-            didSync = await syncSavedProfileLocation()
         } else {
-            didSync = await syncSavedProfileLocation()
+            if status == .denied || status == .restricted {
+                appState.lastError = "Enable location to appear in nearby searches as a tasker."
+            }
+            didSync = false
         }
 
         await appState.refreshAuthedData(client: sessionStore.client)
@@ -573,7 +548,7 @@ struct RootView: View {
         }
 
         let cachedCoordinate = LocationSyncCache.cachedCoordinate(for: userId)
-            ?? appState.currentUser?.location?.coordinates.map {
+            ?? appState.currentUser?.location?.gpsCoordinates.map {
                 CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
             }
         guard LocationSyncCache.shouldSyncBackend(
@@ -609,36 +584,6 @@ struct RootView: View {
         return nil
     }
 
-    private func recoverLocationIfNeeded() async {
-        guard locationRecoveryKey != nil else {
-            return
-        }
-        guard await syncSavedProfileLocation(surfaceErrors: false) else {
-            return
-        }
-        await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
-    }
-
-    @discardableResult
-    private func syncSavedProfileLocation(surfaceErrors: Bool = true) async -> Bool {
-        if let profileCoords = appState.currentUser?.location?.coordinates {
-            return await syncLocation(
-                CLLocationCoordinate2D(latitude: profileCoords.lat, longitude: profileCoords.lng),
-                source: "manual"
-            )
-        }
-
-        let city = appState.currentUser?.location?.city ?? ""
-        let province = appState.currentUser?.location?.province ?? ""
-        if let coordinate = await locationManager.geocode(city: city, province: province) {
-            return await syncLocation(coordinate, source: "manual")
-        }
-        if surfaceErrors {
-            appState.lastError = "Location unavailable. Update your profile location to search nearby taskers."
-        }
-        return false
-    }
-
     @discardableResult
     private func syncLocation(_ coordinate: CLLocationCoordinate2D, source: String) async -> Bool {
         let didSync = await appState.syncLocation(
@@ -669,7 +614,12 @@ struct RootView: View {
             location: UserLocation(
                 city: currentUser.location?.city,
                 province: currentUser.location?.province,
-                coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
+                coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude),
+                gpsCoordinates: GPSCoordinates(
+                    lat: coordinate.latitude,
+                    lng: coordinate.longitude,
+                    checkedInAt: Int(Date().timeIntervalSince1970 * 1000)
+                )
             ),
             settings: UserSettings(
                 notificationsEnabled: currentUser.settings?.notificationsEnabled,
@@ -1417,7 +1367,8 @@ private struct ProfileSetupView: View {
             location: UserLocation(
                 city: trimmedCity,
                 province: trimmedProvince,
-                coordinates: resolvedCoordinates
+                coordinates: resolvedCoordinates,
+                gpsCoordinates: nil
             ),
             settings: UserSettings(
                 notificationsEnabled: fallbackNotificationsEnabled,
@@ -1574,7 +1525,7 @@ private struct ProfileSetupView: View {
         )
         if didSync {
             resolvedCoordinates = Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
-            if let createdUserId {
+            if source == "gps", let createdUserId {
                 LocationSyncCache.store(coordinate, for: createdUserId)
             }
         }

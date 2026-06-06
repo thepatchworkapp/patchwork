@@ -72,6 +72,9 @@ export const searchTaskers = query({
       if (!profile) {
         continue;
       }
+      if (!profile.location || !profile.locationCheckedInAt) {
+        continue;
+      }
       if (!profile.isOnboarded || !hasActiveSubscription(profile) || getEffectiveGhostMode(profile)) {
         continue;
       }

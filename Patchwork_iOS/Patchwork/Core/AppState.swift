@@ -34,6 +34,7 @@ final class AppState {
 
     var activeCategorySlug: String?
     var activeCategorySlugs: [String] = []
+    var discoverSearchOrigin: DiscoverSearchOrigin?
     var selectedTasker: TaskerDetail?
     var selectedConversation: ConversationDetail?
 
@@ -326,7 +327,11 @@ final class AppState {
     @discardableResult
     func syncLocation(client: ConvexHTTPClient, lat: Double, lng: Double, source: String = "manual") async -> Bool {
         do {
-            try await PatchworkAPI(client: client).users.updateLocation(lat: lat, lng: lng, source: source)
+            if source == "gps" {
+                try await PatchworkAPI(client: client).users.checkInGpsLocation(lat: lat, lng: lng)
+            } else {
+                try await PatchworkAPI(client: client).users.updateLocation(lat: lat, lng: lng, source: source)
+            }
             return true
         } catch {
             presentError(error, prefix: "Failed to sync location")
@@ -367,19 +372,25 @@ final class AppState {
         client: ConvexHTTPClient,
         categorySlug: String?,
         categorySlugs: [String]? = nil,
+        searchOrigin: DiscoverSearchOrigin? = nil,
         radiusKm: Int,
         excludeCurrentUserWhenTasker: Bool
     ) async {
         let requestID = UUID()
         latestTaskerSearchRequestID = requestID
         do {
-            guard let currentCoordinates = currentUser?.location?.coordinates else {
+            if let searchOrigin {
+                discoverSearchOrigin = searchOrigin
+            }
+
+            guard let resolvedSearchOrigin = searchOrigin ?? discoverSearchOrigin else {
                 guard latestTaskerSearchRequestID == requestID else {
                     return
                 }
                 taskers = []
                 return
             }
+            let currentCoordinates = resolvedSearchOrigin.coordinates
             let excludeUserId: ConvexID?
             if excludeCurrentUserWhenTasker,
                currentUser?.roles?.isTasker == true,
@@ -424,6 +435,7 @@ final class AppState {
             client: client,
             categorySlug: categorySlug ?? activeCategorySlug,
             categorySlugs: activeCategorySlugs.isEmpty ? nil : activeCategorySlugs,
+            searchOrigin: discoverSearchOrigin,
             radiusKm: radiusKm ?? searchRadius,
             excludeCurrentUserWhenTasker: excludeCurrentUserWhenTasker
         )
@@ -476,6 +488,7 @@ final class AppState {
         isLoadingCategories = false
         activeCategorySlug = nil
         activeCategorySlugs = []
+        discoverSearchOrigin = nil
         lastError = nil
         signInRequiredAuthFailureID = nil
     }

@@ -601,6 +601,43 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(locationId, "location_123")
     }
 
+    func testPatchworkAPICheckInGpsLocationUsesConvexMutation() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/mutation")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "users:checkInGpsLocation")
+            let args = try XCTUnwrap(object["args"] as? [String: Any])
+            XCTAssertEqual(args["lat"] as? Double, 43.6532)
+            XCTAssertEqual(args["lng"] as? Double, -79.3832)
+            XCTAssertNil(args["source"])
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":\"location_123\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let api = PatchworkAPI(client: client)
+
+        let locationId = try await api.users.checkInGpsLocation(
+            lat: 43.6532,
+            lng: -79.3832
+        )
+
+        XCTAssertEqual(locationId, "location_123")
+    }
+
     func testPatchworkAPIUpdateNotificationSettingsUsesConvexMutation() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -2151,6 +2188,7 @@ final class PatchworkTests: XCTestCase {
         await appState.searchTaskers(
             client: client,
             categorySlug: nil,
+            searchOrigin: DiscoverSearchOrigin.currentLocation(from: appState.currentUser),
             radiusKm: 25,
             excludeCurrentUserWhenTasker: true
         )
@@ -2218,12 +2256,60 @@ final class PatchworkTests: XCTestCase {
         await appState.searchTaskers(
             client: client,
             categorySlug: nil,
+            searchOrigin: DiscoverSearchOrigin.currentLocation(from: appState.currentUser),
             radiusKm: 25,
             excludeCurrentUserWhenTasker: true
         )
 
         XCTAssertEqual(appState.lastError, "Failed to search taskers: Service temporarily unavailable.")
         XCTAssertNil(appState.signInRequiredAuthFailureID)
+    }
+
+    @MainActor
+    func testSearchTaskersUsesSelectedCityOriginWithoutMutatingCurrentUserLocation() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "search:searchTaskers")
+            let args = try XCTUnwrap(object["args"] as? [String: Any])
+            XCTAssertEqual(args["lat"] as? Double, 49.2827)
+            XCTAssertEqual(args["lng"] as? Double, -123.1207)
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":[]}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+        appState.currentUser = Self.makeCurrentUser(id: "user_selected_city")
+        let originalLocation = appState.currentUser?.location
+        let selectedCityOrigin = DiscoverSearchOrigin.selectedCity(
+            HomeBaseOption(city: "Vancouver", province: "BC"),
+            coordinates: Coordinates(lat: 49.2827, lng: -123.1207)
+        )
+
+        await appState.searchTaskers(
+            client: client,
+            categorySlug: nil,
+            searchOrigin: selectedCityOrigin,
+            radiusKm: 25,
+            excludeCurrentUserWhenTasker: true
+        )
+
+        XCTAssertEqual(appState.discoverSearchOrigin, selectedCityOrigin)
+        XCTAssertEqual(appState.currentUser?.location, originalLocation)
     }
 
     @MainActor
@@ -2240,7 +2326,8 @@ final class PatchworkTests: XCTestCase {
             location: UserLocation(
                 city: "Toronto",
                 province: "ON",
-                coordinates: nil
+                coordinates: nil,
+                gpsCoordinates: nil
             ),
             settings: UserSettings(
                 notificationsEnabled: false,
@@ -2576,7 +2663,8 @@ final class PatchworkTests: XCTestCase {
             location: UserLocation(
                 city: "Toronto",
                 province: "ON",
-                coordinates: Coordinates(lat: 43.6532, lng: -79.3832)
+                coordinates: Coordinates(lat: 43.6532, lng: -79.3832),
+                gpsCoordinates: GPSCoordinates(lat: 43.6532, lng: -79.3832, checkedInAt: 1_704_067_200_000)
             ),
             settings: UserSettings(notificationsEnabled: true, locationEnabled: true),
             createdAt: 1_704_067_200_000,

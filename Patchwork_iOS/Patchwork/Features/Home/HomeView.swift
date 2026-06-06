@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import SwiftUI
 
@@ -12,6 +13,7 @@ struct HomeView: View {
     }
 
     @Environment(AppState.self) private var appState
+    @Environment(LocationManager.self) private var locationManager
     @Environment(SessionStore.self) private var sessionStore
 
     @State private var selectedCategorySlug: String?
@@ -26,6 +28,10 @@ struct HomeView: View {
     @State private var cardDragOffset: CGFloat = 0
     @State private var dismissedTaskerIDs = Set<ConvexID>()
     @State private var taskerRoute: TaskerRoute?
+    @State private var selectedSearchCityText = ""
+    @State private var selectedSearchHomeBase: HomeBaseOption?
+    @State private var isResolvingSearchOrigin = false
+    @State private var searchOriginErrorMessage: String?
     private let usesVisualPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_EMPTY_TABS")
 
     var body: some View {
@@ -40,7 +46,7 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showRadiusSheet) {
             radiusSheet
-                .patchworkSheetChrome(detents: [.height(360)])
+                .patchworkSheetChrome(detents: [.medium, .large])
         }
         .sheet(isPresented: $showCategorySheet) {
             categorySheet
@@ -62,15 +68,18 @@ struct HomeView: View {
             }
             selectedCategorySlug = appState.activeCategorySlug
             radiusKm = appState.searchRadius
+            await ensureDiscoverSearchOrigin()
             await reload(resetDismissedTaskers: true)
         }
-        .task(id: coordinateRefreshKey) {
+        .task(id: currentGpsRefreshKey) {
             guard !usesVisualPreview else {
                 return
             }
-            guard appState.currentUser?.location?.coordinates != nil else {
+            guard appState.discoverSearchOrigin?.mode == .currentLocation,
+                  let origin = DiscoverSearchOrigin.currentLocation(from: appState.currentUser) else {
                 return
             }
+            appState.discoverSearchOrigin = origin
             await reload(resetDismissedTaskers: false)
         }
     }
@@ -382,7 +391,7 @@ struct HomeView: View {
         PatchworkEmptyStateCard(
             systemImage: hasSearchCoordinates ? "sparkles" : "location.slash",
             title: hasSearchCoordinates ? "No taskers found" : "Location unavailable",
-            message: hasSearchCoordinates ? "Try a broader radius or switch categories to discover more nearby professionals." : "Update your location to search nearby taskers."
+            message: hasSearchCoordinates ? "Try a broader radius or switch categories to discover more nearby professionals." : "Enable location or choose a city to search nearby taskers."
         )
         .frame(maxWidth: .infinity)
         .accessibilityIdentifier("Home.emptyState")
@@ -394,7 +403,9 @@ struct HomeView: View {
 
             PatchworkSurfaceCard {
                 VStack(spacing: 18) {
-                    PatchworkTopBar(title: "Search Radius", onBack: { showRadiusSheet = false })
+                    PatchworkTopBar(title: "Search", onBack: { showRadiusSheet = false })
+
+                    searchOriginControls
 
                     HStack {
                         Label(locationDisplayLabel, systemImage: "mappin")
@@ -430,6 +441,51 @@ struct HomeView: View {
             .padding(.horizontal, 20)
         }
         .padding(.top, 20)
+    }
+
+    private var searchOriginControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Search from", selection: Binding(
+                get: { selectedOriginMode },
+                set: { mode in
+                    Task { await selectSearchOriginMode(mode) }
+                }
+            )) {
+                Text("Current location").tag(DiscoverSearchOriginMode.currentLocation)
+                Text("Choose city").tag(DiscoverSearchOriginMode.selectedCity)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("Home.searchOriginPicker")
+
+            if selectedOriginMode == .selectedCity {
+                HomeBaseDropdownField(
+                    placeholder: "Choose city",
+                    text: $selectedSearchCityText,
+                    selectedHomeBase: $selectedSearchHomeBase,
+                    fieldAccessibilityIdentifier: "Home.searchCityField",
+                    suggestionAccessibilityPrefix: "Home.searchCitySuggestion",
+                    noResultsAccessibilityIdentifier: "Home.searchCityNoResults",
+                    noResultsMessage: "Select a suggested city to search there.",
+                    onTextChanged: {
+                        clearSearchCitySelectionIfNeeded()
+                    },
+                    onSelect: { suggestion in
+                        Task { await applySelectedCitySearchOrigin(suggestion, reloadAfterSelection: true) }
+                    }
+                )
+            }
+
+            if isResolvingSearchOrigin {
+                ProgressView()
+                    .tint(PatchworkTheme.brand)
+                    .accessibilityIdentifier("Home.searchOriginProgress")
+            }
+
+            if let searchOriginErrorMessage {
+                PatchworkInlineStatusBanner(tone: .error, text: searchOriginErrorMessage)
+                    .accessibilityIdentifier("Home.searchOriginError")
+            }
+        }
     }
 
     private var categorySheet: some View {
@@ -695,29 +751,32 @@ struct HomeView: View {
     }
 
     private var locationDisplayLabel: String {
-        let city = appState.currentUser?.location?.city?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let province = appState.currentUser?.location?.province?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if city.isEmpty && province.isEmpty {
-            return "Location unavailable"
-        }
-        if city.isEmpty {
-            return province
-        }
-        if province.isEmpty {
-            return city
-        }
-        return "\(city), \(province)"
+        appState.discoverSearchOrigin?.displayLabel ?? "Location unavailable"
     }
 
     private var hasSearchCoordinates: Bool {
-        appState.currentUser?.location?.coordinates != nil
+        appState.discoverSearchOrigin != nil
     }
 
-    private var coordinateRefreshKey: String {
-        let latitude = appState.currentUser?.location?.coordinates?.lat ?? .nan
-        let longitude = appState.currentUser?.location?.coordinates?.lng ?? .nan
-        return "\(latitude)|\(longitude)"
+    private var currentGpsRefreshKey: String {
+        let latitude = appState.currentUser?.location?.gpsCoordinates?.lat ?? .nan
+        let longitude = appState.currentUser?.location?.gpsCoordinates?.lng ?? .nan
+        let checkedInAt = appState.currentUser?.location?.gpsCoordinates?.checkedInAt ?? -1
+        return "\(latitude)|\(longitude)|\(checkedInAt)"
+    }
+
+    private var selectedOriginMode: DiscoverSearchOriginMode {
+        appState.discoverSearchOrigin?.mode
+            ?? (DiscoverSearchOrigin.currentLocation(from: appState.currentUser) == nil ? .selectedCity : .currentLocation)
+    }
+
+    private var currentHomeBaseOption: HomeBaseOption? {
+        let city = appState.currentUser?.location?.city?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let province = appState.currentUser?.location?.province?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !city.isEmpty, !province.isEmpty else {
+            return nil
+        }
+        return HomeBaseOption(city: city, province: province)
     }
 
     @ViewBuilder
@@ -783,6 +842,156 @@ struct HomeView: View {
         return "\(rating) stars from \(reviewCount) review\(reviewCount == 1 ? "" : "s")"
     }
 
+    private func ensureDiscoverSearchOrigin() async {
+        if let origin = appState.discoverSearchOrigin {
+            syncSelectedCityState(from: origin)
+            return
+        }
+
+        if let origin = DiscoverSearchOrigin.currentLocation(from: appState.currentUser) {
+            appState.discoverSearchOrigin = origin
+            syncSelectedCityState(from: origin)
+            return
+        }
+
+        if let homeBase = currentHomeBaseOption {
+            await applySelectedCitySearchOrigin(homeBase, reloadAfterSelection: false)
+        }
+    }
+
+    private func syncSelectedCityState(from origin: DiscoverSearchOrigin) {
+        guard origin.mode == .selectedCity,
+              let city = origin.city,
+              let province = origin.province else {
+            return
+        }
+        let option = HomeBaseOption(city: city, province: province)
+        selectedSearchHomeBase = option
+        selectedSearchCityText = option.city
+    }
+
+    private func selectSearchOriginMode(_ mode: DiscoverSearchOriginMode) async {
+        searchOriginErrorMessage = nil
+
+        switch mode {
+        case .currentLocation:
+            await applyCurrentLocationSearchOrigin()
+        case .selectedCity:
+            if let selectedSearchHomeBase {
+                await applySelectedCitySearchOrigin(selectedSearchHomeBase, reloadAfterSelection: true)
+            } else if let homeBase = currentHomeBaseOption {
+                selectedSearchCityText = homeBase.city
+                selectedSearchHomeBase = homeBase
+                await applySelectedCitySearchOrigin(homeBase, reloadAfterSelection: true)
+            } else {
+                appState.discoverSearchOrigin = nil
+                searchOriginErrorMessage = "Choose a city to search there."
+                await reload(resetDismissedTaskers: true)
+            }
+        }
+    }
+
+    private func applyCurrentLocationSearchOrigin() async {
+        if let origin = DiscoverSearchOrigin.currentLocation(from: appState.currentUser) {
+            appState.discoverSearchOrigin = origin
+            await reload(resetDismissedTaskers: true)
+            return
+        }
+
+        isResolvingSearchOrigin = true
+        defer { isResolvingSearchOrigin = false }
+
+        let status = await locationManager.requestWhenInUseAuthorizationIfNeeded()
+        guard status == .authorizedAlways || status == .authorizedWhenInUse else {
+            searchOriginErrorMessage = "Enable location to use current location."
+            return
+        }
+
+        guard let coordinate = await locationManager.requestCurrentCoordinate() else {
+            searchOriginErrorMessage = "Current location is unavailable. Choose a city instead."
+            return
+        }
+
+        let didSync = await appState.syncLocation(
+            client: sessionStore.client,
+            lat: coordinate.latitude,
+            lng: coordinate.longitude,
+            source: "gps"
+        )
+        guard didSync else {
+            return
+        }
+
+        applyLocalGpsCoordinate(coordinate)
+        if let userId = appState.currentUser?.id {
+            LocationSyncCache.store(coordinate, for: userId)
+        }
+        if let origin = DiscoverSearchOrigin.currentLocation(from: appState.currentUser) {
+            appState.discoverSearchOrigin = origin
+        }
+        await reload(resetDismissedTaskers: true)
+    }
+
+    private func applySelectedCitySearchOrigin(_ option: HomeBaseOption, reloadAfterSelection: Bool) async {
+        searchOriginErrorMessage = nil
+        selectedSearchHomeBase = option
+        selectedSearchCityText = option.city
+        isResolvingSearchOrigin = true
+        defer { isResolvingSearchOrigin = false }
+
+        guard let coordinate = await locationManager.geocode(city: option.city, province: option.province) else {
+            searchOriginErrorMessage = "We could not find that city. Choose another city."
+            return
+        }
+
+        appState.discoverSearchOrigin = DiscoverSearchOrigin.selectedCity(
+            option,
+            coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude)
+        )
+
+        if reloadAfterSelection {
+            await reload(resetDismissedTaskers: true)
+        }
+    }
+
+    private func applyLocalGpsCoordinate(_ coordinate: CLLocationCoordinate2D) {
+        guard let currentUser = appState.currentUser else {
+            return
+        }
+
+        appState.currentUser = CurrentUser(
+            id: currentUser.id,
+            email: currentUser.email,
+            name: currentUser.name,
+            roles: currentUser.roles,
+            location: UserLocation(
+                city: currentUser.location?.city,
+                province: currentUser.location?.province,
+                coordinates: Coordinates(lat: coordinate.latitude, lng: coordinate.longitude),
+                gpsCoordinates: GPSCoordinates(
+                    lat: coordinate.latitude,
+                    lng: coordinate.longitude,
+                    checkedInAt: Int(Date().timeIntervalSince1970 * 1000)
+                )
+            ),
+            settings: UserSettings(
+                notificationsEnabled: currentUser.settings?.notificationsEnabled,
+                locationEnabled: true
+            ),
+            createdAt: currentUser.createdAt,
+            photoImage: currentUser.photoImage
+        )
+    }
+
+    private func clearSearchCitySelectionIfNeeded() {
+        guard selectedSearchHomeBase != nil else {
+            return
+        }
+        if selectedSearchHomeBase?.city.caseInsensitiveCompare(selectedSearchCityText.trimmingCharacters(in: .whitespacesAndNewlines)) != .orderedSame {
+            selectedSearchHomeBase = nil
+        }
+    }
+
     private func retryCategories() async {
         await appState.refreshCategories(client: sessionStore.client)
         if appState.currentUser != nil {
@@ -830,6 +1039,7 @@ struct HomeView: View {
             client: sessionStore.client,
             categorySlug: selectedCategorySlug,
             categorySlugs: selectedSearchCategorySlugs,
+            searchOrigin: appState.discoverSearchOrigin,
             radiusKm: radiusKm,
             excludeCurrentUserWhenTasker: true
         )

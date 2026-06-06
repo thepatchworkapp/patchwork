@@ -16,6 +16,11 @@ import { requireAppUser } from "./authHelpers";
 const ACCOUNT_CLEANUP_BATCH_SIZE = 1000;
 const MAX_BADGE_CONVERSATIONS = 200;
 
+function validateCoordinates(lat: number, lng: number) {
+  if (lat < -90 || lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
+  if (lng < -180 || lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
+}
+
 function tombstoneEmail(userId: string) {
   return `deleted+${userId}@deleted.patchwork.local`;
 }
@@ -696,9 +701,7 @@ export const updateLocation = mutation({
     
     if (!user) throw new ConvexError("User not found");
 
-    // Coordinate validation
-    if (args.lat < -90 || args.lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
-    if (args.lng < -180 || args.lng > 180) throw new ConvexError("Longitude must be between -180 and 180");
+    validateCoordinates(args.lat, args.lng);
 
     const now = Date.now();
 
@@ -717,13 +720,49 @@ export const updateLocation = mutation({
       updatedAt: now,
     });
 
+    return user._id;
+  },
+});
+
+export const checkInGpsLocation = mutation({
+  args: {
+    lat: v.number(),
+    lng: v.number(),
+  },
+  returns: v.id("users"),
+  handler: async (ctx, args) => {
+    const { user } = await requireAppUser(ctx);
+    validateCoordinates(args.lat, args.lng);
+
+    const now = Date.now();
+
+    await ctx.db.patch(user._id, {
+      location: {
+        ...user.location,
+        coordinates: {
+          lat: args.lat,
+          lng: args.lng,
+        },
+        gpsCoordinates: {
+          lat: args.lat,
+          lng: args.lng,
+          checkedInAt: now,
+        },
+      },
+      settings: {
+        ...user.settings,
+        locationEnabled: true,
+      },
+      updatedAt: now,
+    });
+
     if (user.roles.isTasker) {
-      const scheduledSyncTaskerGeoJob = await ctx.scheduler.runAfter(0, internal.location.syncTaskerGeo, {
+      await ctx.runMutation(internal.location.syncTaskerGeo, {
         userId: user._id,
         lat: args.lat,
         lng: args.lng,
+        checkedInAt: now,
       });
-      void scheduledSyncTaskerGeoJob;
     }
 
     return user._id;

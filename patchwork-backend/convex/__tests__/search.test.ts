@@ -125,7 +125,7 @@ describe("searchTaskers", () => {
     expect(taskerUser).not.toBeNull();
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -175,7 +175,7 @@ describe("searchTaskers", () => {
     });
     const cleanerUser = await asCleaner.query(api.users.getCurrentUser);
     await applyAnnualRevenueCatAccess(t, cleanerUser!._id);
-    await asCleaner.mutation(api.location.updateTaskerLocation, {
+    await asCleaner.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -199,7 +199,7 @@ describe("searchTaskers", () => {
     });
     const plumberUser = await asPlumber.query(api.users.getCurrentUser);
     await applyAnnualRevenueCatAccess(t, plumberUser!._id);
-    await asPlumber.mutation(api.location.updateTaskerLocation, {
+    await asPlumber.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -272,7 +272,7 @@ describe("searchTaskers", () => {
 
     const taskerUser = await asTasker.query(api.users.getCurrentUser);
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -289,7 +289,7 @@ describe("searchTaskers", () => {
     expect(results[0].category).toBe(matchingCategories[0].name);
   });
 
-  test("syncs tasker geo when an existing located seeker creates a tasker profile", async () => {
+  test("syncs tasker geo from prior GPS check-in when a seeker creates a tasker profile", async () => {
     const t = createTest();
 
     await t.mutation(internal.categories.seedCategories);
@@ -310,10 +310,9 @@ describe("searchTaskers", () => {
 
     const taskerLat = 43.65107;
     const taskerLng = -79.347015;
-    await asTasker.mutation(api.users.updateLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: taskerLat,
       lng: taskerLng,
-      source: "gps",
     });
 
     await asTasker.mutation(api.taskers.createTaskerProfile, {
@@ -343,7 +342,7 @@ describe("searchTaskers", () => {
     expect(results.map((result) => result.name)).toContain("Located Tasker Pro");
   });
 
-  test("syncs tasker geo when RevenueCat activates a profile after coordinates already exist", async () => {
+  test("does not sync tasker geo when RevenueCat activates a profile with only manual coordinates", async () => {
     const t = createTest();
 
     await t.mutation(internal.categories.seedCategories);
@@ -374,8 +373,8 @@ describe("searchTaskers", () => {
     const taskerUser = await asTasker.query(api.users.getCurrentUser);
     expect(taskerUser).not.toBeNull();
 
-    const taskerLat = 43.65107;
-    const taskerLng = -79.347015;
+    const manualLat = 43.65107;
+    const manualLng = -79.347015;
     await t.run(async (ctx) => {
       const user = await ctx.db.get(taskerUser!._id);
       expect(user).not.toBeNull();
@@ -383,8 +382,8 @@ describe("searchTaskers", () => {
         location: {
           ...user!.location,
           coordinates: {
-            lat: taskerLat,
-            lng: taskerLng,
+            lat: manualLat,
+            lng: manualLng,
           },
         },
         settings: {
@@ -401,8 +400,66 @@ describe("searchTaskers", () => {
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
     const profileAfterActivation = await asTasker.query(api.taskers.getTaskerProfile);
-    expect(profileAfterActivation?.location?.lat).toBe(taskerLat);
-    expect(profileAfterActivation?.location?.lng).toBe(taskerLng);
+    expect(profileAfterActivation?.location).toBeUndefined();
+    expect(profileAfterActivation?.locationCheckedInAt).toBeUndefined();
+
+    const results = await t.query(api.search.searchTaskers, {
+      categorySlug: "interior-cleaning-services",
+      lat: manualLat,
+      lng: manualLng,
+      radiusKm: 5,
+    });
+
+    expect(results.map((result) => result.name)).not.toContain("Activation Tasker Pro");
+  });
+
+  test("excludes indexed taskers without a GPS check-in marker", async () => {
+    const t = createTest();
+
+    await t.mutation(internal.categories.seedCategories);
+    const categories = await t.query(api.categories.listCategories);
+    const cleaningCategory = categories.find((c) => c.slug === "interior-cleaning-services");
+    expect(cleaningCategory).toBeDefined();
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker-stale-indexed-location",
+      email: "tasker-stale-indexed-location@example.com",
+    });
+
+    await asTasker.mutation(api.users.createProfile, {
+      name: "Stale Indexed Tasker",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await asTasker.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Stale Indexed Pro",
+      categoryId: cleaningCategory!._id,
+      categoryBio: "I clean houses",
+      rateType: "hourly",
+      hourlyRate: 5000,
+      serviceRadius: 10,
+    });
+
+    const taskerUser = await asTasker.query(api.users.getCurrentUser);
+    expect(taskerUser).not.toBeNull();
+    await applyAnnualRevenueCatAccess(t, taskerUser!._id);
+
+    const taskerLat = 43.65107;
+    const taskerLng = -79.347015;
+    await asTasker.mutation(api.users.checkInGpsLocation, {
+      lat: taskerLat,
+      lng: taskerLng,
+    });
+
+    const profile = await asTasker.query(api.taskers.getTaskerProfile);
+    expect(profile?.locationCheckedInAt).toBeDefined();
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(profile!._id, {
+        locationCheckedInAt: undefined,
+      });
+    });
 
     const results = await t.query(api.search.searchTaskers, {
       categorySlug: "interior-cleaning-services",
@@ -411,7 +468,7 @@ describe("searchTaskers", () => {
       radiusKm: 5,
     });
 
-    expect(results.map((result) => result.name)).toContain("Activation Tasker Pro");
+    expect(results.map((result) => result.name)).not.toContain("Stale Indexed Pro");
   });
 
   test("excludes ghostMode=true taskers", async () => {
@@ -447,7 +504,7 @@ describe("searchTaskers", () => {
     expect(taskerUser).not.toBeNull();
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -497,7 +554,7 @@ describe("searchTaskers", () => {
       serviceRadius: 10,
     });
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -567,7 +624,7 @@ describe("searchTaskers", () => {
       return profileId;
     });
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -636,7 +693,7 @@ describe("searchTaskers", () => {
     expect(taskerUser).not.toBeNull();
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -700,7 +757,7 @@ describe("searchTaskers", () => {
     expect(taskerUser).not.toBeNull();
     await applyAnnualRevenueCatAccess(t, taskerUser!._id);
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: 43.65107,
       lng: -79.347015,
     });
@@ -751,7 +808,7 @@ describe("searchTaskers", () => {
     const seekerLat = 43.65;
     const seekerLng = -79.38;
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: seekerLat + 1.7,
       lng: seekerLng,
     });
@@ -800,7 +857,7 @@ describe("searchTaskers", () => {
     const seekerLat = 43.65;
     const seekerLng = -79.38;
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: seekerLat + 0.09,
       lng: seekerLng,
     });
@@ -849,7 +906,7 @@ describe("searchTaskers", () => {
     const seekerLat = 43.65;
     const seekerLng = -79.38;
 
-    await asTasker.mutation(api.location.updateTaskerLocation, {
+    await asTasker.mutation(api.users.checkInGpsLocation, {
       lat: seekerLat + 0.09,
       lng: seekerLng,
     });

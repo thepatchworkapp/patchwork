@@ -88,9 +88,20 @@ async function scheduleTermEndExpiration(ctx: any, taskerProfileId: Id<"taskerPr
   );
 }
 
-async function syncTaskerGeoFromOwningUser(ctx: any, profile: any) {
+async function syncTaskerGeoFromLastGpsCheckIn(ctx: any, profile: any) {
+  const currentProfile = await ctx.db.get(profile._id);
+  if (currentProfile?.location && currentProfile.locationCheckedInAt) {
+    await ctx.runMutation(internal.location.syncTaskerGeo, {
+      userId: currentProfile.userId,
+      lat: currentProfile.location.lat,
+      lng: currentProfile.location.lng,
+      checkedInAt: currentProfile.locationCheckedInAt,
+    });
+    return;
+  }
+
   const user = await ctx.db.get(profile.userId);
-  const coordinates = user?.location?.coordinates;
+  const coordinates = user?.location?.gpsCoordinates;
   if (!user || !coordinates) {
     return;
   }
@@ -99,6 +110,7 @@ async function syncTaskerGeoFromOwningUser(ctx: any, profile: any) {
     userId: user._id,
     lat: coordinates.lat,
     lng: coordinates.lng,
+    checkedInAt: coordinates.checkedInAt,
   });
 }
 
@@ -334,7 +346,7 @@ export const applyResolvedRevenueCatCustomerState = internalMutation({
           : undefined;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
-      await syncTaskerGeoFromOwningUser(ctx, profile);
+      await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
 
       if (args.effectiveStatus === "cancel_at_period_end" && typeof updates.subscriptionEndsAt === "number") {
         await scheduleTermEndExpiration(ctx, profile._id, updates.subscriptionEndsAt);
@@ -507,7 +519,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
           : undefined;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
-      await syncTaskerGeoFromOwningUser(ctx, profile);
+      await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
       console.info("[RevenueCatWebhook] Activated tasker access", {
         profileId: profile._id,
         accessType: mappedProduct,
@@ -530,7 +542,7 @@ export const applyRevenueCatWebhookEvent = internalMutation({
       updates.subscriptionEndsAt = endsAt;
       updates.ghostMode = false;
       await ctx.db.patch(profile._id, updates);
-      await syncTaskerGeoFromOwningUser(ctx, profile);
+      await syncTaskerGeoFromLastGpsCheckIn(ctx, profile);
       await scheduleTermEndExpiration(ctx, profile._id, endsAt);
       console.info("[RevenueCatWebhook] Scheduled subscription cancellation", {
         profileId: profile._id,

@@ -227,6 +227,7 @@ async function buildTaskerProfileResponse(
     ghostMode: profile.ghostMode,
     foundersBadge: profile.foundersBadge,
     location: profile.location,
+    locationCheckedInAt: profile.locationCheckedInAt,
     geoPoint: profile.geoPoint,
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
@@ -349,11 +350,12 @@ export const createTaskerProfile = mutation({
       updatedAt: now,
     });
 
-    if (user.location.coordinates) {
+    if (user.location.gpsCoordinates) {
       await ctx.runMutation(internal.location.syncTaskerGeo, {
         userId: user._id,
-        lat: user.location.coordinates.lat,
-        lng: user.location.coordinates.lng,
+        lat: user.location.gpsCoordinates.lat,
+        lng: user.location.gpsCoordinates.lng,
+        checkedInAt: user.location.gpsCoordinates.checkedInAt,
       });
     }
 

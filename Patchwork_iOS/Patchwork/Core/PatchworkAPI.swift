@@ -241,6 +241,14 @@ struct PatchworkAPI {
                 args: ["lat": lat, "lng": lng, "source": source]
             )
         }
+
+        @discardableResult
+        func checkInGpsLocation(lat: Double, lng: Double) async throws -> ConvexID {
+            try await client.mutation(
+                "users:checkInGpsLocation",
+                args: ["lat": lat, "lng": lng]
+            )
+        }
     }
 }
 
