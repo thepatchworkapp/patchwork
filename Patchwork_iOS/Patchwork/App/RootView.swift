@@ -224,10 +224,36 @@ struct RootView: View {
         let showsBillingPreview = ProcessInfo.processInfo.arguments.contains("PATCHWORK_UI_TASKER_BILLING_PREVIEW_UNPAID")
         appState.selectedTab = showsBillingPreview ? .profile : .home
         appState.searchRadius = 25
-        appState.categories = [
-            Category(id: "category-interior-cleaning-services", name: "Interior Cleaning Services", slug: "interior-cleaning-services", emoji: nil, group: "Home & Garden"),
-            Category(id: "category-plumber", name: "Plumber", slug: "plumber", emoji: nil, group: "Home & Garden"),
-            Category(id: "category-electrician", name: "Electrician", slug: "electrician", emoji: nil, group: "Technical"),
+        let previewCategories = [
+            Category(id: "category-day-care-baby-sitters", name: "Day Care & Baby Sitters", slug: "day-care-baby-sitters", emoji: "🧸", group: "Child Care"),
+            Category(id: "category-tutor", name: "Tutor", slug: "tutor", emoji: "📚", group: "Child Care"),
+            Category(id: "category-interior-cleaning-services", name: "Interior Cleaning Services", slug: "interior-cleaning-services", emoji: "🧹", group: "Home & Garden"),
+            Category(id: "category-plumber", name: "Plumber", slug: "plumber", emoji: "🚰", group: "Home & Garden"),
+            Category(id: "category-electrician", name: "Electrician", slug: "electrician", emoji: "🔌", group: "Technical"),
+        ]
+        appState.categories = previewCategories
+        appState.categoryGroups = [
+            CategoryGroup(
+                id: "category-group-child-care",
+                name: "Child Care",
+                slug: "child-care",
+                sortOrder: 20,
+                categories: previewCategories.filter { $0.group == "Child Care" }
+            ),
+            CategoryGroup(
+                id: "category-group-home-garden",
+                name: "Home & Garden",
+                slug: "home-garden",
+                sortOrder: 70,
+                categories: previewCategories.filter { $0.group == "Home & Garden" }
+            ),
+            CategoryGroup(
+                id: "category-group-technical",
+                name: "Technical",
+                slug: "technical",
+                sortOrder: 150,
+                categories: previewCategories.filter { $0.group == "Technical" }
+            ),
         ]
         appState.currentUser = CurrentUser(
             id: "debug-preview-user",

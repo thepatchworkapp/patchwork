@@ -161,6 +161,49 @@ final class PatchworkUITests: XCTestCase {
         XCTAssertFalse(app.buttons["TaskerOnboarding1.continueButton"].exists)
     }
 
+    func testDiscoverCategoryPickerExpandsGroupsAndSelectsSingleCategory() throws {
+        app.terminate()
+        app.launchArguments = ["--uitesting", "PATCHWORK_UI_EMPTY_TABS"]
+        app.launch()
+
+        let categoryMenu = app.buttons["Home.categoryMenu"]
+        XCTAssertTrue(categoryMenu.waitForExistence(timeout: 10))
+        XCTAssertEqual(categoryMenu.value as? String, "All categories")
+        categoryMenu.tap()
+
+        let allCategoriesRow = app.buttons["Home.categoryOption.all"]
+        XCTAssertTrue(allCategoriesRow.waitForExistence(timeout: 5))
+        XCTAssertEqual(allCategoriesRow.value as? String, "Selected")
+
+        let childCareDisclosure = app.buttons["Home.categoryGroupDisclosure.child-care"]
+        XCTAssertTrue(childCareDisclosure.waitForExistence(timeout: 5))
+        childCareDisclosure.tap()
+
+        let dayCareRow = app.buttons["Home.categoryGroupMemberOption.day-care-baby-sitters"]
+        let tutorRow = app.buttons["Home.categoryGroupMemberOption.tutor"]
+        XCTAssertTrue(dayCareRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(tutorRow.waitForExistence(timeout: 5))
+
+        dayCareRow.tap()
+        XCTAssertEqual(dayCareRow.value as? String, "Selected")
+        XCTAssertEqual(tutorRow.value as? String, "Not selected")
+        XCTAssertEqual(allCategoriesRow.value as? String, "Not selected")
+
+        tutorRow.tap()
+        XCTAssertEqual(dayCareRow.value as? String, "Not selected")
+        XCTAssertEqual(tutorRow.value as? String, "Selected")
+
+        let childCareGroupRow = app.buttons["Home.categoryGroupOption.child-care"]
+        childCareGroupRow.tap()
+        XCTAssertEqual(childCareGroupRow.value as? String, "Selected")
+        XCTAssertEqual(dayCareRow.value as? String, "Not selected")
+        XCTAssertEqual(tutorRow.value as? String, "Not selected")
+
+        app.buttons["Back"].tap()
+        XCTAssertTrue(categoryMenu.waitForExistence(timeout: 5))
+        XCTAssertEqual(categoryMenu.value as? String, "Child Care")
+    }
+
     func testTaskerSubscriptionLifecycle() throws {
         let email = uniqueTestEmail(prefix: "ios-tasker")
         cleanupTestData(for: email)

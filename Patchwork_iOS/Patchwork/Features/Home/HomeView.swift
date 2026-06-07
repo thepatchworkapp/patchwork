@@ -67,7 +67,7 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showCategorySheet) {
             categorySheet
-                .patchworkSheetChrome(detents: [.medium, .large])
+                .patchworkSheetChrome(detents: [.fraction(0.68), .large])
         }
         .onChange(of: showCategorySheet) { _, isPresented in
             if !isPresented {
@@ -653,8 +653,8 @@ struct HomeView: View {
                                     if shouldShowMembers(for: group) {
                                         ForEach(discoverMemberCategoryOptions(for: group), id: \.id) { category in
                                             categorySheetRow(
-                                                label: categoryMenuLabel(for: category),
-                                                systemImage: "circle",
+                                                label: category.name,
+                                                systemImage: categorySystemImage(for: category),
                                                 isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                                 accessibilityIdentifier: "Home.categoryGroupMemberOption.\(category.slug)",
                                                 leadingIndent: 22
@@ -668,8 +668,8 @@ struct HomeView: View {
 
                             ForEach(discoverCategoryOptions, id: \.id) { category in
                                 categorySheetRow(
-                                    label: categoryMenuLabel(for: category),
-                                    systemImage: "tag",
+                                    label: category.name,
+                                    systemImage: categorySystemImage(for: category),
                                     isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                     accessibilityIdentifier: "Home.categoryOption.\(category.slug)"
                                 ) {
@@ -907,19 +907,79 @@ struct HomeView: View {
     }
 
     private func categoryGroupSystemImage(for group: CategoryGroup) -> String {
-        switch group.slug {
-        case let slug where slug.localizedStandardContains("home"):
-            return "house"
-        case let slug where slug.localizedStandardContains("clean"):
+        let normalized = "\(group.slug) \(group.name)".lowercased()
+        switch normalized {
+        case let value where value.localizedStandardContains("beauty"):
             return "sparkles"
-        case let slug where slug.localizedStandardContains("repair") || slug.localizedStandardContains("maintenance"):
+        case let value where value.localizedStandardContains("care") || value.localizedStandardContains("health"):
+            return "heart"
+        case let value where value.localizedStandardContains("home") || value.localizedStandardContains("garden"):
+            return "house"
+        case let value where value.localizedStandardContains("food"):
+            return "fork.knife"
+        case let value where value.localizedStandardContains("creative") || value.localizedStandardContains("design"):
+            return "paintpalette"
+        case let value where value.localizedStandardContains("technical"):
+            return "chevron.left.forwardslash.chevron.right"
+        case let value where value.localizedStandardContains("repair") || value.localizedStandardContains("maintenance") || value.localizedStandardContains("mechanical"):
             return "wrench.and.screwdriver"
-        case let slug where slug.localizedStandardContains("outdoor") || slug.localizedStandardContains("yard"):
+        case let value where value.localizedStandardContains("outdoor") || value.localizedStandardContains("yard"):
             return "leaf"
-        case let slug where slug.localizedStandardContains("event"):
+        case let value where value.localizedStandardContains("event") || value.localizedStandardContains("planner"):
             return "calendar"
+        case let value where value.localizedStandardContains("pet"):
+            return "pawprint"
+        case let value where value.localizedStandardContains("music"):
+            return "music.note"
+        case let value where value.localizedStandardContains("sport"):
+            return "figure.run"
+        case let value where value.localizedStandardContains("legal"):
+            return "scale.3d"
+        case let value where value.localizedStandardContains("writing"):
+            return "doc.text"
         default:
-            return "folder"
+            return "square.grid.2x2"
+        }
+    }
+
+    private func categorySystemImage(for category: Category) -> String {
+        let normalized = "\(category.slug) \(category.name)".lowercased()
+        switch normalized {
+        case let value where value.localizedStandardContains("day-care")
+            || value.localizedStandardContains("baby")
+            || value.localizedStandardContains("child"):
+            return "person.2"
+        case let value where value.localizedStandardContains("tutor")
+            || value.localizedStandardContains("lesson")
+            || value.localizedStandardContains("copywriter")
+            || value.localizedStandardContains("editor")
+            || value.localizedStandardContains("resume"):
+            return "book.closed"
+        case let value where value.localizedStandardContains("care")
+            || value.localizedStandardContains("massage")
+            || value.localizedStandardContains("nutrition")
+            || value.localizedStandardContains("trainer"):
+            return "heart"
+        case let value where value.localizedStandardContains("clean"):
+            return "sparkles"
+        case let value where value.localizedStandardContains("plumb")
+            || value.localizedStandardContains("mechanic")
+            || value.localizedStandardContains("repair"):
+            return "wrench.and.screwdriver"
+        case let value where value.localizedStandardContains("electric")
+            || value.localizedStandardContains("developer")
+            || value.localizedStandardContains("computer"):
+            return "bolt"
+        case let value where value.localizedStandardContains("paint")
+            || value.localizedStandardContains("artist")
+            || value.localizedStandardContains("designer"):
+            return "paintbrush"
+        case let value where value.localizedStandardContains("chef")
+            || value.localizedStandardContains("baker")
+            || value.localizedStandardContains("cater"):
+            return "fork.knife"
+        default:
+            return "tag"
         }
     }
 
@@ -1213,10 +1273,12 @@ struct HomeView: View {
     }
 
     private func toggleCategoryGroupExpansion(_ group: CategoryGroup) {
-        if expandedCategoryGroupSlugs.contains(group.slug) {
-            expandedCategoryGroupSlugs.remove(group.slug)
-        } else {
-            expandedCategoryGroupSlugs.insert(group.slug)
+        withAnimation(.snappy(duration: 0.18)) {
+            if expandedCategoryGroupSlugs.contains(group.slug) {
+                expandedCategoryGroupSlugs.remove(group.slug)
+            } else {
+                expandedCategoryGroupSlugs.insert(group.slug)
+            }
         }
     }
 
