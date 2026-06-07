@@ -49,6 +49,7 @@ final class AppState {
 
     var lastError: String?
     private(set) var signInRequiredAuthFailureID: UUID?
+    private var latestCategoryRefreshRequestID: UUID?
     private var latestTaskerSearchRequestID: UUID?
 
     private enum CurrentUserRefreshResult {
@@ -180,24 +181,39 @@ final class AppState {
     }
 
     func refreshCategories(client: ConvexHTTPClient) async {
+        let requestID = UUID()
+        latestCategoryRefreshRequestID = requestID
         isLoadingCategories = true
-        defer { isLoadingCategories = false }
+        defer {
+            if latestCategoryRefreshRequestID == requestID {
+                isLoadingCategories = false
+            }
+        }
 
         do {
             let api = PatchworkAPI(client: client)
             async let categoryList = api.categories.list()
             async let groupList = api.categories.listGroups()
-            categories = try await categoryList
-            categoryGroups = try await groupList
+            let fetchedCategories = try await categoryList
+            let fetchedGroups = try await groupList
+            guard latestCategoryRefreshRequestID == requestID else {
+                return
+            }
+            categories = fetchedCategories
+            categoryGroups = fetchedGroups
             categoriesErrorMessage = nil
         } catch {
-            categories = []
-            categoryGroups = []
+            guard latestCategoryRefreshRequestID == requestID else {
+                return
+            }
+            if isCancellationError(error) {
+                return
+            }
             if isAuthRequestFailure(error) {
                 recordSignInRequiredAuthFailure()
                 return
             }
-            categoriesErrorMessage = error.localizedDescription
+            categoriesErrorMessage = "We couldn't refresh categories. Please try again."
         }
     }
 
@@ -491,6 +507,7 @@ final class AppState {
         selectedTab = .home
         isBootstrapped = false
         taskers = []
+        latestCategoryRefreshRequestID = nil
         latestTaskerSearchRequestID = nil
         favouriteTaskers = []
         blockedUsers = []

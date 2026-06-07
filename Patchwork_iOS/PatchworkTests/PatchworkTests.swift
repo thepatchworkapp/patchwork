@@ -2464,6 +2464,136 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
+    func testRefreshCategoriesIgnoresStaleCancellationAndAppliesLatestSuccess() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let previousCategory = Self.makeCategory(id: "category_previous", name: "Previous", slug: "previous")
+        let previousGroup = Self.makeCategoryGroup(
+            id: "group_previous",
+            name: "Previous Group",
+            slug: "previous-group",
+            categories: [previousCategory]
+        )
+        let latestCategory = Self.makeCategory(id: "category_latest", name: "Latest", slug: "latest")
+        let latestGroup = Self.makeCategoryGroup(
+            id: "group_latest",
+            name: "Latest Group",
+            slug: "latest-group",
+            categories: [latestCategory]
+        )
+
+        let firstRefreshRequestStarted = expectation(description: "first refresh request started")
+        let releaseFirstRefreshRequest = DispatchSemaphore(value: 0)
+        let requestCount = LockedBox(0)
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let queryPath = try XCTUnwrap(object["path"] as? String)
+            XCTAssertTrue([
+                "categories:listCategories",
+                "categories:listCategoryGroups",
+            ].contains(queryPath))
+
+            let currentRequestCount = requestCount.update { value in
+                value += 1
+                return value
+            }
+
+            if currentRequestCount == 1 {
+                firstRefreshRequestStarted.fulfill()
+                if releaseFirstRefreshRequest.wait(timeout: .now() + 2) == .timedOut {
+                    throw PatchworkError.server("Timed out waiting to release stale category refresh")
+                }
+                throw CancellationError()
+            }
+
+            let response = try Self.jsonResponse(for: request)
+            switch queryPath {
+            case "categories:listCategories":
+                return (response, try Self.convexSuccessData([latestCategory]))
+            case "categories:listCategoryGroups":
+                return (response, try Self.convexSuccessData([latestGroup]))
+            default:
+                throw PatchworkError.invalidResponse
+            }
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+        appState.categories = [previousCategory]
+        appState.categoryGroups = [previousGroup]
+        appState.categoriesErrorMessage = "Previous category refresh failed."
+
+        let staleRefresh = Task {
+            await appState.refreshCategories(client: client)
+        }
+        await fulfillment(of: [firstRefreshRequestStarted], timeout: 2)
+
+        let latestRefresh = Task {
+            await appState.refreshCategories(client: client)
+        }
+        await latestRefresh.value
+
+        releaseFirstRefreshRequest.signal()
+        await staleRefresh.value
+
+        XCTAssertGreaterThanOrEqual(requestCount.get(), 3)
+        XCTAssertEqual(appState.categories, [latestCategory])
+        XCTAssertEqual(appState.categoryGroups, [latestGroup])
+        XCTAssertNil(appState.categoriesErrorMessage)
+        XCTAssertNil(appState.lastError)
+        XCTAssertNil(appState.signInRequiredAuthFailureID)
+        XCTAssertFalse(appState.isLoadingCategories)
+    }
+
+    @MainActor
+    func testRefreshCategoriesPreservesExistingCategoriesOnNonAuthFailure() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        let previousCategory = Self.makeCategory(id: "category_existing", name: "Existing", slug: "existing")
+        let previousGroup = Self.makeCategoryGroup(
+            id: "group_existing",
+            name: "Existing Group",
+            slug: "existing-group",
+            categories: [previousCategory]
+        )
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let queryPath = try XCTUnwrap(object["path"] as? String)
+            XCTAssertTrue([
+                "categories:listCategories",
+                "categories:listCategoryGroups",
+            ].contains(queryPath))
+
+            let response = try Self.jsonResponse(for: request, statusCode: 500)
+            return (response, Data("{\"error\":\"Database stack trace that should stay hidden.\"}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let appState = AppState()
+        appState.categories = [previousCategory]
+        appState.categoryGroups = [previousGroup]
+
+        await appState.refreshCategories(client: client)
+
+        XCTAssertEqual(appState.categories, [previousCategory])
+        XCTAssertEqual(appState.categoryGroups, [previousGroup])
+        XCTAssertEqual(appState.categoriesErrorMessage, "We couldn't refresh categories. Please try again.")
+        XCTAssertNil(appState.lastError)
+        XCTAssertNil(appState.signInRequiredAuthFailureID)
+        XCTAssertFalse(appState.isLoadingCategories)
+    }
+
+    @MainActor
     func testSyncLocationGenericRefreshFailureSignalsSignInRequiredWithoutVisibleError() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
@@ -2920,6 +3050,51 @@ final class PatchworkTests: XCTestCase {
         return URLSession(configuration: configuration)
     }
 
+    private static func makeCategory(
+        id: ConvexID,
+        name: String,
+        slug: String,
+        emoji: String? = nil,
+        group: String? = nil
+    ) -> Patchwork.Category {
+        Patchwork.Category(id: id, name: name, slug: slug, emoji: emoji, group: group)
+    }
+
+    private static func makeCategoryGroup(
+        id: ConvexID,
+        name: String,
+        slug: String,
+        sortOrder: Int = 0,
+        categories: [Patchwork.Category]
+    ) -> Patchwork.CategoryGroup {
+        Patchwork.CategoryGroup(id: id, name: name, slug: slug, sortOrder: sortOrder, categories: categories)
+    }
+
+    private static func jsonResponse(
+        for request: URLRequest,
+        statusCode: Int = 200
+    ) throws -> HTTPURLResponse {
+        try XCTUnwrap(
+            HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+        )
+    }
+
+    private static func convexSuccessData<Value: Encodable>(_ value: Value) throws -> Data {
+        let encodedValue = try JSONEncoder().encode(value)
+        let valueObject = try JSONSerialization.jsonObject(with: encodedValue)
+        return try JSONSerialization.data(
+            withJSONObject: [
+                "status": "success",
+                "value": valueObject,
+            ]
+        )
+    }
+
     private static func requestBody(from request: URLRequest) -> Data? {
         if let body = request.httpBody {
             return body
@@ -3061,6 +3236,12 @@ private final class LockedBox<Value>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return value
+    }
+
+    func update<Result>(_ body: (inout Value) -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
     }
 }
 
