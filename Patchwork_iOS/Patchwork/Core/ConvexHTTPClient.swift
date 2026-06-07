@@ -352,7 +352,24 @@ struct ConvexHTTPClient {
         }
 
         let cookieHeader = cookieHeaderFromSetCookieHeader(setBetterAuthCookie)
+        guard containsBetterAuthSessionCookie(cookieHeader) else {
+            return nil
+        }
         return cookieHeader.isEmpty ? nil : cookieHeader
+    }
+
+    private static func containsBetterAuthSessionCookie(_ cookieHeader: String) -> Bool {
+        cookieHeader
+            .split(separator: ";")
+            .contains { fragment in
+                let cookieName = fragment
+                    .split(separator: "=", maxSplits: 1)
+                    .first
+                    .map(String.init)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased() ?? ""
+                return cookieName == "session_token" || cookieName.hasSuffix(".session_token")
+            }
     }
 
     private var betterAuthOrigin: String {

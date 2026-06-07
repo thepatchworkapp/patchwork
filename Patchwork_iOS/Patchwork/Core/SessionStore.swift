@@ -563,6 +563,9 @@ final class SessionStore {
 
     private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
         if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
+            if Self.isGenericAuthenticationRequestFailure(message) {
+                return false
+            }
             if statusCode == 401 {
                 return true
             }
@@ -575,6 +578,13 @@ final class SessionStore {
 
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         return isTerminalCredentialFailure(description)
+    }
+
+    private static func isGenericAuthenticationRequestFailure(_ description: String) -> Bool {
+        let normalized = description
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized == "authentication request failed." || normalized == "authentication request failed"
     }
 
     private func isTerminalCredentialFailure(_ description: String) -> Bool {

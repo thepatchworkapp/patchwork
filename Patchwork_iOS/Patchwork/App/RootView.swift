@@ -105,7 +105,7 @@ struct RootView: View {
             await validatePersistedMissingCurrentUserIfNeeded(validationKey: persistedMissingCurrentUserValidationKey)
         }
         .task(id: appState.signInRequiredAuthFailureID) {
-            clearInvalidPersistedCredentialAfterAuthFailureIfNeeded()
+            await recoverSessionAfterAuthFailureIfNeeded()
         }
         .task(id: revenueCatIdentityKey) {
             let userID = sessionStore.isAuthenticated ? appState.currentUser?.id : nil
@@ -589,7 +589,7 @@ struct RootView: View {
             return false
         }
 
-        let didSync = await syncLocation(coordinate, source: "gps")
+        let didSync = await syncLocation(coordinate, source: "gps", surfaceErrors: false)
         if didSync {
             await appState.refreshAuthedData(client: sessionStore.client, surfaceErrors: false)
         }
@@ -613,12 +613,17 @@ struct RootView: View {
     }
 
     @discardableResult
-    private func syncLocation(_ coordinate: CLLocationCoordinate2D, source: String) async -> Bool {
+    private func syncLocation(
+        _ coordinate: CLLocationCoordinate2D,
+        source: String,
+        surfaceErrors: Bool = true
+    ) async -> Bool {
         let didSync = await appState.syncLocation(
             client: sessionStore.client,
             lat: coordinate.latitude,
             lng: coordinate.longitude,
-            source: source
+            source: source,
+            surfaceErrors: surfaceErrors
         )
         if didSync {
             applyLocalLocationUpdate(coordinate)
@@ -768,12 +773,6 @@ struct RootView: View {
             return false
         }
 
-        if appState.signInRequiredAuthFailureID != nil {
-            sessionStore.clearInvalidPersistedCredential()
-            appState.resetForSignedOutSession()
-            return true
-        }
-
         guard appState.currentUser == nil,
               appState.hasConfirmedMissingCurrentUser || appState.hasFailedCurrentUserRefreshWithoutPrevious else {
             return false
@@ -810,14 +809,42 @@ struct RootView: View {
         sessionStore.storeCurrentUserSnapshot(appState.currentUser)
     }
 
-    private func clearInvalidPersistedCredentialAfterAuthFailureIfNeeded() {
+    private func recoverSessionAfterAuthFailureIfNeeded() async {
         guard sessionStore.isAuthenticated,
               appState.signInRequiredAuthFailureID != nil else {
             return
         }
 
-        sessionStore.clearInvalidPersistedCredential()
-        appState.resetForSignedOutSession()
+        appState.clearSignInRequiredAuthFailure()
+        applyCachedCurrentUserIfNeeded()
+
+        let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: true)
+        guard restored else {
+            if !sessionStore.isAuthenticated {
+                appState.resetForSignedOutSession()
+            }
+            return
+        }
+
+        await appState.refreshAuthedData(
+            client: sessionStore.client,
+            surfaceErrors: false,
+            shouldRefreshCategories: appState.isBootstrapped
+        )
+
+        if clearInvalidPersistedCredentialIfNeeded() {
+            return
+        }
+
+        if !appState.isBootstrapped {
+            await appState.loadBootstrapData(client: sessionStore.client)
+        }
+
+        if clearInvalidPersistedCredentialIfNeeded() {
+            return
+        }
+        storeCurrentUserSnapshotIfAvailable()
+        appState.clearSignInRequiredAuthFailure()
     }
 }
 

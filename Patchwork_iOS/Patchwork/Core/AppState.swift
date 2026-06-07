@@ -86,6 +86,9 @@ final class AppState {
 
     private func isAuthRequestFailure(_ error: Error) -> Bool {
         if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
+            if Self.isGenericAuthenticationRequestFailure(message) {
+                return false
+            }
             if statusCode == 401 || statusCode == 403 {
                 return true
             }
@@ -98,8 +101,15 @@ final class AppState {
 
         return Self.isTerminalAuthFailureMessage(
             error.localizedDescription,
-            includesGenericAuthRequestFailure: true
+            includesGenericAuthRequestFailure: false
         )
+    }
+
+    private static func isGenericAuthenticationRequestFailure(_ message: String) -> Bool {
+        let normalized = message
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized == "authentication request failed." || normalized == "authentication request failed"
     }
 
     private static func isTerminalAuthFailureMessage(
@@ -139,6 +149,10 @@ final class AppState {
         lastError = nil
         categoriesErrorMessage = nil
         signInRequiredAuthFailureID = UUID()
+    }
+
+    func clearSignInRequiredAuthFailure() {
+        signInRequiredAuthFailureID = nil
     }
 
     func loadBootstrapData(client: ConvexHTTPClient) async {
@@ -325,7 +339,13 @@ final class AppState {
     }
 
     @discardableResult
-    func syncLocation(client: ConvexHTTPClient, lat: Double, lng: Double, source: String = "manual") async -> Bool {
+    func syncLocation(
+        client: ConvexHTTPClient,
+        lat: Double,
+        lng: Double,
+        source: String = "manual",
+        surfaceErrors: Bool = true
+    ) async -> Bool {
         do {
             if source == "gps" {
                 try await PatchworkAPI(client: client).users.checkInGpsLocation(lat: lat, lng: lng)
@@ -334,7 +354,9 @@ final class AppState {
             }
             return true
         } catch {
-            presentError(error, prefix: "Failed to sync location")
+            if surfaceErrors {
+                presentError(error, prefix: "Failed to sync location")
+            }
             return false
         }
     }
