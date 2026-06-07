@@ -178,8 +178,9 @@ struct AvatarPhotoControl<Placeholder: View>: View {
     let remoteAsset: RemoteImageAsset?
     let size: CGFloat
     let isBusy: Bool
+    let showsEditBadge: Bool
     let accessibilityIdentifier: String
-    let action: () -> Void
+    let action: (() -> Void)?
     let placeholder: () -> Placeholder
 
     init(
@@ -187,61 +188,80 @@ struct AvatarPhotoControl<Placeholder: View>: View {
         remoteAsset: RemoteImageAsset? = nil,
         size: CGFloat = 108,
         isBusy: Bool = false,
+        showsEditBadge: Bool = true,
         accessibilityIdentifier: String,
-        action: @escaping () -> Void,
+        action: (() -> Void)? = nil,
         @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
         self.localImage = localImage
         self.remoteAsset = remoteAsset
         self.size = size
         self.isBusy = isBusy
+        self.showsEditBadge = showsEditBadge
         self.accessibilityIdentifier = accessibilityIdentifier
         self.action = action
         self.placeholder = placeholder
     }
 
+    @ViewBuilder
     var body: some View {
-        Button(action: action) {
-            ZStack(alignment: .bottomTrailing) {
-                avatarImage
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
-                    )
-                    .contentShape(Circle())
+        if let action {
+            Button(action: action) {
+                controlContent
+            }
+            .buttonStyle(.plain)
+            .disabled(isBusy)
+            .accessibilityLabel(hasImage ? "Edit profile photo" : "Add profile photo")
+            .accessibilityIdentifier(accessibilityIdentifier)
+        } else {
+            controlContent
+                .accessibilityLabel(hasImage ? "Profile photo" : "Profile photo placeholder")
+                .accessibilityIdentifier(accessibilityIdentifier)
+        }
+    }
 
-                ZStack {
-                    Circle()
-                        .fill(PatchworkTheme.surface)
-                        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-                    Image(systemName: hasImage ? "pencil" : "plus")
-                        .font(.system(size: size >= 96 ? 16 : 13, weight: .bold))
-                        .foregroundStyle(PatchworkTheme.brand)
-                }
-                .frame(width: size >= 96 ? 34 : 28, height: size >= 96 ? 34 : 28)
+    private var controlContent: some View {
+        ZStack(alignment: .bottomTrailing) {
+            avatarImage
+                .frame(width: size, height: size)
+                .clipShape(Circle())
                 .overlay(
                     Circle()
                         .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
                 )
-                .offset(x: size >= 96 ? 10 : 8, y: size >= 96 ? 10 : 8)
+                .contentShape(Circle())
 
-                if isBusy {
-                    Circle()
-                        .fill(.black.opacity(0.22))
-                        .frame(width: size, height: size)
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.white)
-                        .frame(width: size, height: size)
-                }
+            if showsEditBadge {
+                editBadge
+            }
+
+            if isBusy {
+                Circle()
+                    .fill(.black.opacity(0.22))
+                    .frame(width: size, height: size)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+                    .frame(width: size, height: size)
             }
         }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .accessibilityLabel(hasImage ? "Edit profile photo" : "Add profile photo")
-        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var editBadge: some View {
+        ZStack {
+            Circle()
+                .fill(PatchworkTheme.surface)
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+            Image(systemName: hasImage ? "pencil" : "plus")
+                .font(.system(size: size >= 96 ? 16 : 13, weight: .bold))
+                .foregroundStyle(PatchworkTheme.brand)
+        }
+        .frame(width: size >= 96 ? 34 : 28, height: size >= 96 ? 34 : 28)
+        .overlay(
+            Circle()
+                .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+        )
+        .offset(x: size >= 96 ? 10 : 8, y: size >= 96 ? 10 : 8)
     }
 
     @ViewBuilder

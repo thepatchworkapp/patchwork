@@ -80,7 +80,7 @@ struct ProfileSidebarMenu: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Notifications")
+                        Text("Permissions")
                             .font(.patchworkBodyStrong)
                             .foregroundStyle(PatchworkTheme.textPrimary)
                         Text("System settings")
@@ -105,7 +105,7 @@ struct ProfileSidebarMenu: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("Profile.sidebarNotificationsButton")
-            .accessibilityLabel("Open notification settings")
+            .accessibilityLabel("Open permissions settings")
 
             Button(action: onOpenBlocked) {
                 HStack(spacing: 12) {

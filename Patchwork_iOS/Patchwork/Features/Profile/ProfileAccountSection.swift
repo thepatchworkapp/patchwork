@@ -32,6 +32,9 @@ struct ProfileAccountSection: View {
                     Task { await removeProfilePhoto() }
                 }
             }
+            Button("Edit Name & Location") {
+                isShowingProfileEditor = true
+            }
             Button("Cancel", role: .cancel) {}
         }
         .sheet(item: $photoFlow.activeSheet) { sheet in
@@ -71,35 +74,14 @@ struct ProfileAccountSection: View {
     }
 
     private var preTaskerAccountContent: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             VStack(spacing: 18) {
                 avatar
                     .padding(.top, 30)
                 profilePhotoControls
 
                 VStack(spacing: 10) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(user?.name ?? "Signed in")
-                            .font(.system(size: 29, weight: .bold, design: .rounded))
-                            .foregroundStyle(PatchworkTheme.textPrimary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-
-                        Button {
-                            isShowingProfileEditor = true
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(PatchworkTheme.textSecondary)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Edit seeker profile")
-                        .accessibilityIdentifier("Profile.editProfileButton")
-                    }
-                    .frame(maxWidth: .infinity)
+                    profileName
 
                     Label(locationLabel, systemImage: "mappin.and.ellipse")
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
@@ -118,44 +100,20 @@ struct ProfileAccountSection: View {
             }
             .frame(maxWidth: .infinity)
 
-            HStack {
-                Spacer(minLength: 0)
-                ProfileMenuButton(action: onOpenMenu)
-            }
+            profileHeaderActions
         }
         .frame(maxWidth: .infinity)
     }
 
     private var taskerAccountContent: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             VStack(spacing: 12) {
                 avatar
                     .padding(.top, 12)
                 profilePhotoControls
 
                 VStack(spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(user?.name ?? "Signed in")
-                            .font(.system(size: 29, weight: .bold, design: .rounded))
-                            .foregroundStyle(PatchworkTheme.textPrimary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-
-                        Button {
-                            isShowingProfileEditor = true
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(PatchworkTheme.brand)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Edit seeker profile")
-                        .accessibilityIdentifier("Profile.editProfileButton")
-                    }
-                    .frame(maxWidth: .infinity)
+                    profileName
 
                     Label(locationLabel, systemImage: "mappin.and.ellipse")
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
@@ -180,10 +138,7 @@ struct ProfileAccountSection: View {
             }
             .frame(maxWidth: .infinity)
 
-            HStack {
-                Spacer(minLength: 0)
-                ProfileMenuButton(action: onOpenMenu)
-            }
+            profileHeaderActions
         }
         .frame(maxWidth: .infinity)
     }
@@ -195,8 +150,8 @@ struct ProfileAccountSection: View {
                 remoteAsset: displayedPhotoAsset,
                 size: 124,
                 isBusy: isUploadingPhoto,
+                showsEditBadge: false,
                 accessibilityIdentifier: "Profile.photoPicker",
-                action: { photoFlow.showOptions() }
             ) {
                 avatarFallback
             }
@@ -218,6 +173,45 @@ struct ProfileAccountSection: View {
                 .offset(x: 4, y: 4)
             }
         }
+    }
+
+    private var profileHeaderActions: some View {
+        HStack {
+            profileEditButton
+            Spacer(minLength: 0)
+            ProfileMenuButton(action: onOpenMenu)
+        }
+    }
+
+    private var profileEditButton: some View {
+        Button {
+            photoFlow.showOptions()
+        } label: {
+            Label("Edit profile", systemImage: "pencil")
+                .labelStyle(.iconOnly)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(PatchworkTheme.brand)
+                .frame(width: 44, height: 44)
+                .background(PatchworkTheme.brandSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(PatchworkTheme.strokeStrong, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isUploadingPhoto)
+        .accessibilityLabel("Edit profile photo")
+        .accessibilityIdentifier("Profile.editProfileButton")
+    }
+
+    private var profileName: some View {
+        Text(user?.name ?? "Signed in")
+            .font(.system(size: 29, weight: .bold, design: .rounded))
+            .foregroundStyle(PatchworkTheme.textPrimary)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.78)
+            .frame(maxWidth: .infinity)
     }
 
     private var avatarFallback: some View {

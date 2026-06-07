@@ -147,19 +147,7 @@ struct ProfileView: View {
     }
 
     private var appVersionLabel: String {
-        let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-
-        switch (shortVersion, buildNumber) {
-        case let (version?, build?) where !version.isEmpty && !build.isEmpty:
-            return "Version \(version) (\(build))"
-        case let (version?, _) where !version.isEmpty:
-            return "Version \(version)"
-        case let (_, build?) where !build.isEmpty:
-            return "Build \(build)"
-        default:
-            return "Version unavailable"
-        }
+        AppVersionInfo().profileFooterText
     }
 }
 
