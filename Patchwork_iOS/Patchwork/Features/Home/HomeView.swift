@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     private enum MainLayout {
@@ -10,6 +11,35 @@ struct HomeView: View {
 
     private struct TaskerRoute: Hashable, Identifiable {
         let id: ConvexID
+    }
+
+    private struct EmojiMark: UIViewRepresentable {
+        let emoji: String
+        let size: CGFloat
+
+        func makeUIView(context: Context) -> UILabel {
+            let label = UILabel()
+            label.backgroundColor = .clear
+            label.isAccessibilityElement = false
+            label.numberOfLines = 1
+            label.textAlignment = .center
+            label.adjustsFontForContentSizeCategory = false
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+            label.setContentHuggingPriority(.required, for: .horizontal)
+            label.font = Self.font(size: size)
+            return label
+        }
+
+        func updateUIView(_ uiView: UILabel, context: Context) {
+            uiView.text = emoji
+            uiView.font = Self.font(size: size)
+        }
+
+        private static func font(size: CGFloat) -> UIFont {
+            UIFont(name: "AppleColorEmoji", size: size)
+                ?? UIFont(name: "Apple Color Emoji", size: size)
+                ?? UIFont.systemFont(ofSize: size)
+        }
     }
 
     @Environment(AppState.self) private var appState
@@ -636,7 +666,7 @@ struct HomeView: View {
                             if shouldShowAllCategoriesOption {
                                 categorySheetRow(
                                     label: "All categories",
-                                    systemImage: "square.grid.2x2",
+                                    emoji: "📋",
                                     isSelected: selectedCategorySlug == nil
                                         && selectedCategoryGroupSlug == nil
                                         && selectedCategorySlugs.isEmpty,
@@ -654,7 +684,7 @@ struct HomeView: View {
                                         ForEach(discoverMemberCategoryOptions(for: group), id: \.id) { category in
                                             categorySheetRow(
                                                 label: category.name,
-                                                systemImage: categorySystemImage(for: category),
+                                                emoji: categoryEmoji(for: category),
                                                 isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                                 accessibilityIdentifier: "Home.categoryGroupMemberOption.\(category.slug)",
                                                 leadingIndent: 22
@@ -669,7 +699,7 @@ struct HomeView: View {
                             ForEach(discoverCategoryOptions, id: \.id) { category in
                                 categorySheetRow(
                                     label: category.name,
-                                    systemImage: categorySystemImage(for: category),
+                                    emoji: categoryEmoji(for: category),
                                     isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                     accessibilityIdentifier: "Home.categoryOption.\(category.slug)"
                                 ) {
@@ -710,7 +740,7 @@ struct HomeView: View {
 
     private func categorySheetRow(
         label: String,
-        systemImage: String,
+        emoji: String,
         isSelected: Bool,
         accessibilityIdentifier: String,
         leadingIndent: CGFloat = 0,
@@ -718,11 +748,7 @@ struct HomeView: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isSelected ? PatchworkTheme.brand : PatchworkTheme.textSecondary)
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
+                categoryEmojiMark(emoji)
 
                 Text(label)
                     .font(.patchworkBodyStrong)
@@ -767,11 +793,7 @@ struct HomeView: View {
                 selectCategoryGroup(group)
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: categoryGroupSystemImage(for: group))
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(isSelected ? PatchworkTheme.brand : PatchworkTheme.textSecondary)
-                        .frame(width: 24)
-                        .accessibilityHidden(true)
+                    categoryEmojiMark(categoryGroupEmoji(for: group))
 
                     Text(group.name)
                         .font(.patchworkBodyStrong)
@@ -906,80 +928,227 @@ struct HomeView: View {
         expandedCategoryGroupSlugs.contains(group.slug)
     }
 
-    private func categoryGroupSystemImage(for group: CategoryGroup) -> String {
-        let normalized = "\(group.slug) \(group.name)".lowercased()
-        switch normalized {
-        case let value where value.localizedStandardContains("beauty"):
-            return "sparkles"
-        case let value where value.localizedStandardContains("care") || value.localizedStandardContains("health"):
-            return "heart"
-        case let value where value.localizedStandardContains("home") || value.localizedStandardContains("garden"):
-            return "house"
-        case let value where value.localizedStandardContains("food"):
-            return "fork.knife"
-        case let value where value.localizedStandardContains("creative") || value.localizedStandardContains("design"):
-            return "paintpalette"
-        case let value where value.localizedStandardContains("technical"):
-            return "chevron.left.forwardslash.chevron.right"
-        case let value where value.localizedStandardContains("repair") || value.localizedStandardContains("maintenance") || value.localizedStandardContains("mechanical"):
-            return "wrench.and.screwdriver"
-        case let value where value.localizedStandardContains("outdoor") || value.localizedStandardContains("yard"):
-            return "leaf"
-        case let value where value.localizedStandardContains("event") || value.localizedStandardContains("planner"):
-            return "calendar"
-        case let value where value.localizedStandardContains("pet"):
-            return "pawprint"
-        case let value where value.localizedStandardContains("music"):
-            return "music.note"
-        case let value where value.localizedStandardContains("sport"):
-            return "figure.run"
-        case let value where value.localizedStandardContains("legal"):
-            return "scale.3d"
-        case let value where value.localizedStandardContains("writing"):
-            return "doc.text"
-        default:
-            return "square.grid.2x2"
+    @ViewBuilder
+    private func categoryEmojiMark(_ emoji: String) -> some View {
+        if let image = UIImage(named: categoryEmojiAssetName(for: emoji)) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 26, height: 26)
+                .accessibilityHidden(true)
+        } else {
+            EmojiMark(emoji: emoji, size: 22)
+                .frame(width: 26, height: 26)
+                .accessibilityHidden(true)
         }
     }
 
-    private func categorySystemImage(for category: Category) -> String {
+    private func categoryEmojiAssetName(for emoji: String) -> String {
+        let scalars = emoji.unicodeScalars
+            .map { String(format: "%04X", Int($0.value)) }
+            .joined(separator: "_")
+        return "CategoryEmoji_\(scalars)"
+    }
+
+    private func categoryGroupEmoji(for group: CategoryGroup) -> String {
+        let normalized = "\(group.slug) \(group.name)".lowercased()
+        switch normalized {
+        case let value where value.localizedStandardContains("beauty"):
+            return "💄"
+        case let value where value.localizedStandardContains("child"):
+            return "🧸"
+        case let value where value.localizedStandardContains("health") || value.localizedStandardContains("wellbeing"):
+            return "💚"
+        case let value where value.localizedStandardContains("clothing"):
+            return "👗"
+        case let value where value.localizedStandardContains("home") || value.localizedStandardContains("garden"):
+            return "🏠"
+        case let value where value.localizedStandardContains("food"):
+            return "🍽️"
+        case let value where value.localizedStandardContains("creative") || value.localizedStandardContains("design"):
+            return "🎨"
+        case let value where value.localizedStandardContains("technical"):
+            return "💻"
+        case let value where value.localizedStandardContains("mechanical") || value.localizedStandardContains("repair"):
+            return "🔧"
+        case let value where value.localizedStandardContains("planner") || value.localizedStandardContains("event"):
+            return "🎉"
+        case let value where value.localizedStandardContains("pet"):
+            return "🐾"
+        case let value where value.localizedStandardContains("care"):
+            return "🧸"
+        case let value where value.localizedStandardContains("music"):
+            return "🎵"
+        case let value where value.localizedStandardContains("sport"):
+            return "⚾"
+        case let value where value.localizedStandardContains("legal"):
+            return "⚖️"
+        case let value where value.localizedStandardContains("writing"):
+            return "✍️"
+        default:
+            return "📋"
+        }
+    }
+
+    private func categoryEmoji(for category: Category) -> String {
+        if let emoji = category.emoji?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !emoji.isEmpty {
+            return emoji
+        }
         let normalized = "\(category.slug) \(category.name)".lowercased()
         switch normalized {
-        case let value where value.localizedStandardContains("day-care")
-            || value.localizedStandardContains("baby")
-            || value.localizedStandardContains("child"):
-            return "person.2"
-        case let value where value.localizedStandardContains("tutor")
-            || value.localizedStandardContains("lesson")
-            || value.localizedStandardContains("copywriter")
-            || value.localizedStandardContains("editor")
-            || value.localizedStandardContains("resume"):
-            return "book.closed"
-        case let value where value.localizedStandardContains("care")
-            || value.localizedStandardContains("massage")
-            || value.localizedStandardContains("nutrition")
-            || value.localizedStandardContains("trainer"):
-            return "heart"
-        case let value where value.localizedStandardContains("clean"):
-            return "sparkles"
-        case let value where value.localizedStandardContains("plumb")
-            || value.localizedStandardContains("mechanic")
-            || value.localizedStandardContains("repair"):
-            return "wrench.and.screwdriver"
-        case let value where value.localizedStandardContains("electric")
-            || value.localizedStandardContains("developer")
-            || value.localizedStandardContains("computer"):
-            return "bolt"
-        case let value where value.localizedStandardContains("paint")
-            || value.localizedStandardContains("artist")
-            || value.localizedStandardContains("designer"):
-            return "paintbrush"
-        case let value where value.localizedStandardContains("chef")
-            || value.localizedStandardContains("baker")
-            || value.localizedStandardContains("cater"):
-            return "fork.knife"
+        case let value where value.localizedStandardContains("barber"):
+            return "💈"
+        case let value where value.localizedStandardContains("hair removal"):
+            return "🧖"
+        case let value where value.localizedStandardContains("hair stylist") || value.localizedStandardContains("hair"):
+            return "💇"
+        case let value where value.localizedStandardContains("lash"):
+            return "👁️"
+        case let value where value.localizedStandardContains("makeup"):
+            return "💄"
+        case let value where value.localizedStandardContains("microblading"):
+            return "✒️"
+        case let value where value.localizedStandardContains("nail"):
+            return "💅"
+        case let value where value.localizedStandardContains("tattoo"):
+            return "🖋️"
+        case let value where value.localizedStandardContains("skin"):
+            return "🧴"
+        case let value where value.localizedStandardContains("day-care") || value.localizedStandardContains("baby"):
+            return "🧸"
+        case let value where value.localizedStandardContains("tutor"):
+            return "📚"
+        case let value where value.localizedStandardContains("clothing stylist"):
+            return "👗"
+        case let value where value.localizedStandardContains("tailor"):
+            return "🧵"
+        case let value where value.localizedStandardContains("engraver"):
+            return "🔖"
+        case let value where value.localizedStandardContains("graphic"):
+            return "🖼️"
+        case let value where value.localizedStandardContains("photographer"):
+            return "📸"
+        case let value where value.localizedStandardContains("printer"):
+            return "🖨️"
+        case let value where value.localizedStandardContains("social"):
+            return "📣"
+        case let value where value.localizedStandardContains("videographer"):
+            return "🎥"
+        case let value where value.localizedStandardContains("artist") || value.localizedStandardContains("interior painter"):
+            return "🎨"
+        case let value where value.localizedStandardContains("baker"):
+            return "🧁"
+        case let value where value.localizedStandardContains("cater"):
+            return "🍽️"
+        case let value where value.localizedStandardContains("chef"):
+            return "👨‍🍳"
+        case let value where value.localizedStandardContains("in-home care"):
+            return "🏥"
+        case let value where value.localizedStandardContains("life coach"):
+            return "🧭"
+        case let value where value.localizedStandardContains("massage"):
+            return "💆"
+        case let value where value.localizedStandardContains("nutrition"):
+            return "🍏"
+        case let value where value.localizedStandardContains("personal assistant"):
+            return "🗂️"
+        case let value where value.localizedStandardContains("errand"):
+            return "🏃"
+        case let value where value.localizedStandardContains("trainer"):
+            return "🏋️"
+        case let value where value.localizedStandardContains("carpenter"):
+            return "🪚"
+        case let value where value.localizedStandardContains("carpet"):
+            return "🧼"
+        case let value where value.localizedStandardContains("exterior painter"):
+            return "🖌️"
+        case let value where value.localizedStandardContains("florist"):
+            return "💐"
+        case let value where value.localizedStandardContains("contractor"):
+            return "🏗️"
+        case let value where value.localizedStandardContains("handy"):
+            return "🔨"
+        case let value where value.localizedStandardContains("interior cleaning"):
+            return "🧹"
+        case let value where value.localizedStandardContains("interior designer"):
+            return "🛋️"
+        case let value where value.localizedStandardContains("landscaper"):
+            return "🪴"
+        case let value where value.localizedStandardContains("mortgage"):
+            return "🏦"
+        case let value where value.localizedStandardContains("plumb"):
+            return "🚰"
+        case let value where value.localizedStandardContains("organizer"):
+            return "📦"
+        case let value where value.localizedStandardContains("realtor"):
+            return "🏘️"
+        case let value where value.localizedStandardContains("snow"):
+            return "❄️"
+        case let value where value.localizedStandardContains("window"):
+            return "🪟"
+        case let value where value.localizedStandardContains("gutter") || value.localizedStandardContains("roof"):
+            return "🏠"
+        case let value where value.localizedStandardContains("lawyer"):
+            return "⚖️"
+        case let value where value.localizedStandardContains("auto"):
+            return "🚗"
+        case let value where value.localizedStandardContains("small engine") || value.localizedStandardContains("repair"):
+            return "🔧"
+        case let value where value.localizedStandardContains("band") || value.localizedStandardContains("musician"):
+            return "🎵"
+        case let value where value.localizedStandardContains("dj"):
+            return "🎧"
+        case let value where value.localizedStandardContains("guitar"):
+            return "🎸"
+        case let value where value.localizedStandardContains("piano"):
+            return "🎹"
+        case let value where value.localizedStandardContains("dog"):
+            return "🐕"
+        case let value where value.localizedStandardContains("groom"):
+            return "✂️"
+        case let value where value.localizedStandardContains("pet"):
+            return "🐾"
+        case let value where value.localizedStandardContains("event"):
+            return "🎉"
+        case let value where value.localizedStandardContains("travel"):
+            return "✈️"
+        case let value where value.localizedStandardContains("wedding"):
+            return "💍"
+        case let value where value.localizedStandardContains("baseball"):
+            return "⚾"
+        case let value where value.localizedStandardContains("skating"):
+            return "⛸️"
+        case let value where value.localizedStandardContains("golf"):
+            return "⛳"
+        case let value where value.localizedStandardContains("hockey"):
+            return "🏒"
+        case let value where value.localizedStandardContains("tennis"):
+            return "🎾"
+        case let value where value.localizedStandardContains("architect"):
+            return "📐"
+        case let value where value.localizedStandardContains("computer"):
+            return "💻"
+        case let value where value.localizedStandardContains("developer"):
+            return "⌨️"
+        case let value where value.localizedStandardContains("electric"):
+            return "🔌"
+        case let value where value.localizedStandardContains("engineer"):
+            return "⚙️"
+        case let value where value.localizedStandardContains("tax"):
+            return "🧾"
+        case let value where value.localizedStandardContains("web"):
+            return "🌐"
+        case let value where value.localizedStandardContains("copywriter"):
+            return "✍️"
+        case let value where value.localizedStandardContains("editor"):
+            return "📝"
+        case let value where value.localizedStandardContains("resume"):
+            return "📄"
+        case let value where value.localizedStandardContains("designer") || value.localizedStandardContains("paint"):
+            return "🎨"
         default:
-            return "tag"
+            return "📋"
         }
     }
 
