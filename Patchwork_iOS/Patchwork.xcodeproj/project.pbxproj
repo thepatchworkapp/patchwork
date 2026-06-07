@@ -34,6 +34,7 @@
 		7E2DF4F80C2A23B6773AB1D4 /* PhotoFlowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */; };
 		83F1208A5E038F6909952294 /* ChatLocalStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A568009F99CF7E0BAF5648 /* ChatLocalStoreTests.swift */; };
 		85975D230213BC9C835DC615 /* TaskerBillingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF84246558681E3EED1AF9CC /* TaskerBillingSheet.swift */; };
+		88E9EF4EBD74B58E56E7456D /* AppVersionInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8511BFA0EA9B29952949FD35 /* AppVersionInfo.swift */; };
 		8B1F1151EEDA84670EC14304 /* PatchworkAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C923EC8BCFC5713629B91A7 /* PatchworkAPI.swift */; };
 		8EEAEC949437AD9FCCE2FF45 /* ProfileSharedRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A614DA8D45E5A7F5EF31F53 /* ProfileSharedRows.swift */; };
 		8F95190A8F0A7942215EBF7B /* ChatLocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A51B22A907726DFD906C2C /* ChatLocalStore.swift */; };
@@ -59,6 +60,7 @@
 		D60729C5F813CE8E8D1D26FE /* UITheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D08930C048430E82A75FF1 /* UITheme.swift */; };
 		D7696C15EE5A69B6740EF839 /* LocationSyncCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBD6D5FE7B4FC563B6ED48C3 /* LocationSyncCache.swift */; };
 		D8EF20CCEE9A28A3E33F470E /* PatchworkWordmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F283C4FC8552DCD76FCEE8 /* PatchworkWordmark.swift */; };
+		DB37750B13DFE3FBCBBA4662 /* AppVersionInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37080352312B64DB61335D01 /* AppVersionInfoTests.swift */; };
 		DDBFF396C71A390483845E92 /* PatchworkButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4089E6907E1A4CD9D8AD8BA /* PatchworkButtonStyles.swift */; };
 		DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */; };
 		E558EA47096F359FFC164656 /* PhotoFlowCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */; };
@@ -104,6 +106,7 @@
 		2A728E75749A92D0B48EE44F /* PhotoFlowCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFlowCoordinatorTests.swift; sourceTree = "<group>"; };
 		2EFCFC8116749B205BC1EDF8 /* SubscriptionFeedbackMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionFeedbackMessage.swift; sourceTree = "<group>"; };
 		34DD12FD083ED3D0FAD7BC60 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		37080352312B64DB61335D01 /* AppVersionInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionInfoTests.swift; sourceTree = "<group>"; };
 		424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexHTTPClient.swift; sourceTree = "<group>"; };
 		42589DA5F91E89C032BE5FBD /* AuthFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowView.swift; sourceTree = "<group>"; };
 		454489F5E4E29DBC0D7CC1F2 /* PatchworkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkUITests.swift; sourceTree = "<group>"; };
@@ -121,6 +124,7 @@
 		7CDFAA0BDFF8EC5AE6285C66 /* PatchworkBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkBackdrop.swift; sourceTree = "<group>"; };
 		8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAssetUploadService.swift; sourceTree = "<group>"; };
 		8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAssetInfrastructureTests.swift; sourceTree = "<group>"; };
+		8511BFA0EA9B29952949FD35 /* AppVersionInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppVersionInfo.swift; sourceTree = "<group>"; };
 		88904BB1028AE6619BC22BC2 /* PatchworkSheetChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSheetChrome.swift; sourceTree = "<group>"; };
 		8C8E055F37D7D728F4EBD0C5 /* PatchworkSectionIntro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatchworkSectionIntro.swift; sourceTree = "<group>"; };
 		9480D93A41F4A669700389CF /* PhotoFlowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFlowCoordinator.swift; sourceTree = "<group>"; };
@@ -255,6 +259,7 @@
 		9E9DB7AB7650439DF15F9B0B /* PatchworkTests */ = {
 			isa = PBXGroup;
 			children = (
+				37080352312B64DB61335D01 /* AppVersionInfoTests.swift */,
 				03A568009F99CF7E0BAF5648 /* ChatLocalStoreTests.swift */,
 				8238FBB1F9B8FD11482807DB /* ImageAssetInfrastructureTests.swift */,
 				2279629ECB9CAB1F2D17536B /* PatchworkTests.swift */,
@@ -271,6 +276,7 @@
 			children = (
 				E8CE0A5718D2AC6132157B5B /* AppConfig.swift */,
 				68BA4F09EB1C8E4E34CCC252 /* AppState.swift */,
+				8511BFA0EA9B29952949FD35 /* AppVersionInfo.swift */,
 				B9A51B22A907726DFD906C2C /* ChatLocalStore.swift */,
 				424E1D422B80B269FBFD02CD /* ConvexHTTPClient.swift */,
 				8067D57CEAF288D6FA31EAF1 /* ImageAssetUploadService.swift */,
@@ -481,6 +487,7 @@
 			files = (
 				12D355FBBE67FA10EADF80CC /* AppConfig.swift in Sources */,
 				7CAC2DB0FEC283C8EA2160EA /* AppState.swift in Sources */,
+				88E9EF4EBD74B58E56E7456D /* AppVersionInfo.swift in Sources */,
 				DF447B23DF667BD56CABBFE9 /* AuthFlowView.swift in Sources */,
 				5CD0852875CAECEBF9D9C119 /* CategoriesView.swift in Sources */,
 				8F95190A8F0A7942215EBF7B /* ChatLocalStore.swift in Sources */,
@@ -536,6 +543,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB37750B13DFE3FBCBBA4662 /* AppVersionInfoTests.swift in Sources */,
 				83F1208A5E038F6909952294 /* ChatLocalStoreTests.swift in Sources */,
 				BB89C244E3935780927F7B74 /* ImageAssetInfrastructureTests.swift in Sources */,
 				474738E0206B742BBAEAD3B2 /* PatchworkTests.swift in Sources */,
