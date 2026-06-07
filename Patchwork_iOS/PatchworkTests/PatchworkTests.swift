@@ -596,6 +596,14 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(taskers, [])
     }
 
+    func testPremiumPinSearchInputNormalizesAndLimitsInput() {
+        XCTAssertEqual(PremiumPinSearchInput.placeholder, "Premium Pin")
+        XCTAssertEqual(PremiumPinSearchInput.characterLimit, 8)
+        XCTAssertEqual(PremiumPinSearchInput.normalize("abcd1234"), "ABCD1234")
+        XCTAssertEqual(PremiumPinSearchInput.normalize("abcd-1234-extra"), "ABCD1234")
+        XCTAssertEqual(PremiumPinSearchInput.normalize("ab cd!12@34zz"), "ABCD1234")
+    }
+
     func testTaskerProfileSelfDecodesSubscriptionTierAndPremiumPin() throws {
         let json = """
         {

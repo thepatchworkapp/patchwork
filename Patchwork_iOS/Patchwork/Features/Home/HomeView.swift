@@ -3,6 +3,15 @@ import Foundation
 import SwiftUI
 import UIKit
 
+enum PremiumPinSearchInput {
+    static let placeholder = "Premium Pin"
+    static let characterLimit = 8
+
+    static func normalize(_ value: String) -> String {
+        String(value.uppercased().filter { $0.isNumber || $0.isLetter }.prefix(characterLimit))
+    }
+}
+
 struct HomeView: View {
     private enum MainLayout {
         static let horizontalGutter: CGFloat = 20
@@ -281,7 +290,7 @@ struct HomeView: View {
                                 .scaleEffect(0.82)
                         }
 
-                        TextField("8-char pin", text: Binding(
+                        TextField(PremiumPinSearchInput.placeholder, text: Binding(
                             get: { premiumPinText },
                             set: { updatePremiumPinText($0) }
                         ))
@@ -1613,18 +1622,18 @@ struct HomeView: View {
         premiumPinText = normalized
         premiumPinErrorMessage = nil
 
-        if normalized.count < 8 {
+        if normalized.count < PremiumPinSearchInput.characterLimit {
             premiumPinResultTaskers = []
             lastSubmittedPremiumPin = nil
             currentCardIndex = 0
             dismissedTaskerIDs.removeAll()
-        } else if normalized.count == 8, normalized != lastSubmittedPremiumPin {
+        } else if normalized.count == PremiumPinSearchInput.characterLimit, normalized != lastSubmittedPremiumPin {
             Task { await searchPremiumPinIfReady(force: false) }
         }
     }
 
     private func normalizePremiumPin(_ value: String) -> String {
-        String(value.uppercased().filter { $0.isNumber || $0.isLetter }.prefix(8))
+        PremiumPinSearchInput.normalize(value)
     }
 
     private func clearPremiumPinSearch() {
@@ -1638,7 +1647,7 @@ struct HomeView: View {
 
     private func searchPremiumPinIfReady(force: Bool) async {
         let pin = normalizePremiumPin(premiumPinText)
-        guard pin.count == 8 else {
+        guard pin.count == PremiumPinSearchInput.characterLimit else {
             return
         }
         guard force || pin != lastSubmittedPremiumPin else {
