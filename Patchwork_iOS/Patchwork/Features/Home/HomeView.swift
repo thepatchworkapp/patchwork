@@ -19,6 +19,7 @@ struct HomeView: View {
     @State private var selectedCategorySlug: String?
     @State private var selectedCategoryGroupSlug: String?
     @State private var selectedCategorySlugs = Set<String>()
+    @State private var expandedCategoryGroupSlugs = Set<String>()
     @State private var radiusKm = 25
     @State private var showRadiusSheet = false
     @State private var showCategorySheet = false
@@ -635,6 +636,7 @@ struct HomeView: View {
                             if shouldShowAllCategoriesOption {
                                 categorySheetRow(
                                     label: "All categories",
+                                    systemImage: "square.grid.2x2",
                                     isSelected: selectedCategorySlug == nil
                                         && selectedCategoryGroupSlug == nil
                                         && selectedCategorySlugs.isEmpty,
@@ -645,23 +647,21 @@ struct HomeView: View {
                             }
 
                             ForEach(discoverCategoryGroupOptions, id: \.id) { group in
-                                categorySheetRow(
-                                    label: group.name,
-                                    isSelected: selectedCategoryGroupSlug == group.slug && selectedCategorySlugs.count == group.categories.count,
-                                    accessibilityIdentifier: "Home.categoryGroupOption.\(group.slug)"
-                                ) {
-                                    selectCategoryGroup(group)
-                                }
-                            }
+                                VStack(spacing: 8) {
+                                    categoryGroupSheetRow(group)
 
-                            if selectedCategoryGroup != nil && !discoverMemberCategoryOptions.isEmpty {
-                                ForEach(discoverMemberCategoryOptions, id: \.id) { category in
-                                    categorySheetRow(
-                                        label: categoryMenuLabel(for: category),
-                                        isSelected: selectedCategorySlugs.contains(category.slug),
-                                        accessibilityIdentifier: "Home.categoryGroupMemberOption.\(category.slug)"
-                                    ) {
-                                        toggleSelectedMemberCategory(category)
+                                    if shouldShowMembers(for: group) {
+                                        ForEach(discoverMemberCategoryOptions(for: group), id: \.id) { category in
+                                            categorySheetRow(
+                                                label: categoryMenuLabel(for: category),
+                                                systemImage: "circle",
+                                                isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
+                                                accessibilityIdentifier: "Home.categoryGroupMemberOption.\(category.slug)",
+                                                leadingIndent: 22
+                                            ) {
+                                                selectCategoryMember(category)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -669,6 +669,7 @@ struct HomeView: View {
                             ForEach(discoverCategoryOptions, id: \.id) { category in
                                 categorySheetRow(
                                     label: categoryMenuLabel(for: category),
+                                    systemImage: "tag",
                                     isSelected: selectedCategorySlug == category.slug && selectedCategoryGroupSlug == nil,
                                     accessibilityIdentifier: "Home.categoryOption.\(category.slug)"
                                 ) {
@@ -676,7 +677,7 @@ struct HomeView: View {
                                 }
                             }
 
-                            if discoverCategoryGroupOptions.isEmpty && discoverCategoryOptions.isEmpty && discoverMemberCategoryOptions.isEmpty && !shouldShowAllCategoriesOption {
+                            if discoverCategoryGroupOptions.isEmpty && discoverCategoryOptions.isEmpty && !shouldShowAllCategoriesOption {
                                 VStack(spacing: 10) {
                                     Image(systemName: "magnifyingglass")
                                         .font(.title3.weight(.semibold))
@@ -709,12 +710,20 @@ struct HomeView: View {
 
     private func categorySheetRow(
         label: String,
+        systemImage: String,
         isSelected: Bool,
         accessibilityIdentifier: String,
+        leadingIndent: CGFloat = 0,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? PatchworkTheme.brand : PatchworkTheme.textSecondary)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+
                 Text(label)
                     .font(.patchworkBodyStrong)
                     .foregroundStyle(PatchworkTheme.textPrimary)
@@ -727,9 +736,11 @@ struct HomeView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(PatchworkTheme.brand)
+                        .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.leading, 16 + leadingIndent)
+            .padding(.trailing, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: 56)
             .background(
@@ -746,21 +757,76 @@ struct HomeView: View {
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
+    private func categoryGroupSheetRow(_ group: CategoryGroup) -> some View {
+        let isExpanded = isGroupExpanded(group)
+        let isSelected = selectedCategoryGroupSlug == group.slug
+            && selectedCategorySlugs == Set(group.categories.map(\.slug))
+
+        return HStack(spacing: 0) {
+            Button {
+                selectCategoryGroup(group)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: categoryGroupSystemImage(for: group))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(isSelected ? PatchworkTheme.brand : PatchworkTheme.textSecondary)
+                        .frame(width: 24)
+                        .accessibilityHidden(true)
+
+                    Text(group.name)
+                        .font(.patchworkBodyStrong)
+                        .foregroundStyle(PatchworkTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                        .allowsTightening(true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(PatchworkTheme.brand)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 56)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Home.categoryGroupOption.\(group.slug)")
+            .accessibilityValue(isSelected ? "Selected" : "Not selected")
+
+            Button {
+                toggleCategoryGroupExpansion(group)
+            } label: {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(PatchworkTheme.textSecondary)
+                    .frame(width: 48, height: 56)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("Home.categoryGroupDisclosure.\(group.slug)")
+            .accessibilityLabel(isExpanded ? "Collapse \(group.name)" : "Expand \(group.name)")
+        }
+        .background(
+            isSelected ? PatchworkTheme.brandSoft.opacity(0.7) : PatchworkTheme.surface.opacity(0.92),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isSelected ? PatchworkTheme.strokeStrong : PatchworkTheme.stroke, lineWidth: 1)
+        )
+    }
+
     private var selectedCategoryLabel: String {
         if let selectedCategorySlug,
            let category = appState.categories.first(where: { $0.slug == selectedCategorySlug }) {
             return categoryMenuLabel(for: category)
         }
         if let selectedCategoryGroup {
-            if selectedCategorySlugs.count == selectedCategoryGroup.categories.count {
-                return selectedCategoryGroup.name
-            }
-            let selectedNames = selectedCategoryGroup.categories
-                .filter { selectedCategorySlugs.contains($0.slug) }
-                .map(\.name)
-            if !selectedNames.isEmpty {
-                return "\(selectedCategoryGroup.name): \(selectedNames.joined(separator: ", "))"
-            }
+            return selectedCategoryGroup.name
         }
         return "All categories"
     }
@@ -772,6 +838,9 @@ struct HomeView: View {
 
     private var discoverCategoryOptions: [Category] {
         sortedDiscoverCategories.filter { category in
+            guard !groupedCategorySlugs.contains(category.slug) else {
+                return false
+            }
             let query = trimmedCategorySearchText
             return query.isEmpty || category.name.localizedStandardContains(query)
         }
@@ -786,15 +855,14 @@ struct HomeView: View {
         }
     }
 
-    private var discoverMemberCategoryOptions: [Category] {
-        guard let selectedCategoryGroup else {
-            return []
-        }
+    private func discoverMemberCategoryOptions(for group: CategoryGroup) -> [Category] {
         let query = trimmedCategorySearchText
-        return selectedCategoryGroup.categories
+        return group.categories
             .sorted { lhs, rhs in lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending }
             .filter { category in
-                query.isEmpty || category.name.localizedStandardContains(query)
+                query.isEmpty
+                    || group.name.localizedStandardContains(query)
+                    || category.name.localizedStandardContains(query)
             }
     }
 
@@ -813,6 +881,12 @@ struct HomeView: View {
         }
     }
 
+    private var groupedCategorySlugs: Set<String> {
+        Set(appState.categoryGroups.flatMap { group in
+            group.categories.map(\.slug)
+        })
+    }
+
     private var selectedCategoryGroup: CategoryGroup? {
         guard let selectedCategoryGroupSlug else {
             return nil
@@ -822,6 +896,31 @@ struct HomeView: View {
 
     private var shouldShowAllCategoriesOption: Bool {
         trimmedCategorySearchText.isEmpty || "All categories".localizedStandardContains(trimmedCategorySearchText)
+    }
+
+    private func shouldShowMembers(for group: CategoryGroup) -> Bool {
+        isGroupExpanded(group) || !trimmedCategorySearchText.isEmpty
+    }
+
+    private func isGroupExpanded(_ group: CategoryGroup) -> Bool {
+        expandedCategoryGroupSlugs.contains(group.slug)
+    }
+
+    private func categoryGroupSystemImage(for group: CategoryGroup) -> String {
+        switch group.slug {
+        case let slug where slug.localizedStandardContains("home"):
+            return "house"
+        case let slug where slug.localizedStandardContains("clean"):
+            return "sparkles"
+        case let slug where slug.localizedStandardContains("repair") || slug.localizedStandardContains("maintenance"):
+            return "wrench.and.screwdriver"
+        case let slug where slug.localizedStandardContains("outdoor") || slug.localizedStandardContains("yard"):
+            return "leaf"
+        case let slug where slug.localizedStandardContains("event"):
+            return "calendar"
+        default:
+            return "folder"
+        }
     }
 
     private var trimmedCategorySearchText: String {
@@ -1092,7 +1191,6 @@ struct HomeView: View {
         selectedCategorySlug = slug
         selectedCategoryGroupSlug = nil
         selectedCategorySlugs.removeAll()
-        showCategorySheet = false
         Task { await reload(resetDismissedTaskers: true) }
         if let slug {
             recordDiscoverCategorySelection(categorySlug: slug)
@@ -1106,18 +1204,20 @@ struct HomeView: View {
         Task { await reload(resetDismissedTaskers: true) }
     }
 
-    private func toggleSelectedMemberCategory(_ category: Category) {
-        selectedCategorySlug = nil
-        if selectedCategorySlugs.contains(category.slug) {
-            guard selectedCategorySlugs.count > 1 else {
-                return
-            }
-            selectedCategorySlugs.remove(category.slug)
-        } else {
-            selectedCategorySlugs.insert(category.slug)
-        }
+    private func selectCategoryMember(_ category: Category) {
+        selectedCategorySlug = category.slug
+        selectedCategoryGroupSlug = nil
+        selectedCategorySlugs.removeAll()
         Task { await reload(resetDismissedTaskers: true) }
         recordDiscoverCategorySelection(categorySlug: category.slug)
+    }
+
+    private func toggleCategoryGroupExpansion(_ group: CategoryGroup) {
+        if expandedCategoryGroupSlugs.contains(group.slug) {
+            expandedCategoryGroupSlugs.remove(group.slug)
+        } else {
+            expandedCategoryGroupSlugs.insert(group.slug)
+        }
     }
 
     private func reload(resetDismissedTaskers: Bool) async {
