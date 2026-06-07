@@ -1669,7 +1669,7 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoreKeepsSessionOnGenericAuthRequestFailure() async throws {
+    func testRestoreMarksGenericAuthRequestFailureAsTerminalWithActiveToken() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
                 convexAuthToken: "existing-token",
@@ -1717,6 +1717,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertTrue(store.isAuthenticated)
         XCTAssertNil(store.errorMessage)
         XCTAssertEqual(persistence.session?.convexAuthToken, "existing-token")
+        XCTAssertTrue(store.hasTerminalSessionRestoreFailure)
     }
 
     @MainActor
@@ -1773,7 +1774,7 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoreKeepsSessionWhenGenericUnauthorizedRefreshFailsWithoutActiveToken() async throws {
+    func testRestoreClearsSessionWhenGenericUnauthorizedRefreshFailsWithoutActiveToken() async throws {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
                 convexAuthToken: nil,
@@ -1818,11 +1819,11 @@ final class PatchworkTests: XCTestCase {
         let restored = await store.restorePersistedSessionIfNeeded(forceRefresh: true)
 
         XCTAssertFalse(restored)
-        XCTAssertTrue(store.isAuthenticated)
-        XCTAssertEqual(store.errorMessage, "We couldn't refresh your session. We'll keep trying.")
+        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertNil(store.errorMessage)
         XCTAssertNil(store.token)
         XCTAssertFalse(store.hasTerminalSessionRestoreFailure)
-        XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
+        XCTAssertNil(persistence.session)
     }
 
     @MainActor
@@ -1988,7 +1989,7 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoreKeepsSessionWhenRefreshReturnsGenericUnauthorized() async {
+    func testRestoreMarksGenericUnauthorizedRefreshAsTerminalWithActiveToken() async {
         let persistence = InMemorySessionPersistence(
             session: StoredSession(
                 convexAuthToken: "expired-token",
@@ -2037,7 +2038,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(store.token, "expired-token")
         XCTAssertEqual(persistence.session?.convexAuthToken, "expired-token")
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
-        XCTAssertFalse(store.hasTerminalSessionRestoreFailure)
+        XCTAssertTrue(store.hasTerminalSessionRestoreFailure)
     }
 
     @MainActor
@@ -2093,6 +2094,7 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(persistence.session?.convexAuthToken, existingToken)
         XCTAssertEqual(persistence.session?.betterAuthCookie, "session=abc")
         XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(store.hasTerminalSessionRestoreFailure)
     }
 
     @MainActor
@@ -2369,7 +2371,7 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testSearchTaskersGenericAuthRequestFailureDoesNotSignalSignInRequired() async throws {
+    func testSearchTaskersGenericAuthRequestFailureSignalsSignInRequiredWithoutVisibleError() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
         let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
@@ -2424,14 +2426,14 @@ final class PatchworkTests: XCTestCase {
             excludeCurrentUserWhenTasker: true
         )
 
-        XCTAssertEqual(appState.lastError, "Failed to search taskers: Authentication request failed.")
+        XCTAssertNil(appState.lastError)
         XCTAssertNil(appState.categoriesErrorMessage)
-        XCTAssertNil(appState.signInRequiredAuthFailureID)
+        XCTAssertNotNil(appState.signInRequiredAuthFailureID)
         XCTAssertEqual(appState.taskers.map(\.id), ["tasker_previous"])
     }
 
     @MainActor
-    func testRefreshCategoriesGenericAuthRequestFailureDoesNotSignalSignInRequired() async throws {
+    func testRefreshCategoriesGenericAuthRequestFailureSignalsSignInRequiredWithoutVisibleError() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
         let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
@@ -2455,14 +2457,14 @@ final class PatchworkTests: XCTestCase {
         await appState.refreshCategories(client: client)
 
         XCTAssertNil(appState.lastError)
-        XCTAssertEqual(appState.categoriesErrorMessage, "Authentication request failed.")
-        XCTAssertNil(appState.signInRequiredAuthFailureID)
+        XCTAssertNil(appState.categoriesErrorMessage)
+        XCTAssertNotNil(appState.signInRequiredAuthFailureID)
         XCTAssertEqual(appState.categories, [])
         XCTAssertEqual(appState.categoryGroups, [])
     }
 
     @MainActor
-    func testSyncLocationGenericRefreshFailureDoesNotSignalSignInRequired() async throws {
+    func testSyncLocationGenericRefreshFailureSignalsSignInRequiredWithoutVisibleError() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
         let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
@@ -2515,8 +2517,8 @@ final class PatchworkTests: XCTestCase {
 
         XCTAssertFalse(didSync)
         XCTAssertEqual(appState.currentUser, expectedUser)
-        XCTAssertEqual(appState.lastError, "Failed to sync location: Authentication request failed.")
-        XCTAssertNil(appState.signInRequiredAuthFailureID)
+        XCTAssertNil(appState.lastError)
+        XCTAssertNotNil(appState.signInRequiredAuthFailureID)
     }
 
     @MainActor

@@ -86,13 +86,10 @@ final class AppState {
 
     private func isAuthRequestFailure(_ error: Error) -> Bool {
         if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
-            if Self.isGenericAuthenticationRequestFailure(message) {
-                return false
-            }
             if statusCode == 401 || statusCode == 403 {
                 return true
             }
-            return Self.isTerminalAuthFailureMessage(message, includesGenericAuthRequestFailure: false)
+            return Self.isTerminalAuthFailureMessage(message, includesGenericAuthRequestFailure: true)
         }
 
         if case PatchworkError.missingToken = error {
@@ -101,7 +98,7 @@ final class AppState {
 
         return Self.isTerminalAuthFailureMessage(
             error.localizedDescription,
-            includesGenericAuthRequestFailure: false
+            includesGenericAuthRequestFailure: true
         )
     }
 
@@ -121,7 +118,7 @@ final class AppState {
             .lowercased()
 
         if includesGenericAuthRequestFailure,
-           (normalized == "authentication request failed." || normalized == "authentication request failed") {
+           Self.isGenericAuthenticationRequestFailure(message) {
             return true
         }
 

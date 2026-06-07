@@ -563,15 +563,15 @@ final class SessionStore {
 
     private func shouldClearSessionAfterRestoreFailure(_ error: Error) -> Bool {
         if case let PatchworkError.authRefreshFailed(statusCode, message) = error {
-            if Self.isGenericAuthenticationRequestFailure(message) {
+            if statusCode == 403,
+               message.localizedCaseInsensitiveContains("invalid origin") {
                 return false
             }
-            if statusCode == 401 {
+            if statusCode == 401 || statusCode == 403 {
                 return true
             }
-            if statusCode == 403,
-               !message.localizedCaseInsensitiveContains("invalid origin") {
-                return true
+            if Self.isGenericAuthenticationRequestFailure(message) {
+                return false
             }
             return isTerminalCredentialFailure(message)
         }

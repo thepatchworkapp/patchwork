@@ -818,11 +818,21 @@ struct RootView: View {
         appState.clearSignInRequiredAuthFailure()
         applyCachedCurrentUserIfNeeded()
 
+        guard hasPersistedRefreshCredential else {
+            clearSessionAfterUnrecoverableAuthFailure()
+            return
+        }
+
         let restored = await sessionStore.restorePersistedSessionIfNeeded(forceRefresh: true)
         guard restored else {
             if !sessionStore.isAuthenticated {
                 appState.resetForSignedOutSession()
             }
+            return
+        }
+
+        if sessionStore.hasTerminalSessionRestoreFailure {
+            clearSessionAfterUnrecoverableAuthFailure()
             return
         }
 
@@ -845,6 +855,11 @@ struct RootView: View {
         }
         storeCurrentUserSnapshotIfAvailable()
         appState.clearSignInRequiredAuthFailure()
+    }
+
+    private func clearSessionAfterUnrecoverableAuthFailure() {
+        sessionStore.clearInvalidPersistedCredential()
+        appState.resetForSignedOutSession()
     }
 }
 
