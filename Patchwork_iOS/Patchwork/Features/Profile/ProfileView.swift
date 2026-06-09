@@ -180,6 +180,7 @@ struct TaskerOnboardingView: View {
     @State private var addCategorySheet = false
     @State private var hasRestoredOnboardingDraft = false
     @AppStorage("Patchwork.taskerOnboardingDraft") private var onboardingDraftJSON = ""
+    @AppStorage("Patchwork.clientStateVersion") private var lastSeenClientStateVersion = 0
 
     var body: some View {
         Group {
@@ -196,8 +197,12 @@ struct TaskerOnboardingView: View {
                 .patchworkSheetChrome(detents: [.large])
         }
         .task {
-            restoreOnboardingDraftIfNeeded()
             await appState.refreshAuthedData(client: sessionStore.client)
+            if await reconcileClientStateVersionBeforeRestore() {
+                restoreOnboardingDraftIfNeeded()
+            } else {
+                clearOnboardingDraft()
+            }
         }
         .onChange(of: step) { _, _ in saveOnboardingDraft() }
         .onChange(of: displayName) { _, _ in saveOnboardingDraft() }
@@ -348,7 +353,14 @@ struct TaskerOnboardingView: View {
     }
 
     private func saveOnboardingDraft() {
+        guard let currentUserId = appState.currentUser?.id else {
+            clearOnboardingDraft()
+            return
+        }
+
         let draft = TaskerOnboardingDraft(
+            userId: currentUserId,
+            clientStateVersion: lastSeenClientStateVersion,
             step: min(max(step, 1), 5),
             displayName: displayName,
             selectedCategoryId: selectedCategoryId,
@@ -375,10 +387,33 @@ struct TaskerOnboardingView: View {
     }
 
     private func restoreOnboardingDraft() {
-        guard appState.taskerProfile == nil,
-              !onboardingDraftJSON.isEmpty,
-              let data = onboardingDraftJSON.data(using: .utf8),
-              let draft = try? JSONDecoder().decode(TaskerOnboardingDraft.self, from: data) else { return }
+        guard appState.taskerProfile == nil else {
+            clearOnboardingDraft()
+            return
+        }
+        guard let currentUserId = appState.currentUser?.id else {
+            clearOnboardingDraft()
+            return
+        }
+        guard !onboardingDraftJSON.isEmpty else { return }
+        guard let data = onboardingDraftJSON.data(using: .utf8),
+              let draft = try? JSONDecoder().decode(TaskerOnboardingDraft.self, from: data) else {
+            clearOnboardingDraft()
+            return
+        }
+        guard draft.userId == currentUserId else {
+            clearOnboardingDraft()
+            return
+        }
+        guard draft.clientStateVersion == lastSeenClientStateVersion else {
+            clearOnboardingDraft()
+            return
+        }
+        if let selectedCategoryId = draft.selectedCategoryId,
+           !appState.categories.contains(where: { $0.id == selectedCategoryId }) {
+            clearOnboardingDraft()
+            return
+        }
         step = min(max(draft.step, 1), 5)
         displayName = draft.displayName
         selectedCategoryId = draft.selectedCategoryId
@@ -389,6 +424,55 @@ struct TaskerOnboardingView: View {
         hourlyRate = draft.hourlyRate
         fixedRate = draft.fixedRate
         serviceRadius = draft.serviceRadius
+    }
+
+    private func reconcileClientStateVersionBeforeRestore() async -> Bool {
+        guard appState.currentUser != nil else {
+            clearOnboardingDraft()
+            return false
+        }
+
+        do {
+            let clientState = try await PatchworkAPI(client: sessionStore.client).users.clientStateVersion()
+            return !applyClientStateVersion(clientState.version)
+        } catch {
+            clearOnboardingDraft()
+            return false
+        }
+    }
+
+    @discardableResult
+    private func applyClientStateVersion(_ version: Int) -> Bool {
+        guard version >= 0 else { return false }
+        var didInvalidateLocalState = false
+        if version > lastSeenClientStateVersion {
+            resetCreateFlowState()
+            clearOnboardingDraft()
+            didInvalidateLocalState = true
+        }
+        lastSeenClientStateVersion = version
+        return didInvalidateLocalState
+    }
+
+    private func resetCreateFlowState() {
+        step = 1
+        displayName = ""
+        selectedCategoryId = nil
+        websiteLinks = [""]
+        socialLinks = [""]
+        categoryBio = ""
+        rateType = "hourly"
+        hourlyRate = ""
+        fixedRate = ""
+        serviceRadius = 25
+        taskerPhotoSource = "user"
+        taskerCustomPhotoAssetId = nil
+        onboardingPortfolioPhotos = []
+        onboardingCoverPhotoId = nil
+    }
+
+    private func clearOnboardingDraft() {
+        onboardingDraftJSON = ""
     }
 
     private func removeCategory(categoryId: ConvexID) async throws {
@@ -620,6 +704,8 @@ private enum TaskerCreateFocusField: Hashable {
 }
 
 private struct TaskerOnboardingDraft: Codable {
+    let userId: ConvexID?
+    let clientStateVersion: Int?
     let step: Int
     let displayName: String
     let selectedCategoryId: ConvexID?

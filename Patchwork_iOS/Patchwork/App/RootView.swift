@@ -1730,6 +1730,7 @@ private struct MainTabView: View {
     @AppStorage("Patchwork.taskerOnboardingDraft") private var taskerOnboardingDraftJSON = ""
     @AppStorage("Patchwork.taskerOnboardingRouteActive") private var taskerOnboardingRouteActive = false
     @AppStorage("Patchwork.taskerOnboardingRouteUserId") private var taskerOnboardingRouteUserId = ""
+    @AppStorage("Patchwork.clientStateVersion") private var lastSeenClientStateVersion = 0
     @AppStorage("Patchwork.remoteNotificationDeviceToken") private var remoteNotificationDeviceToken = ""
 
     init() {
@@ -1804,8 +1805,18 @@ private struct MainTabView: View {
         .onAppear {
             reconcileTaskerOnboardingRouteState()
         }
+        .task(id: clientStateValidationKey) {
+            await reconcileClientStateVersionIfNeeded()
+        }
         .onChange(of: appState.isBootstrapped) { _, _ in
             reconcileTaskerOnboardingRouteState()
+        }
+        .onChange(of: appState.currentUser?.id) { _, currentUserId in
+            if currentUserId == nil {
+                clearTaskerOnboardingRouteState(clearDraft: true)
+            } else {
+                reconcileTaskerOnboardingRouteState()
+            }
         }
         .onChange(of: appState.taskerProfile?.id) { _, taskerProfileId in
             if taskerProfileId != nil {
@@ -1824,6 +1835,38 @@ private struct MainTabView: View {
                 clearTaskerOnboardingRouteState()
             }
         }
+    }
+
+    private var clientStateValidationKey: String {
+        guard appState.isBootstrapped,
+              sessionStore.isAuthenticated,
+              let currentUserId = appState.currentUser?.id else {
+            return "inactive"
+        }
+        return currentUserId
+    }
+
+    private func reconcileClientStateVersionIfNeeded() async {
+        guard appState.isBootstrapped,
+              sessionStore.isAuthenticated,
+              appState.currentUser != nil else {
+            return
+        }
+
+        do {
+            let clientState = try await PatchworkAPI(client: sessionStore.client).users.clientStateVersion()
+            applyClientStateVersion(clientState.version)
+        } catch {
+            // This is defensive state cleanup only. Normal auth/data refresh owns user-visible errors.
+        }
+    }
+
+    private func applyClientStateVersion(_ version: Int) {
+        guard version >= 0 else { return }
+        if version > lastSeenClientStateVersion {
+            clearTaskerOnboardingRouteState(clearDraft: true)
+        }
+        lastSeenClientStateVersion = version
     }
 
     private func reconcileTaskerOnboardingRouteState() {

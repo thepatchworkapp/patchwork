@@ -518,6 +518,11 @@ struct ThreadDelta: Decodable {
     let hasMore: Bool?
 }
 
+struct ClientStateVersion: Codable, Hashable {
+    let version: Int
+    let updatedAt: Int
+}
+
 struct JobSummary: Identifiable, Codable, Hashable {
     let id: ConvexID
     let status: String

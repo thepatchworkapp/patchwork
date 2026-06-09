@@ -39,6 +39,7 @@ function getAdminEmailAllowlist(): Set<string> {
 
 const ADMIN_EMAILS = getAdminEmailAllowlist();
 const RESET_BATCH_SIZE = 128;
+const ADMIN_RESET_CLIENT_STATE_KEY = "adminDatabaseReset";
 const REVENUECAT_SUBSCRIBER_API_BASE_URL = "https://api.revenuecat.com/v1/subscribers";
 const REVIEW_ACCOUNT_EMAILS = new Set([APP_REVIEW_EMAIL, APP_REVIEW_SEEKER_EMAIL]);
 const REVENUECAT_MISSING_SECRET_RESET_MESSAGE =
@@ -126,6 +127,7 @@ type ResetCounts = {
   deletedStorageFiles: number;
   missingStorageFiles: number;
   failedStorageFiles: number;
+  clientStateVersion: number;
   deletedUserAppUserIds: string[];
 };
 const reviewAccessStatusValidator = v.object({
@@ -355,6 +357,7 @@ function createEmptyResetCounts(): ResetCounts {
     deletedStorageFiles: 0,
     missingStorageFiles: 0,
     failedStorageFiles: 0,
+    clientStateVersion: 0,
     deletedUserAppUserIds: [],
   };
 }
@@ -463,6 +466,8 @@ async function performDatabaseResetInChunks(ctx: any) {
     resetCounts.deletedTaskerGeoPoints += deletedTaskerGeoPoints;
   }
 
+  resetCounts.clientStateVersion = await ctx.runMutation(internal.admin.markClientStateResetCore, {});
+
   const storageIdList = Array.from(storageIds);
   for (let i = 0; i < storageIdList.length; i += RESET_BATCH_SIZE) {
     const storageDeleteResult = await ctx.runMutation(internal.admin.deleteStorageIdsChunkCore, {
@@ -526,6 +531,7 @@ const resetDatabaseResultValidator = v.object({
   deletedStorageFiles: v.number(),
   missingStorageFiles: v.number(),
   failedStorageFiles: v.number(),
+  clientStateVersion: v.number(),
   preservedAdminEmails: v.array(v.string()),
 });
 
@@ -1015,6 +1021,34 @@ export const resetBetterAuthNonAdminCore = internalMutation({
   handler: async (ctx) => {
     await resetBetterAuthNonAdmin(ctx);
     return null;
+  },
+});
+
+export const markClientStateResetCore = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("clientStateVersions")
+      .withIndex("by_key", (q) => q.eq("key", ADMIN_RESET_CLIENT_STATE_KEY))
+      .unique();
+    const now = Date.now();
+    const version = Math.max(now, (existing?.version ?? 0) + 1);
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        version,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("clientStateVersions", {
+        key: ADMIN_RESET_CLIENT_STATE_KEY,
+        version,
+        updatedAt: now,
+      });
+    }
+
+    return version;
   },
 });
 

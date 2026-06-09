@@ -795,6 +795,37 @@ final class PatchworkTests: XCTestCase {
         XCTAssertEqual(currentUser.settings?.notificationsEnabled, false)
     }
 
+    func testPatchworkAPIClientStateVersionUsesAuthenticatedQuery() async throws {
+        let session = makeMockSession()
+        let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
+        let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
+
+        TestURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/query")
+            let body = try XCTUnwrap(Self.requestBody(from: request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["path"] as? String, "users:getClientStateVersion")
+
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+            )
+            return (response, Data("{\"status\":\"success\",\"value\":{\"version\":1781019000000,\"updatedAt\":1781019000000}}".utf8))
+        }
+
+        let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
+        let api = PatchworkAPI(client: client)
+
+        let clientStateVersion = try await api.users.clientStateVersion()
+
+        XCTAssertEqual(clientStateVersion.version, 1_781_019_000_000)
+        XCTAssertEqual(clientStateVersion.updatedAt, 1_781_019_000_000)
+    }
+
     @MainActor
     func testAppReviewShortcutRecognizesSeekerEmail() {
         let store = SessionStore()
@@ -2734,15 +2765,15 @@ final class PatchworkTests: XCTestCase {
     }
 
     @MainActor
-    func testRefreshAuthedDataPreservesOptimisticUserWhenCurrentUserQueryReturnsNil() async throws {
+    func testRefreshAuthedDataClearsPreviousUserWhenCurrentUserQueryReturnsNil() async throws {
         let session = makeMockSession()
         let cloudURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.cloud"))
         let siteURL = try XCTUnwrap(URL(string: "https://aware-meerkat-572.convex.site"))
 
-        let expectedUser = CurrentUser(
+        let staleUser = CurrentUser(
             id: "user_123",
-            email: "optimistic@example.com",
-            name: "Optimistic User",
+            email: "stale@example.com",
+            name: "Stale User",
             roles: UserRoles(isSeeker: true, isTasker: false),
             location: UserLocation(
                 city: "Toronto",
@@ -2775,7 +2806,7 @@ final class PatchworkTests: XCTestCase {
 
         let client = ConvexHTTPClient(cloudURL: cloudURL, siteURL: siteURL, session: session, authToken: "test-token")
         let appState = AppState()
-        appState.currentUser = expectedUser
+        appState.currentUser = staleUser
 
         await appState.refreshAuthedData(
             client: client,
@@ -2783,9 +2814,12 @@ final class PatchworkTests: XCTestCase {
             shouldRefreshCategories: false
         )
 
-        XCTAssertEqual(appState.currentUser, expectedUser)
+        XCTAssertNil(appState.currentUser)
+        XCTAssertNil(appState.taskerProfile)
+        XCTAssertEqual(appState.conversations, [])
+        XCTAssertEqual(appState.jobs, [])
         XCTAssertNil(appState.lastError)
-        XCTAssertFalse(appState.hasConfirmedMissingCurrentUser)
+        XCTAssertTrue(appState.hasConfirmedMissingCurrentUser)
         XCTAssertFalse(appState.hasFailedCurrentUserRefreshWithoutPrevious)
         XCTAssertNil(appState.currentUserRefreshFailure)
     }

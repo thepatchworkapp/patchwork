@@ -384,6 +384,7 @@ describe("feedback", () => {
       expect(firstReset.deletedStorageFiles).toBe(4);
       expect(firstReset.missingStorageFiles).toBe(0);
       expect(firstReset.failedStorageFiles).toBe(0);
+      expect(firstReset.clientStateVersion).toBeGreaterThan(0);
 
       const secondReset = await asAdmin.action((api as any).admin.resetDatabase, {});
       expect(secondReset.deletedFavouriteTaskers).toBe(0);
@@ -392,6 +393,16 @@ describe("feedback", () => {
       expect(secondReset.deletedStorageFiles).toBe(0);
       expect(secondReset.missingStorageFiles).toBe(0);
       expect(secondReset.failedStorageFiles).toBe(0);
+      expect(secondReset.clientStateVersion).toBeGreaterThan(firstReset.clientStateVersion);
+
+      await asUser.mutation(api.users.createProfile, {
+        name: "Feedback Reset Assets User",
+        city: "Toronto",
+        province: "ON",
+      });
+      await expect(asUser.query(api.users.getClientStateVersion, {})).resolves.toMatchObject({
+        version: secondReset.clientStateVersion,
+      });
 
       const remainingPushTokens = await t.run(async (ctx) =>
         await ctx.db.query("pushTokens").take(10)

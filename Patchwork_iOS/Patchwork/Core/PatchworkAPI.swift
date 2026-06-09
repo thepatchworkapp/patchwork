@@ -199,6 +199,10 @@ struct PatchworkAPI {
             try await client.query("users:getCurrentUser", args: [:])
         }
 
+        func clientStateVersion() async throws -> ClientStateVersion {
+            try await client.query("users:getClientStateVersion", args: [:])
+        }
+
         @discardableResult
         func registerPushToken(_ token: String, environment: String) async throws -> Bool {
             struct RegisterPushTokenResult: Codable {

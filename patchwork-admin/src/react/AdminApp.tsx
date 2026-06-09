@@ -242,6 +242,7 @@ type ResetDatabaseResult = {
   deletedStorageFiles: number;
   missingStorageFiles?: number;
   failedStorageFiles?: number;
+  clientStateVersion?: number;
   preservedAdminEmails: string[];
   revenueCatCleanup?: {
     status: "completed" | "partial" | "skipped";
@@ -299,6 +300,7 @@ function ResetResultSummary({ result }: { result: ResetDatabaseResult }) {
     ["Storage files", result.deletedStorageFiles],
     ["Missing storage files", result.missingStorageFiles],
     ["Failed storage files", result.failedStorageFiles],
+    ["Client state version", result.clientStateVersion],
     ["User OTPs", result.deletedOtps],
     ["Admin OTPs", result.deletedAdminOtps],
     ["Resend cleanup passes", result.resendEmailCleanupPasses],
@@ -415,7 +417,7 @@ function AdminMaintenanceCard() {
       setResetResult(result);
       setShowResetConfirm(false);
       setResetConfirmText("");
-      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedPushTokens} push tokens, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files. Cleaned ${(result.deletedTaskerGeoPoints ?? 0).toLocaleString()} tasker geo point(s) and ran ${(result.resendEmailCleanupPasses ?? 0).toLocaleString()} Resend cleanup pass(es).`;
+      let nextNotice = `Reset completed at ${formatDate(result.resetAt)}. Deleted ${result.deletedUsers} users, ${result.deletedJobs} jobs, ${result.deletedMessages} messages, ${result.deletedPushTokens} push tokens, ${result.deletedImageAssets} image assets, and ${result.deletedStorageFiles} storage files. Cleaned ${(result.deletedTaskerGeoPoints ?? 0).toLocaleString()} tasker geo point(s), ran ${(result.resendEmailCleanupPasses ?? 0).toLocaleString()} Resend cleanup pass(es), and bumped client state to ${(result.clientStateVersion ?? 0).toLocaleString()}.`;
       if (result.failedStorageFiles && result.failedStorageFiles > 0) {
         nextNotice += ` ${result.failedStorageFiles} storage file(s) could not be deleted; check backend logs.`;
       }

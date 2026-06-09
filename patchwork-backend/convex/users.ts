@@ -15,6 +15,7 @@ import { requireAppUser } from "./authHelpers";
 
 const ACCOUNT_CLEANUP_BATCH_SIZE = 1000;
 const MAX_BADGE_CONVERSATIONS = 200;
+const ADMIN_RESET_CLIENT_STATE_KEY = "adminDatabaseReset";
 
 function validateCoordinates(lat: number, lng: number) {
   if (lat < -90 || lat > 90) throw new ConvexError("Latitude must be between -90 and 90");
@@ -232,6 +233,26 @@ export const getCurrentUser = query({
       settings: user.settings,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  },
+});
+
+export const getClientStateVersion = query({
+  args: {},
+  returns: v.object({
+    version: v.number(),
+    updatedAt: v.number(),
+  }),
+  handler: async (ctx) => {
+    await requireAppUser(ctx);
+    const marker = await ctx.db
+      .query("clientStateVersions")
+      .withIndex("by_key", (q) => q.eq("key", ADMIN_RESET_CLIENT_STATE_KEY))
+      .unique();
+
+    return {
+      version: marker?.version ?? 0,
+      updatedAt: marker?.updatedAt ?? 0,
     };
   },
 });

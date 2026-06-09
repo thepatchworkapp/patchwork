@@ -267,14 +267,6 @@ final class AppState {
         do {
             let fetchedCurrentUser = try await PatchworkAPI(client: client).users.current()
             guard let fetchedCurrentUser else {
-                if let previousCurrentUser {
-                    currentUser = previousCurrentUser
-                    hasConfirmedMissingCurrentUser = false
-                    hasFailedCurrentUserRefreshWithoutPrevious = false
-                    currentUserRefreshFailure = nil
-                    return .preservedPrevious(previousCurrentUser)
-                }
-
                 currentUser = nil
                 hasConfirmedMissingCurrentUser = true
                 hasFailedCurrentUserRefreshWithoutPrevious = false

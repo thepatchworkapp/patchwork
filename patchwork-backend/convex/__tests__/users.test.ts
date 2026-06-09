@@ -254,6 +254,33 @@ describe("users", () => {
     expect(user?.name).toBe("Existing User");
   });
 
+  test("getClientStateVersion requires a valid app user", async () => {
+    const t = convexTest(schema, modules);
+
+    await expect(t.query(api.users.getClientStateVersion, {})).rejects.toThrow("Unauthorized");
+
+    const asMissingAppUser = t.withIdentity({
+      tokenIdentifier: "google|missing-client-state-user",
+      email: "missing-client-state@example.com",
+    });
+    await expect(asMissingAppUser.query(api.users.getClientStateVersion, {})).rejects.toThrow("User not found");
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|client-state-user",
+      email: "client-state@example.com",
+    });
+    await asUser.mutation(api.users.createProfile, {
+      name: "Client State User",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await expect(asUser.query(api.users.getClientStateVersion, {})).resolves.toEqual({
+      version: 0,
+      updatedAt: 0,
+    });
+  });
+
   test("createProfile throws when unauthenticated", async () => {
     const t = convexTest(schema, modules);
     

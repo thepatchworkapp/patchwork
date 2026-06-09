@@ -154,6 +154,7 @@ struct PatchworkApp: App {
                 UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingDraft")
                 UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingRouteActive")
                 UserDefaults.standard.removeObject(forKey: "Patchwork.taskerOnboardingRouteUserId")
+                UserDefaults.standard.removeObject(forKey: "Patchwork.clientStateVersion")
                 UserDefaults.standard.set(resetToken, forKey: resetTokenKey)
             }
         }
