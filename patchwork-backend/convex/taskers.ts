@@ -140,6 +140,10 @@ function normalizeTaskerProfileLinkInput(args: {
   };
 }
 
+function stringArraysEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 async function validateAndResolveCategoryPortfolio(
   ctx: any,
   userId: Id<"users">,
@@ -428,25 +432,32 @@ export const updateTaskerProfile = mutation({
     if (args.bio !== undefined && args.bio.length > 2000) throw new ConvexError("Bio must be 2000 characters or less");
     const profileLinks = normalizeTaskerProfileLinkInput(args);
 
-    const updates: any = {
-      updatedAt: Date.now(),
-    };
+    const updates: any = {};
 
-    if (args.displayName !== undefined) {
+    if (args.displayName !== undefined && args.displayName !== profile.displayName) {
       updates.displayName = args.displayName;
     }
 
-    if (args.bio !== undefined) {
+    if (args.bio !== undefined && args.bio !== profile.bio) {
       updates.bio = args.bio;
     }
-    if (args.websiteLinks !== undefined) {
+    if (
+      args.websiteLinks !== undefined &&
+      !stringArraysEqual(profileLinks.websiteLinks, profile.websiteLinks ?? [])
+    ) {
       updates.websiteLinks = profileLinks.websiteLinks;
     }
-    if (args.socialLinks !== undefined) {
+    if (
+      args.socialLinks !== undefined &&
+      !stringArraysEqual(profileLinks.socialLinks, profile.socialLinks ?? [])
+    ) {
       updates.socialLinks = profileLinks.socialLinks;
     }
 
-    await ctx.db.patch(profile._id, updates);
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = Date.now();
+      await ctx.db.patch(profile._id, updates);
+    }
 
     return buildTaskerProfileResponse(ctx, {
       ...profile,

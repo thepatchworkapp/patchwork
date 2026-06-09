@@ -874,6 +874,97 @@ describe("taskers", () => {
      expect(profile?.categories[0].categoryId).toBe(electrical!._id);
    });
 
+   test("updateTaskerProfile works after replacing the only tasker category", async () => {
+     const t = convexTest(schema, modules);
+
+     const asUser = t.withIdentity({
+       tokenIdentifier: "google|replace-only-category",
+       email: "replace-only-category@example.com",
+     });
+
+     await asUser.mutation(api.users.createProfile, {
+       name: "Replace Category Test",
+       city: "Waterloo",
+       province: "ON",
+     });
+
+     await t.mutation(internal.categories.seedCategories);
+     const barber = await t.query(api.categories.getCategoryBySlug, {
+       slug: "barber",
+     });
+     const tutor = await t.query(api.categories.getCategoryBySlug, {
+       slug: "tutor",
+     });
+
+     await asUser.mutation(api.taskers.createTaskerProfile, {
+       displayName: "Barber Dave",
+       websiteLinks: ["https://ddga.ltd"],
+       socialLinks: ["dja29"],
+       categoryId: barber!._id,
+       categoryBio: "Barber services",
+       rateType: "hourly",
+       hourlyRate: 4000,
+       serviceRadius: 25,
+     });
+
+     const user = await asUser.query(api.users.getCurrentUser);
+     expect(user).not.toBeNull();
+     await applyRevenueCatEvent(t, {
+       type: "INITIAL_PURCHASE",
+       userId: user!._id,
+       productId: PATCHWORK_BASIC_MONTHLY_PRODUCT_ID,
+       expirationAtMs: 1_900_000_000_000,
+     });
+     await asUser.mutation(api.taskers.setGhostMode, {
+       ghostMode: false,
+     });
+
+     await asUser.mutation(api.taskers.removeTaskerCategory, {
+       categoryId: barber!._id,
+     });
+
+     let profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile).not.toBeNull();
+     expect(profile?.categories).toHaveLength(0);
+
+     await asUser.mutation(api.taskers.addTaskerCategory, {
+       categoryId: tutor!._id,
+       categoryBio: "Tutor 2",
+       rateType: "hourly",
+       hourlyRate: 4000,
+       serviceRadius: 25,
+     });
+
+     profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile).not.toBeNull();
+     const beforeNoOpSaveUpdatedAt = profile!.updatedAt;
+
+     const noOpProfile = await asUser.mutation(api.taskers.updateTaskerProfile, {
+       displayName: "Barber Dave",
+       websiteLinks: ["https://ddga.ltd"],
+       socialLinks: ["dja29"],
+     });
+
+     expect(noOpProfile.updatedAt).toBe(beforeNoOpSaveUpdatedAt);
+     expect(noOpProfile.categories).toHaveLength(1);
+     expect(noOpProfile.categories[0].categoryId).toBe(tutor!._id);
+
+     const updatedProfile = await asUser.mutation(api.taskers.updateTaskerProfile, {
+       displayName: "Tutor Dave",
+       websiteLinks: ["https://ddga.ltd"],
+       socialLinks: ["dja29"],
+     });
+
+     expect(updatedProfile.displayName).toBe("Tutor Dave");
+     expect(updatedProfile.categories).toHaveLength(1);
+     expect(updatedProfile.categories[0].categoryId).toBe(tutor!._id);
+     expect(updatedProfile.categories[0].portfolioImages).toEqual([]);
+     expect(updatedProfile.categories[0].coverImage).toBeNull();
+
+     profile = await asUser.query(api.taskers.getTaskerProfile);
+     expect(profile?.displayName).toBe("Tutor Dave");
+   });
+
    test("applyRevenueCatWebhookEvent activates subscription tasker access", async () => {
      const t = convexTest(schema, modules);
      
