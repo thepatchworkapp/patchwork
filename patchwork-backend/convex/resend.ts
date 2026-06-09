@@ -7,7 +7,7 @@ const resend = new Resend(components.resend, {
   testMode: false,
 });
 
-const FROM_EMAIL = process.env.OTP_FROM_EMAIL || "otp@diaper.exchange";
+const FROM_EMAIL = process.env.OTP_FROM_EMAIL || "otp@ddga.ltd";
 const RESEND_EMAIL_CLEANUP_PASSES = 10;
 
 export const sendOtpEmail = internalMutation({
