@@ -142,10 +142,10 @@ const expectedCategoryGroups = [
     name: "Technical",
     categorySlugs: [
       "architect",
-      "computer-genius",
       "developers",
       "electrician",
       "engineer",
+      "it-support",
       "tax-consultant",
       "web-designer",
     ],
@@ -220,20 +220,287 @@ describe("categories", () => {
     }
   });
 
-  test("seedCategories displays IT Support while preserving the legacy technical slug", async () => {
+  test("seedCategories displays IT Support with the active IT support slug", async () => {
     const t = convexTest(schema, modules);
 
     await t.mutation(internal.categories.seedCategories);
 
     const category = await t.query(api.categories.getCategoryBySlug, {
-      slug: "computer-genius",
+      slug: "it-support",
     });
 
     expect(category).toMatchObject({
       name: "IT Support",
-      slug: "computer-genius",
+      slug: "it-support",
       emoji: "💻",
       group: "Technical",
+    });
+
+    const legacyCategory = await t.query(api.categories.getCategoryBySlug, {
+      slug: "computer-genius",
+    });
+    expect(legacyCategory).toBeNull();
+  });
+
+  test("seedCategories migrates the legacy Computer Genius row in place", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const ids = await t.run(async (ctx) => {
+      const legacyCategoryId = await ctx.db.insert("categories", {
+        name: "Computer Genius",
+        slug: "computer-genius",
+        emoji: "💻",
+        group: "Technical",
+        isActive: true,
+        sortOrder: 151,
+      });
+      const userId = await ctx.db.insert("users", {
+        authId: "email|legacy-it-support@example.com",
+        email: "legacy-it-support@example.com",
+        emailVerified: true,
+        name: "Legacy IT Support User",
+        location: {
+          city: "Toronto",
+          province: "ON",
+        },
+        roles: {
+          isSeeker: true,
+          isTasker: true,
+        },
+        settings: {
+          notificationsEnabled: true,
+          locationEnabled: true,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      const taskerProfileId = await ctx.db.insert("taskerProfiles", {
+        userId,
+        displayName: "Legacy IT Support Tasker",
+        isOnboarded: true,
+        rating: 0,
+        reviewCount: 0,
+        completedJobs: 0,
+        verified: true,
+        subscriptionPlan: "none",
+        ghostMode: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const taskerCategoryId = await ctx.db.insert("taskerCategories", {
+        taskerProfileId,
+        userId,
+        categoryId: legacyCategoryId,
+        bio: "Helps people recover and maintain their computers.",
+        photos: [],
+        rateType: "hourly",
+        hourlyRate: 6500,
+        serviceRadius: 25,
+        rating: 0,
+        reviewCount: 0,
+        completedJobs: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const jobRequestId = await ctx.db.insert("jobRequests", {
+        seekerId: userId,
+        categoryId: legacyCategoryId,
+        categoryName: "Computer Genius",
+        description: "Need laptop support.",
+        location: {
+          address: "1 King St W",
+          city: "Toronto",
+          province: "ON",
+          searchRadius: 25,
+        },
+        timing: {
+          type: "asap",
+        },
+        status: "open",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const conversationId = await ctx.db.insert("conversations", {
+        seekerId: userId,
+        taskerId: userId,
+        jobRequestId,
+        lastMessageAt: now,
+        seekerUnreadCount: 0,
+        taskerUnreadCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const proposalId = await ctx.db.insert("proposals", {
+        conversationId,
+        senderId: userId,
+        receiverId: userId,
+        jobRequestId,
+        rate: 6500,
+        rateType: "hourly",
+        startDateTime: new Date(now).toISOString(),
+        status: "accepted",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const jobId = await ctx.db.insert("jobs", {
+        seekerId: userId,
+        taskerId: userId,
+        requestId: jobRequestId,
+        proposalId,
+        categoryId: legacyCategoryId,
+        categoryName: "Computer Genius",
+        description: "Need laptop support.",
+        rate: 6500,
+        rateType: "hourly",
+        startDate: new Date(now).toISOString(),
+        status: "pending",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return { legacyCategoryId, taskerCategoryId, jobRequestId, jobId };
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "it-support",
+    });
+    expect(category).toMatchObject({
+      _id: ids.legacyCategoryId,
+      name: "IT Support",
+      slug: "it-support",
+      emoji: "💻",
+      group: "Technical",
+    });
+
+    const legacyCategory = await t.query(api.categories.getCategoryBySlug, {
+      slug: "computer-genius",
+    });
+    expect(legacyCategory).toBeNull();
+
+    await t.run(async (ctx) => {
+      const taskerCategory = await ctx.db.get(ids.taskerCategoryId);
+      const jobRequest = await ctx.db.get(ids.jobRequestId);
+      const job = await ctx.db.get(ids.jobId);
+
+      expect(taskerCategory?.categoryId).toBe(ids.legacyCategoryId);
+      expect(jobRequest?.categoryId).toBe(ids.legacyCategoryId);
+      expect(job?.categoryId).toBe(ids.legacyCategoryId);
+    });
+  });
+
+  test("seedCategories moves tasker category references when both IT support rows exist", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+
+    const ids = await t.run(async (ctx) => {
+      const legacyCategoryId = await ctx.db.insert("categories", {
+        name: "Computer Genius",
+        slug: "computer-genius",
+        emoji: "💻",
+        group: "Technical",
+        isActive: true,
+        sortOrder: 151,
+      });
+      const replacementCategoryId = await ctx.db.insert("categories", {
+        name: "IT Support",
+        slug: "it-support",
+        emoji: "💻",
+        group: "Technical",
+        isActive: true,
+        sortOrder: 151,
+      });
+      const userId = await ctx.db.insert("users", {
+        authId: "email|it-support-tasker@example.com",
+        email: "it-support-tasker@example.com",
+        emailVerified: true,
+        name: "IT Support Tasker",
+        location: {
+          city: "Waterloo",
+          province: "ON",
+        },
+        roles: {
+          isSeeker: true,
+          isTasker: true,
+        },
+        settings: {
+          notificationsEnabled: true,
+          locationEnabled: true,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      const taskerProfileId = await ctx.db.insert("taskerProfiles", {
+        userId,
+        displayName: "IT Support Tasker",
+        isOnboarded: true,
+        rating: 0,
+        reviewCount: 0,
+        completedJobs: 0,
+        verified: true,
+        subscriptionPlan: "tasker",
+        ghostMode: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const groupId = await ctx.db.insert("categoryGroups", {
+        name: "Technical",
+        slug: "technical",
+        sortOrder: 150,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const legacyMappingId = await ctx.db.insert("categoryGroupMappings", {
+        groupId,
+        categoryId: legacyCategoryId,
+        sortOrder: 151,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const taskerCategoryId = await ctx.db.insert("taskerCategories", {
+        taskerProfileId,
+        userId,
+        categoryId: legacyCategoryId,
+        bio: "Helps people recover and maintain their computers.",
+        photos: [],
+        rateType: "hourly",
+        hourlyRate: 6500,
+        serviceRadius: 25,
+        rating: 0,
+        reviewCount: 0,
+        completedJobs: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { legacyCategoryId, replacementCategoryId, legacyMappingId, taskerCategoryId };
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const legacyCategory = await t.query(api.categories.getCategoryBySlug, {
+      slug: "computer-genius",
+    });
+    expect(legacyCategory).toBeNull();
+
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "it-support",
+    });
+    expect(category?._id).toBe(ids.replacementCategoryId);
+
+    await t.run(async (ctx) => {
+      const movedTaskerCategory = await ctx.db.get(ids.taskerCategoryId);
+      expect(movedTaskerCategory?.categoryId).toBe(ids.replacementCategoryId);
+
+      const legacyTaskerCategories = await ctx.db
+        .query("taskerCategories")
+        .withIndex("by_category", (q) => q.eq("categoryId", ids.legacyCategoryId))
+        .collect();
+      expect(legacyTaskerCategories).toEqual([]);
+
+      expect(await ctx.db.get(ids.legacyMappingId)).toBeNull();
     });
   });
 

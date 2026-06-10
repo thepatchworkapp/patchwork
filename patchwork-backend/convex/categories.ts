@@ -10,13 +10,19 @@ function toSlug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-const ALL_CATEGORIES: {
+type CategorySeed = {
   name: string;
   slug?: string;
   emoji: string;
   group: string;
   sortOrder: number;
-}[] = [
+};
+
+const CATEGORY_SLUG_MIGRATIONS = new Map<string, string>([
+  ["computer-genius", "it-support"],
+]);
+
+const ALL_CATEGORIES: CategorySeed[] = [
   // Beauty
   { name: "Barber", emoji: "💈", group: "Beauty", sortOrder: 1 },
   { name: "Hair Removal", emoji: "🧖", group: "Beauty", sortOrder: 2 },
@@ -112,7 +118,7 @@ const ALL_CATEGORIES: {
 
   // Technical
   { name: "Architect", emoji: "📐", group: "Technical", sortOrder: 150 },
-  { name: "IT Support", slug: "computer-genius", emoji: "💻", group: "Technical", sortOrder: 151 },
+  { name: "IT Support", emoji: "💻", group: "Technical", sortOrder: 151 },
   { name: "Developers", emoji: "⌨️", group: "Technical", sortOrder: 152 },
   { name: "Electrician", emoji: "🔌", group: "Technical", sortOrder: 153 },
   { name: "Engineer", emoji: "⚙️", group: "Technical", sortOrder: 154 },
@@ -129,6 +135,95 @@ function categorySlug(category: { name: string; slug?: string }): string {
   return category.slug ?? toSlug(category.name);
 }
 
+async function findCategoryBySlug(ctx: any, slug: string) {
+  return await ctx.db
+    .query("categories")
+    .withIndex("by_slug", (q: any) => q.eq("slug", slug))
+    .unique();
+}
+
+async function removeMappingsForCategory(ctx: any, categoryId: Id<"categories">) {
+  const mappings = await ctx.db
+    .query("categoryGroupMappings")
+    .withIndex("by_category", (q: any) => q.eq("categoryId", categoryId))
+    .collect();
+
+  for (const mapping of mappings) {
+    await ctx.db.delete(mapping._id);
+  }
+}
+
+async function moveTaskerCategoryReferences(
+  ctx: any,
+  fromCategoryId: Id<"categories">,
+  toCategoryId: Id<"categories">,
+  now: number
+) {
+  const taskerCategories = await ctx.db
+    .query("taskerCategories")
+    .withIndex("by_category", (q: any) => q.eq("categoryId", fromCategoryId))
+    .collect();
+
+  for (const taskerCategory of taskerCategories) {
+    const duplicate = await ctx.db
+      .query("taskerCategories")
+      .withIndex("by_taskerProfile_category", (q: any) =>
+        q.eq("taskerProfileId", taskerCategory.taskerProfileId).eq("categoryId", toCategoryId)
+      )
+      .first();
+
+    if (duplicate) {
+      continue;
+    }
+
+    await ctx.db.patch(taskerCategory._id, {
+      categoryId: toCategoryId,
+      updatedAt: now,
+    });
+  }
+}
+
+async function migrateCategorySlugs(
+  ctx: any,
+  categoriesBySlug: Map<string, CategorySeed>,
+  now: number
+) {
+  for (const [legacySlug, replacementSlug] of CATEGORY_SLUG_MIGRATIONS) {
+    const legacyCategory = await findCategoryBySlug(ctx, legacySlug);
+    if (!legacyCategory) {
+      continue;
+    }
+
+    const replacementSeed = categoriesBySlug.get(replacementSlug);
+    if (!replacementSeed) {
+      continue;
+    }
+
+    const replacementCategory = await findCategoryBySlug(ctx, replacementSlug);
+    if (!replacementCategory || replacementCategory._id === legacyCategory._id) {
+      await ctx.db.patch(legacyCategory._id, {
+        name: replacementSeed.name,
+        slug: replacementSlug,
+        emoji: replacementSeed.emoji,
+        group: replacementSeed.group,
+        isActive: true,
+        sortOrder: replacementSeed.sortOrder,
+      });
+      continue;
+    }
+
+    await moveTaskerCategoryReferences(ctx, legacyCategory._id, replacementCategory._id, now);
+    await removeMappingsForCategory(ctx, legacyCategory._id);
+    await ctx.db.patch(legacyCategory._id, {
+      name: replacementSeed.name,
+      emoji: replacementSeed.emoji,
+      group: replacementSeed.group,
+      isActive: false,
+      sortOrder: replacementSeed.sortOrder,
+    });
+  }
+}
+
 export const seedCategories = internalMutation({
   args: {},
   returns: v.object({
@@ -140,9 +235,12 @@ export const seedCategories = internalMutation({
     let inserted = 0;
     const now = Date.now();
     const groupByName = new Map<string, { groupId: Id<"categoryGroups">; sortOrder: number }>();
-    const activeCategorySlugs = new Set(ALL_CATEGORIES.map((category) => categorySlug(category)));
+    const categoriesBySlug = new Map(ALL_CATEGORIES.map((category) => [categorySlug(category), category]));
+    const activeCategorySlugs = new Set(categoriesBySlug.keys());
     const activeGroupSlugs = new Set(ALL_CATEGORIES.map((category) => toSlug(category.group)));
     const desiredMappingKeys = new Set<string>();
+
+    await migrateCategorySlugs(ctx, categoriesBySlug, now);
 
     for (const cat of ALL_CATEGORIES) {
       if (groupByName.has(cat.group)) {
