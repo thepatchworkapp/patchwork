@@ -220,6 +220,23 @@ describe("categories", () => {
     }
   });
 
+  test("seedCategories displays IT Support while preserving the legacy technical slug", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(internal.categories.seedCategories);
+
+    const category = await t.query(api.categories.getCategoryBySlug, {
+      slug: "computer-genius",
+    });
+
+    expect(category).toMatchObject({
+      name: "IT Support",
+      slug: "computer-genius",
+      emoji: "💻",
+      group: "Technical",
+    });
+  });
+
   test("listCategories returns all active categories sorted by sortOrder", async () => {
     const t = convexTest(schema, modules);
     

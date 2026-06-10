@@ -12,6 +12,7 @@ function toSlug(name: string): string {
 
 const ALL_CATEGORIES: {
   name: string;
+  slug?: string;
   emoji: string;
   group: string;
   sortOrder: number;
@@ -111,7 +112,7 @@ const ALL_CATEGORIES: {
 
   // Technical
   { name: "Architect", emoji: "📐", group: "Technical", sortOrder: 150 },
-  { name: "Computer Genius", emoji: "💻", group: "Technical", sortOrder: 151 },
+  { name: "IT Support", slug: "computer-genius", emoji: "💻", group: "Technical", sortOrder: 151 },
   { name: "Developers", emoji: "⌨️", group: "Technical", sortOrder: 152 },
   { name: "Electrician", emoji: "🔌", group: "Technical", sortOrder: 153 },
   { name: "Engineer", emoji: "⚙️", group: "Technical", sortOrder: 154 },
@@ -124,6 +125,10 @@ const ALL_CATEGORIES: {
   { name: "Resume Consultant", emoji: "📄", group: "Writing & Proofreading", sortOrder: 162 },
 ];
 
+function categorySlug(category: { name: string; slug?: string }): string {
+  return category.slug ?? toSlug(category.name);
+}
+
 export const seedCategories = internalMutation({
   args: {},
   returns: v.object({
@@ -135,7 +140,7 @@ export const seedCategories = internalMutation({
     let inserted = 0;
     const now = Date.now();
     const groupByName = new Map<string, { groupId: Id<"categoryGroups">; sortOrder: number }>();
-    const activeCategorySlugs = new Set(ALL_CATEGORIES.map((category) => toSlug(category.name)));
+    const activeCategorySlugs = new Set(ALL_CATEGORIES.map((category) => categorySlug(category)));
     const activeGroupSlugs = new Set(ALL_CATEGORIES.map((category) => toSlug(category.group)));
     const desiredMappingKeys = new Set<string>();
 
@@ -173,7 +178,7 @@ export const seedCategories = internalMutation({
     }
 
     for (const cat of ALL_CATEGORIES) {
-      const slug = toSlug(cat.name);
+      const slug = categorySlug(cat);
       const existing = await ctx.db
         .query("categories")
         .withIndex("by_slug", (q) => q.eq("slug", slug))

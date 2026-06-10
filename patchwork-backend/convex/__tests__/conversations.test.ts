@@ -301,6 +301,111 @@ describe("conversations", () => {
     expect(conversations.length).toBe(2);
   });
 
+  test("tasker list hides seeker draft until the seeker sends a first message", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_tasker_draft",
+      email: "seeker_tasker_draft@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Tasker Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_hidden_draft",
+      email: "tasker_hidden_draft@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Hidden Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const seekerConversations = await asSeeker.query(api.conversations.listConversations, {
+      role: "seeker",
+    });
+    expect(seekerConversations.map((conversation) => conversation._id)).toContain(conversationId);
+
+    const taskerConversations = await asTasker.query(api.conversations.listConversations, {
+      role: "tasker",
+    });
+    expect(taskerConversations.map((conversation) => conversation._id)).not.toContain(conversationId);
+
+    const unscopedTaskerConversations = await asTasker.query(api.conversations.listConversations);
+    expect(unscopedTaskerConversations.map((conversation) => conversation._id)).not.toContain(conversationId);
+
+    await asSeeker.mutation(api.messages.sendMessage, {
+      conversationId,
+      content: "Hi, I would like help.",
+    });
+
+    const visibleTaskerConversations = await asTasker.query(api.conversations.listConversations, {
+      role: "tasker",
+    });
+    expect(visibleTaskerConversations.map((conversation) => conversation._id)).toContain(conversationId);
+  });
+
+  test("tasker list shows a seeker draft once a proposal exists", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_proposal_draft",
+      email: "seeker_proposal_draft@example.com",
+    });
+
+    const seekerId = await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Proposal Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_proposal_draft",
+      email: "tasker_proposal_draft@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Proposal Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    await t.run(async (ctx) => {
+      const conversation = await ctx.db.get(conversationId);
+      expect(conversation?.lastMessageId).toBeUndefined();
+
+      await ctx.db.insert("proposals", {
+        conversationId,
+        senderId: taskerId,
+        receiverId: seekerId,
+        rate: 5000,
+        rateType: "hourly",
+        startDateTime: "2026-06-15T15:00:00.000Z",
+        status: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    });
+
+    const taskerConversations = await asTasker.query(api.conversations.listConversations, {
+      role: "tasker",
+    });
+    expect(taskerConversations.map((conversation) => conversation._id)).toContain(conversationId);
+  });
+
   test("markAsRead updates unread count for seeker", async () => {
     const t = convexTest(schema, modules);
     

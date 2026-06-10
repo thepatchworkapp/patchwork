@@ -188,8 +188,9 @@ export const listConversations = query({
         .withIndex("by_tasker_lastMessage", (q) => q.eq("taskerId", user._id))
         .order("desc")
         .take(limit);
+      const visibleRows = await filterTaskerInboxRows(ctx, rows);
 
-      return await Promise.all(rows.map((row) => enrichConversation(row, "tasker")));
+      return await Promise.all(visibleRows.map((row) => enrichConversation(row, "tasker")));
     }
 
     const asSeekerConversations = await ctx.db
@@ -204,7 +205,9 @@ export const listConversations = query({
       .order("desc")
       .take(limit);
 
-    const allConversations = [...asSeekerConversations, ...asTaskerConversations];
+    const visibleAsTaskerConversations = await filterTaskerInboxRows(ctx, asTaskerConversations);
+
+    const allConversations = [...asSeekerConversations, ...visibleAsTaskerConversations];
 
     allConversations.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 
@@ -323,6 +326,42 @@ async function hasActivePushToken(ctx: any, userId: any) {
     .take(MAX_PUSH_TOKEN_LOOKUP);
 
   return tokens.some((token: any) => !token.disabledAt);
+}
+
+async function filterTaskerInboxRows<
+  T extends {
+    _id: any;
+    lastMessageId?: any;
+  },
+>(ctx: any, rows: T[]): Promise<T[]> {
+  const visibleRows: T[] = [];
+
+  for (const row of rows) {
+    if (await hasTaskerVisibleActivity(ctx, row)) {
+      visibleRows.push(row);
+    }
+  }
+
+  return visibleRows;
+}
+
+async function hasTaskerVisibleActivity(
+  ctx: any,
+  conversation: {
+    _id: any;
+    lastMessageId?: any;
+  }
+): Promise<boolean> {
+  if (conversation.lastMessageId) {
+    return true;
+  }
+
+  const proposal = await ctx.db
+    .query("proposals")
+    .withIndex("by_conversation", (q: any) => q.eq("conversationId", conversation._id))
+    .first();
+
+  return proposal !== null;
 }
 
 const MAX_PUSH_TOKEN_LOOKUP = 20;
