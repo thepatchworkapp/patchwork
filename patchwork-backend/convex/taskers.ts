@@ -174,6 +174,20 @@ async function validateAndResolveCategoryPortfolio(
   };
 }
 
+async function cleanupUnreferencedPortfolioAssets(
+  ctx: any,
+  userId: Id<"users">,
+  portfolioAssetIds?: Id<"imageAssets">[]
+) {
+  const uniquePortfolioAssetIds = Array.from(
+    new Map((portfolioAssetIds ?? []).map((assetId) => [String(assetId), assetId])).values()
+  );
+
+  await Promise.all(
+    uniquePortfolioAssetIds.map((assetId) => deleteImageAssetIfUnreferenced(ctx, assetId, userId))
+  );
+}
+
 async function loadOwnedTaskerProfile(ctx: any) {
   const { user } = await requireAppUser(ctx);
   const profile = await ctx.db
@@ -587,7 +601,8 @@ export const addTaskerCategory = mutation({
       .unique();
 
     if (existingCategory) {
-      throw new ConvexError("Category already exists for this tasker");
+      await cleanupUnreferencedPortfolioAssets(ctx, user._id, args.portfolioAssetIds);
+      return null;
     }
 
     validateTaskerCategoryInput(args);

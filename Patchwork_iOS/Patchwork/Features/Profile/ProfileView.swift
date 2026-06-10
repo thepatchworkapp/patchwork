@@ -233,7 +233,7 @@ struct TaskerOnboardingView: View {
             existingCategoryIDs: Set(profile.categories.map { $0.categoryId }),
             onSaveProfile: updateTaskerProfile,
             onRemoveCategory: removeCategory,
-            onAddCategory: { draft in Task { await addCategory(draft: draft) } },
+            onAddCategory: { draft in await addCategory(draft: draft) },
             onUpdateCategory: updateTaskerCategory
         )
         .onAppear {
@@ -1643,7 +1643,7 @@ private struct TaskerProfileManageView: View {
     let existingCategoryIDs: Set<ConvexID>
     let onSaveProfile: (String, [String], [String]) async throws -> Void
     let onRemoveCategory: (ConvexID) async throws -> Void
-    let onAddCategory: (TaskerCategoryDraft) -> Void
+    let onAddCategory: (TaskerCategoryDraft) async -> Void
     let onUpdateCategory: (TaskerCategoryDraft) async throws -> Void
 
     @State private var selectedCategoryID: ConvexID?
@@ -2669,7 +2669,7 @@ private struct AddCategorySheet: View {
 
     let categories: [Category]
     let existingCategoryIDs: Set<ConvexID>
-    let onAdd: (TaskerCategoryDraft) -> Void
+    let onAdd: (TaskerCategoryDraft) async -> Void
 
     @State private var selectedCategoryId: ConvexID?
     @State private var categoryBio = ""
@@ -2683,6 +2683,7 @@ private struct AddCategorySheet: View {
     @State private var portfolioPhotoSheet: PortfolioPhotoSheet?
     @State private var portfolioCropQueue: [UIImage] = []
     @State private var isUploadingPortfolio = false
+    @State private var isAdding = false
     @State private var portfolioStatusMessage: SubscriptionFeedbackMessage?
 
     var body: some View {
@@ -2760,23 +2761,25 @@ private struct AddCategorySheet: View {
                         onAddPhotos: { showsPortfolioPhotoOptions = true }
                     )
 
-                    Button("Add") {
-                        guard let selectedCategoryId else { return }
-                        onAdd(
-                            TaskerCategoryDraft(
-                                categoryId: selectedCategoryId,
-                                categoryBio: categoryBio,
-                                rateType: rateType,
-                                hourlyRate: hourlyRate,
-                                fixedRate: fixedRate,
-                                serviceRadius: serviceRadius,
-                                portfolioPhotos: portfolioPhotos,
-                                coverPhotoId: coverPhotoId ?? portfolioPhotos.first?.id
-                            )
+                    Button(isAdding ? "Adding..." : "Add") {
+                        guard !isAdding, let selectedCategoryId else { return }
+                        isAdding = true
+                        let draft = TaskerCategoryDraft(
+                            categoryId: selectedCategoryId,
+                            categoryBio: categoryBio,
+                            rateType: rateType,
+                            hourlyRate: hourlyRate,
+                            fixedRate: fixedRate,
+                            serviceRadius: serviceRadius,
+                            portfolioPhotos: portfolioPhotos,
+                            coverPhotoId: coverPhotoId ?? portfolioPhotos.first?.id
                         )
+                        Task {
+                            await addCategory(draft)
+                        }
                     }
                     .buttonStyle(PatchworkPrimaryButtonStyle())
-                    .disabled(!canSubmit || isUploadingPortfolio)
+                    .disabled(!canSubmit || isUploadingPortfolio || isAdding)
                     .accessibilityIdentifier("AddCategorySheet.addButton")
                 }
                 .padding(.horizontal, 20)
@@ -2862,6 +2865,11 @@ private struct AddCategorySheet: View {
         if !availableCategories.contains(where: { $0.id == selectedCategoryId }) {
             self.selectedCategoryId = nil
         }
+    }
+
+    private func addCategory(_ draft: TaskerCategoryDraft) async {
+        defer { isAdding = false }
+        await onAdd(draft)
     }
 
     private func addPortfolioDraft(_ draft: PhotoDraft) {

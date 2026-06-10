@@ -29,6 +29,50 @@ const PATCHWORK_ANNUAL_PRODUCT_ID = "ltd.ddga.patchwork.tasker.subscription.year
 const PATCHWORK_LIFETIME_PRODUCT_ID = "ltd.ddga.patchwork.tasker.lifetime";
 const originalRevenueCatSecretApiKey = process.env.REVENUECAT_SECRET_API_KEY;
 
+async function storeImage(
+  t: ReturnType<typeof convexTest>,
+  contentType: "image/jpeg" | "image/heic" | "image/heif",
+  byteSize: number,
+) {
+  return await t.run(async (ctx) => {
+    const bytes = new Uint8Array(byteSize).fill(1);
+    return await ctx.storage.store(new Blob([bytes], { type: contentType }));
+  });
+}
+
+async function createPortfolioImageAsset(
+  t: ReturnType<typeof convexTest>,
+  asUser: any,
+) {
+  const thumbSize = 12_000;
+  const displaySize = 54_000;
+  const thumbStorageId = await storeImage(t, "image/jpeg", thumbSize);
+  const displayStorageId = await storeImage(t, "image/jpeg", displaySize);
+
+  return await asUser.mutation(api.files.commitImageAsset, {
+    purpose: "taskerCategoryPortfolio",
+    sourceContentType: "image/jpeg",
+    variants: [
+      {
+        kind: "thumb",
+        storageId: thumbStorageId,
+        contentType: "image/jpeg",
+        width: 300,
+        height: 300,
+        byteSize: thumbSize,
+      },
+      {
+        kind: "display",
+        storageId: displayStorageId,
+        contentType: "image/jpeg",
+        width: 900,
+        height: 900,
+        byteSize: displaySize,
+      },
+    ],
+  });
+}
+
 async function applyRevenueCatEvent(
   t: ReturnType<typeof convexTest>,
   args: {
@@ -762,6 +806,88 @@ describe("taskers", () => {
     expect(electricianCategory?.bio).toBe("Electrical installation and repair");
     expect(electricianCategory?.rateType).toBe("fixed");
     expect(electricianCategory?.fixedRate).toBe(25000);
+  });
+
+  test("addTaskerCategory is idempotent for duplicate category submissions", async () => {
+    const t = convexTest(schema, modules);
+
+    const asUser = t.withIdentity({
+      tokenIdentifier: "google|duplicate-add-category",
+      email: "duplicate-add-category@example.com",
+    });
+
+    await asUser.mutation(api.users.createProfile, {
+      name: "Duplicate Add Category",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    await t.mutation(internal.categories.seedCategories);
+    const plumbing = await t.query(api.categories.getCategoryBySlug, {
+      slug: "plumber",
+    });
+    const electrician = await t.query(api.categories.getCategoryBySlug, {
+      slug: "electrician",
+    });
+
+    await asUser.mutation(api.taskers.createTaskerProfile, {
+      displayName: "Duplicate Submit Pro",
+      categoryId: plumbing!._id,
+      categoryBio: "Plumbing work",
+      rateType: "hourly",
+      hourlyRate: 8500,
+      serviceRadius: 25,
+    });
+
+    const firstPortfolioAsset = await createPortfolioImageAsset(t, asUser);
+    const duplicatePortfolioAsset = await createPortfolioImageAsset(t, asUser);
+
+    const firstResult = await asUser.mutation(api.taskers.addTaskerCategory, {
+      categoryId: electrician!._id,
+      categoryBio: "First electrical details",
+      portfolioAssetIds: [firstPortfolioAsset._id],
+      coverAssetId: firstPortfolioAsset._id,
+      rateType: "fixed",
+      fixedRate: 25000,
+      serviceRadius: 30,
+    });
+    expect(firstResult).toBeNull();
+
+    const duplicateResult = await asUser.mutation(api.taskers.addTaskerCategory, {
+      categoryId: electrician!._id,
+      categoryBio: "Duplicate details should not overwrite",
+      portfolioAssetIds: [duplicatePortfolioAsset._id],
+      coverAssetId: duplicatePortfolioAsset._id,
+      rateType: "hourly",
+      hourlyRate: 9900,
+      serviceRadius: 45,
+    });
+    expect(duplicateResult).toBeNull();
+
+    const profile = await asUser.query(api.taskers.getTaskerProfile);
+    const electricianCategories = profile?.categories.filter((category) => category.categoryId === electrician!._id) ?? [];
+
+    expect(profile?.categories).toHaveLength(2);
+    expect(electricianCategories).toHaveLength(1);
+    expect(electricianCategories[0].bio).toBe("First electrical details");
+    expect(electricianCategories[0].rateType).toBe("fixed");
+    expect(electricianCategories[0].fixedRate).toBe(25000);
+    expect(electricianCategories[0].hourlyRate).toBeUndefined();
+    expect(electricianCategories[0].serviceRadius).toBe(30);
+    expect(electricianCategories[0].portfolioAssetIds).toEqual([firstPortfolioAsset._id]);
+    expect(electricianCategories[0].coverAssetId).toBe(firstPortfolioAsset._id);
+
+    const firstAssetAfterDuplicate = await asUser.query(api.files.getImageAsset, {
+      imageAssetId: firstPortfolioAsset._id,
+    });
+    const duplicateAssetAfterDuplicate = await asUser.query(api.files.getImageAsset, {
+      imageAssetId: duplicatePortfolioAsset._id,
+    });
+
+    expect(firstAssetAfterDuplicate?.status).toBe("active");
+    expect(duplicateAssetAfterDuplicate?.status).toBe("deleted");
+    expect(duplicateAssetAfterDuplicate?.variants.thumb.url).toBeNull();
+    expect(duplicateAssetAfterDuplicate?.variants.display.url).toBeNull();
   });
 
   test("addTaskerCategory supports a third category on the same profile", async () => {
