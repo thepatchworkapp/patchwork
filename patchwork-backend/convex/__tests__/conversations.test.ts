@@ -354,6 +354,64 @@ describe("conversations", () => {
     expect(visibleTaskerConversations.map((conversation) => conversation._id)).toContain(conversationId);
   });
 
+  test("tasker list backfills older active conversations when newer drafts are hidden", async () => {
+    const t = convexTest(schema, modules);
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_backfill_draft",
+      email: "tasker_backfill_draft@example.com",
+    });
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Backfill Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asActiveSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_backfill_active",
+      email: "seeker_backfill_active@example.com",
+    });
+    await asActiveSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Backfill Active",
+      city: "Toronto",
+      province: "ON",
+    });
+    const activeConversationId = await asActiveSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+    await asActiveSeeker.mutation(api.messages.sendMessage, {
+      conversationId: activeConversationId,
+      content: "This active thread should remain visible.",
+    });
+
+    const asDraftSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_backfill_draft",
+      email: "seeker_backfill_draft@example.com",
+    });
+    await asDraftSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Backfill Draft",
+      city: "Toronto",
+      province: "ON",
+    });
+    const draftConversationId = await asDraftSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(activeConversationId, { lastMessageAt: 1000, updatedAt: 1000 });
+      await ctx.db.patch(draftConversationId, { lastMessageAt: 2000, updatedAt: 2000 });
+    });
+
+    const limitedTaskerConversations = await asTasker.query(api.conversations.listConversations, {
+      role: "tasker",
+      limit: 1,
+    });
+
+    expect(limitedTaskerConversations.map((conversation) => conversation._id)).toStrictEqual([
+      activeConversationId,
+    ]);
+  });
+
   test("tasker list shows a seeker draft once a proposal exists", async () => {
     const t = convexTest(schema, modules);
 

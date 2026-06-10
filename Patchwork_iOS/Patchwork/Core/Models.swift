@@ -686,36 +686,53 @@ struct ConvexEnvelope<T: Decodable>: Decodable {
 struct HomeBaseOption: Identifiable, Equatable {
     let city: String
     let province: String
+    let coordinates: Coordinates?
+
+    init(city: String, province: String, coordinates: Coordinates? = nil) {
+        self.city = city
+        self.province = province
+        self.coordinates = coordinates
+    }
 
     var id: String { "\(city), \(province)" }
     var label: String { id }
+    var canonicalCoordinates: Coordinates? {
+        coordinates ?? HomeBaseOptions.coordinates(for: self)
+    }
 }
 
 enum HomeBaseOptions {
     static let all: [HomeBaseOption] = [
-        .init(city: "Barrie", province: "ON"),
-        .init(city: "Brampton", province: "ON"),
-        .init(city: "Calgary", province: "AB"),
-        .init(city: "Edmonton", province: "AB"),
-        .init(city: "Guelph", province: "ON"),
-        .init(city: "Halifax", province: "NS"),
-        .init(city: "Hamilton", province: "ON"),
-        .init(city: "Kitchener", province: "ON"),
-        .init(city: "London", province: "ON"),
-        .init(city: "Mississauga", province: "ON"),
-        .init(city: "Montreal", province: "QC"),
-        .init(city: "Oakville", province: "ON"),
-        .init(city: "Oshawa", province: "ON"),
-        .init(city: "Ottawa", province: "ON"),
-        .init(city: "Quebec City", province: "QC"),
-        .init(city: "Richmond Hill", province: "ON"),
-        .init(city: "St. Catharines", province: "ON"),
-        .init(city: "Toronto", province: "ON"),
-        .init(city: "Vancouver", province: "BC"),
-        .init(city: "Vaughan", province: "ON"),
-        .init(city: "Victoria", province: "BC"),
-        .init(city: "Waterloo", province: "ON"),
-        .init(city: "Windsor", province: "ON"),
-        .init(city: "Winnipeg", province: "MB"),
+        .init(city: "Barrie", province: "ON", coordinates: .init(lat: 44.3894, lng: -79.6903)),
+        .init(city: "Brampton", province: "ON", coordinates: .init(lat: 43.7315, lng: -79.7624)),
+        .init(city: "Calgary", province: "AB", coordinates: .init(lat: 51.0447, lng: -114.0719)),
+        .init(city: "Edmonton", province: "AB", coordinates: .init(lat: 53.5461, lng: -113.4938)),
+        .init(city: "Guelph", province: "ON", coordinates: .init(lat: 43.5448, lng: -80.2482)),
+        .init(city: "Halifax", province: "NS", coordinates: .init(lat: 44.6488, lng: -63.5752)),
+        .init(city: "Hamilton", province: "ON", coordinates: .init(lat: 43.2557, lng: -79.8711)),
+        .init(city: "Kitchener", province: "ON", coordinates: .init(lat: 43.4516, lng: -80.4925)),
+        .init(city: "London", province: "ON", coordinates: .init(lat: 42.9849, lng: -81.2453)),
+        .init(city: "Mississauga", province: "ON", coordinates: .init(lat: 43.5890, lng: -79.6441)),
+        .init(city: "Montreal", province: "QC", coordinates: .init(lat: 45.5019, lng: -73.5674)),
+        .init(city: "Oakville", province: "ON", coordinates: .init(lat: 43.4675, lng: -79.6877)),
+        .init(city: "Oshawa", province: "ON", coordinates: .init(lat: 43.8971, lng: -78.8658)),
+        .init(city: "Ottawa", province: "ON", coordinates: .init(lat: 45.4215, lng: -75.6972)),
+        .init(city: "Quebec City", province: "QC", coordinates: .init(lat: 46.8139, lng: -71.2080)),
+        .init(city: "Richmond Hill", province: "ON", coordinates: .init(lat: 43.8828, lng: -79.4403)),
+        .init(city: "St. Catharines", province: "ON", coordinates: .init(lat: 43.1594, lng: -79.2469)),
+        .init(city: "Toronto", province: "ON", coordinates: .init(lat: 43.6532, lng: -79.3832)),
+        .init(city: "Vancouver", province: "BC", coordinates: .init(lat: 49.2827, lng: -123.1207)),
+        .init(city: "Vaughan", province: "ON", coordinates: .init(lat: 43.8563, lng: -79.5085)),
+        .init(city: "Victoria", province: "BC", coordinates: .init(lat: 48.4284, lng: -123.3656)),
+        .init(city: "Waterloo", province: "ON", coordinates: .init(lat: 43.4643, lng: -80.5204)),
+        .init(city: "Windsor", province: "ON", coordinates: .init(lat: 42.3149, lng: -83.0364)),
+        .init(city: "Winnipeg", province: "MB", coordinates: .init(lat: 49.8951, lng: -97.1384)),
     ]
+
+    static func coordinates(for option: HomeBaseOption) -> Coordinates? {
+        all.first { candidate in
+            candidate.city.caseInsensitiveCompare(option.city) == .orderedSame
+                && candidate.province.caseInsensitiveCompare(option.province) == .orderedSame
+        }?.coordinates
+    }
 }

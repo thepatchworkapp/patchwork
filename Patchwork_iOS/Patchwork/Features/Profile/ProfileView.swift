@@ -1510,6 +1510,7 @@ private struct TaskerCreateFlowView: View {
             .padding(18)
         }
         .background(PatchworkTheme.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)

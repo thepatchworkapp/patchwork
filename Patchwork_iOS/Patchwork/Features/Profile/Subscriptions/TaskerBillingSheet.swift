@@ -46,7 +46,7 @@ private enum TaskerBillingPlan: String, CaseIterable, Hashable {
         case .premium:
             return "Billed yearly.\nBest for steady taskers."
         case .founders:
-            return "Pay once for\npermanent tasker access."
+            return "Pay once for permanent tasker access."
         }
     }
 

@@ -18,24 +18,26 @@ struct ProfileAccountSection: View {
 
     var body: some View {
         accountContent
-        .confirmationDialog("Profile photo", isPresented: $photoFlow.showsPhotoOptions, titleVisibility: .visible) {
-            if CameraCaptureView.isCameraAvailable {
-                Button("Take Photo") {
-                    photoFlow.selectCamera()
-                }
-            }
-            Button("Choose from Gallery") {
-                photoFlow.selectGallery()
-            }
-            if hasProfilePhoto {
-                Button("Remove Photo", role: .destructive) {
+        .popover(
+            isPresented: $photoFlow.showsPhotoOptions,
+            attachmentAnchor: .point(.topLeading),
+            arrowEdge: .top
+        ) {
+            ProfileEditOptionsPopover(
+                canTakePhoto: CameraCaptureView.isCameraAvailable,
+                canRemovePhoto: hasProfilePhoto,
+                onTakePhoto: selectCameraPhoto,
+                onChoosePhoto: selectGalleryPhoto,
+                onRemovePhoto: {
+                    photoFlow.showsPhotoOptions = false
                     Task { await removeProfilePhoto() }
+                },
+                onEditProfile: {
+                    photoFlow.showsPhotoOptions = false
+                    isShowingProfileEditor = true
                 }
-            }
-            Button("Edit Name & Location") {
-                isShowingProfileEditor = true
-            }
-            Button("Cancel", role: .cancel) {}
+            )
+            .presentationCompactAdaptation(.popover)
         }
         .sheet(item: $photoFlow.activeSheet) { sheet in
             switch sheet {
@@ -75,12 +77,12 @@ struct ProfileAccountSection: View {
 
     private var preTaskerAccountContent: some View {
         ZStack(alignment: .top) {
-            VStack(spacing: 18) {
+            VStack(spacing: 10) {
                 avatar
-                    .padding(.top, 30)
+                    .padding(.top, 24)
                 profilePhotoControls
 
-                VStack(spacing: 10) {
+                VStack(spacing: 6) {
                     profileName
 
                     Label(locationLabel, systemImage: "mappin.and.ellipse")
@@ -94,7 +96,7 @@ struct ProfileAccountSection: View {
                         stroke: PatchworkTheme.success.opacity(0.25),
                         accessibilityIdentifier: "Profile.seekerPill"
                     )
-                    .padding(.top, 6)
+                    .padding(.top, 4)
                 }
 
             }
@@ -107,7 +109,7 @@ struct ProfileAccountSection: View {
 
     private var taskerAccountContent: some View {
         ZStack(alignment: .top) {
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 avatar
                     .padding(.top, 12)
                 profilePhotoControls
@@ -121,15 +123,13 @@ struct ProfileAccountSection: View {
                 }
 
                 HStack(spacing: 10) {
-                    if user?.roles?.isSeeker == true {
-                        roleBadge(
-                            "Seeker",
-                            foreground: PatchworkTheme.success,
-                            background: PatchworkTheme.success.opacity(0.14),
-                            stroke: PatchworkTheme.success.opacity(0.4),
-                            accessibilityIdentifier: "Profile.seekerPill"
-                        )
-                    }
+                    roleBadge(
+                        "Seeker",
+                        foreground: PatchworkTheme.success,
+                        background: PatchworkTheme.success.opacity(0.14),
+                        stroke: PatchworkTheme.success.opacity(0.4),
+                        accessibilityIdentifier: "Profile.seekerPill"
+                    )
                     taskerRoleBadge
                 }
                 .frame(maxWidth: .infinity)
@@ -200,7 +200,7 @@ struct ProfileAccountSection: View {
         }
         .buttonStyle(.plain)
         .disabled(isUploadingPhoto)
-        .accessibilityLabel("Edit profile photo")
+        .accessibilityLabel("Edit profile")
         .accessibilityIdentifier("Profile.editProfileButton")
     }
 
@@ -239,23 +239,36 @@ struct ProfileAccountSection: View {
         user?.photoImage != nil || pendingPhotoAsset != nil
     }
 
+    @ViewBuilder
     private var profilePhotoControls: some View {
-        VStack(spacing: 10) {
-            if isUploadingPhoto {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(PatchworkTheme.brand)
-                    Text("Uploading photo...")
-                        .font(.patchworkCaption)
-                        .foregroundStyle(PatchworkTheme.textSecondary)
+        if isUploadingPhoto || photoStatusMessage != nil {
+            VStack(spacing: 10) {
+                if isUploadingPhoto {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(PatchworkTheme.brand)
+                        Text("Uploading photo...")
+                            .font(.patchworkCaption)
+                            .foregroundStyle(PatchworkTheme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let photoStatusMessage {
+                    PatchworkInlineStatusBanner(tone: photoStatusMessage.tone, text: photoStatusMessage.text)
+                        .accessibilityIdentifier("Profile.photoStatusBanner")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else if let photoStatusMessage {
-                PatchworkInlineStatusBanner(tone: photoStatusMessage.tone, text: photoStatusMessage.text)
-                    .accessibilityIdentifier("Profile.photoStatusBanner")
             }
         }
+    }
+
+    private func selectCameraPhoto() {
+        photoFlow.showsPhotoOptions = false
+        photoFlow.selectCamera()
+    }
+
+    private func selectGalleryPhoto() {
+        photoFlow.showsPhotoOptions = false
+        photoFlow.selectGallery()
     }
 
     private func uploadProfilePhoto(_ draft: PhotoDraft) async {
@@ -317,6 +330,7 @@ struct ProfileAccountSection: View {
         Text(title)
             .font(.patchworkBodyStrong)
             .foregroundStyle(foreground)
+            .lineLimit(1)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(background, in: Capsule())
@@ -329,18 +343,18 @@ struct ProfileAccountSection: View {
 
     private var taskerRoleBadge: some View {
         let style: (foreground: Color, background: Color, stroke: Color) = {
-            guard taskerProfile != nil else {
+            guard taskerProfile?.hasActiveSubscription == true else {
                 return (
-                    PatchworkTheme.textSecondary,
-                    PatchworkTheme.surfaceMuted,
-                    PatchworkTheme.stroke
+                    PatchworkTheme.danger,
+                    PatchworkTheme.danger.opacity(0.12),
+                    PatchworkTheme.danger.opacity(0.3)
                 )
             }
 
             return (
-                PatchworkTheme.brand,
-                PatchworkTheme.brandSoft.opacity(0.95),
-                PatchworkTheme.strokeStrong
+                PatchworkTheme.success,
+                PatchworkTheme.success.opacity(0.14),
+                PatchworkTheme.success.opacity(0.4)
             )
         }()
 
@@ -478,6 +492,65 @@ struct ProfileAccountSection: View {
 
     private var initial: String {
         String((user?.name ?? "?").prefix(1)).uppercased()
+    }
+}
+
+private struct ProfileEditOptionsPopover: View {
+    let canTakePhoto: Bool
+    let canRemovePhoto: Bool
+    let onTakePhoto: () -> Void
+    let onChoosePhoto: () -> Void
+    let onRemovePhoto: () -> Void
+    let onEditProfile: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Edit profile")
+                .font(.patchworkCardTitle)
+                .foregroundStyle(PatchworkTheme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(spacing: 8) {
+                if canTakePhoto {
+                    optionButton("Take Photo", systemImage: "camera.fill", action: onTakePhoto)
+                }
+                optionButton("Choose from Gallery", systemImage: "photo.on.rectangle", action: onChoosePhoto)
+                optionButton("Edit Name & Location", systemImage: "person.text.rectangle", action: onEditProfile)
+                if canRemovePhoto {
+                    optionButton(
+                        "Remove Photo",
+                        systemImage: "trash",
+                        foreground: PatchworkTheme.danger,
+                        action: onRemovePhoto
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 270, alignment: .leading)
+        .background(PatchworkTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(PatchworkTheme.stroke, lineWidth: 1)
+        )
+        .accessibilityIdentifier("Profile.editProfilePopover")
+    }
+
+    private func optionButton(
+        _ title: String,
+        systemImage: String,
+        foreground: Color = PatchworkTheme.textPrimary,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.patchworkBodyStrong)
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("Profile.editProfileOption.\(title.normalizedProfileOptionIdentifier)")
     }
 }
 
@@ -635,4 +708,12 @@ private struct ProfileAccountEditSheet: View {
         }
     }
 
+}
+
+private extension String {
+    var normalizedProfileOptionIdentifier: String {
+        lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "&", with: "and")
+    }
 }

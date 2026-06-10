@@ -250,14 +250,8 @@ struct MessagesView: View {
                     .foregroundStyle(unread > 0 ? PatchworkTheme.textPrimary : PatchworkTheme.textSecondary)
                     .padding(.bottom, 6)
 
-                HStack(spacing: 8) {
-                    PatchworkPill(
-                        title: activeRole == "tasker" ? "Tasker" : "Seeker",
-                        foreground: PatchworkTheme.brand,
-                        fill: PatchworkTheme.brandSoft
-                    )
-
-                    if conversation.jobId != nil {
+                if conversation.jobId != nil {
+                    HStack(spacing: 8) {
                         PatchworkPill(title: "Job linked", foreground: PatchworkTheme.success)
                     }
                 }
@@ -1767,7 +1761,7 @@ private struct ChatActionBar: View {
     var body: some View {
         if canShowCompleteButton {
             actionButton(
-                title: "Complete Job",
+                title: "Job completed?",
                 identifier: "Chat.completeJobButton",
                 style: .primary,
                 action: onCompleteTap
@@ -1906,7 +1900,7 @@ private struct CompleteJobSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     PatchworkSectionIntro(
                         eyebrow: "Job Status",
-                        title: "Complete Job",
+                        title: "Job completed?",
                         message: "Mark this job as completed once both sides agree the work is done."
                     )
 
@@ -1919,7 +1913,7 @@ private struct CompleteJobSheet: View {
                         .accessibilityLabel("Cancel completion")
                         .accessibilityIdentifier("Chat.completeJob.cancelButton")
 
-                        Button("Complete Job") {
+                        Button("Job completed") {
                             onConfirm()
                         }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
@@ -2055,75 +2049,81 @@ private struct ProposalFormSheet: View {
 
             PatchworkBackdrop(tint: PatchworkTheme.brand)
 
-            ScrollView {
-                VStack(spacing: 18) {
-                    PatchworkTopBar(title: isCounter ? "Counter Proposal" : "Propose Terms", onBack: onCancel)
-                        .accessibilityIdentifier("ProposalForm.cancelButton")
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 18) {
+                        PatchworkTopBar(title: isCounter ? "Counter Proposal" : "Propose Terms", onBack: onCancel)
+                            .accessibilityIdentifier("ProposalForm.cancelButton")
 
-                    PatchworkSurfaceCard {
-                        VStack(alignment: .leading, spacing: 18) {
-                            PatchworkSectionIntro(
-                                eyebrow: isCounter ? "Counter offer" : "Proposal",
-                                title: "Set clear terms",
-                                message: "Use one clean proposal path with explicit pricing and start time."
-                            )
+                        PatchworkSurfaceCard {
+                            VStack(alignment: .leading, spacing: 18) {
+                                PatchworkSectionIntro(
+                                    eyebrow: isCounter ? "Counter offer" : "Proposal",
+                                    title: "Set clear terms",
+                                    message: "Use one clean proposal path with explicit pricing and start time."
+                                )
 
-                            Picker("Type", selection: $rateType) {
-                                Text("Hourly").tag("hourly")
-                                Text("Flat").tag("flat")
-                            }
-                            .pickerStyle(.segmented)
-                            .accessibilityLabel("Rate type")
-                            .accessibilityIdentifier("ProposalForm.rateType")
+                                Picker("Type", selection: $rateType) {
+                                    Text("Hourly").tag("hourly")
+                                    Text("Flat").tag("flat")
+                                }
+                                .pickerStyle(.segmented)
+                                .accessibilityLabel("Rate type")
+                                .accessibilityIdentifier("ProposalForm.rateType")
 
-                            proposalSubmitButton
+                                HStack(spacing: 8) {
+                                    Text("$")
+                                        .font(.patchworkBody.weight(.semibold))
+                                        .foregroundStyle(PatchworkTheme.textSecondary)
+                                        .accessibilityHidden(true)
 
-                            HStack(spacing: 8) {
-                                Text("$")
-                                    .font(.patchworkBody.weight(.semibold))
-                                    .foregroundStyle(PatchworkTheme.textSecondary)
-                                    .accessibilityHidden(true)
+                                    TextField("Rate", text: $rate)
+                                        .keyboardType(.decimalPad)
+                                        .patchworkKeyboardDismissToolbar()
+                                        .accessibilityLabel("Rate amount")
+                                        .accessibilityIdentifier("ProposalForm.rateField")
+                                }
+                                .patchworkInputFieldStyle()
 
-                                TextField("Rate", text: $rate)
-                                    .keyboardType(.decimalPad)
-                                    .patchworkKeyboardDismissToolbar()
-                                    .accessibilityLabel("Rate amount")
-                                    .accessibilityIdentifier("ProposalForm.rateField")
-                            }
-                            .patchworkInputFieldStyle()
+                                VStack(spacing: 12) {
+                                    DatePicker("Date", selection: proposalDateBinding, displayedComponents: .date)
+                                        .datePickerStyle(.compact)
+                                        .patchworkInputFieldStyle()
+                                        .accessibilityLabel("Start date")
+                                        .accessibilityIdentifier("ProposalForm.dateField")
 
-                            VStack(spacing: 12) {
-                                DatePicker("Date", selection: proposalDateBinding, displayedComponents: .date)
-                                    .datePickerStyle(.compact)
-                                    .patchworkInputFieldStyle()
-                                    .accessibilityLabel("Start date")
-                                    .accessibilityIdentifier("ProposalForm.dateField")
+                                    DatePicker("Time", selection: proposalTimeBinding, displayedComponents: .hourAndMinute)
+                                        .datePickerStyle(.compact)
+                                        .patchworkInputFieldStyle()
+                                        .accessibilityLabel("Start time")
+                                        .accessibilityIdentifier("ProposalForm.timeField")
+                                }
 
-                                DatePicker("Time", selection: proposalTimeBinding, displayedComponents: .hourAndMinute)
-                                    .datePickerStyle(.compact)
-                                    .patchworkInputFieldStyle()
-                                    .accessibilityLabel("Start time")
-                                    .accessibilityIdentifier("ProposalForm.timeField")
-                            }
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Notes")
-                                    .font(.patchworkCaption)
-                                    .foregroundStyle(PatchworkTheme.textSecondary)
-                                TextEditor(text: $notes)
-                                    .patchworkTextEditorStyle(minHeight: 120)
-                                    .accessibilityLabel("Proposal notes")
-                                    .accessibilityIdentifier("ProposalForm.notesField")
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Notes")
+                                        .font(.patchworkCaption)
+                                        .foregroundStyle(PatchworkTheme.textSecondary)
+                                    TextEditor(text: $notes)
+                                        .patchworkTextEditorStyle(minHeight: 120)
+                                        .accessibilityLabel("Proposal notes")
+                                        .accessibilityIdentifier("ProposalForm.notesField")
+                                }
                             }
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
                 }
-                .padding(.vertical, 12)
+                .scrollDismissesKeyboard(.interactively)
+                .scrollIndicators(.hidden)
+                .accessibilityIdentifier("ProposalForm.scrollView")
+
+                proposalSubmitButton
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    .background(PatchworkTheme.surface.opacity(0.92))
             }
-            .scrollDismissesKeyboard(.interactively)
-            .scrollIndicators(.hidden)
-            .accessibilityIdentifier("ProposalForm.scrollView")
         }
         .onAppear(perform: initializePickerDefaults)
     }

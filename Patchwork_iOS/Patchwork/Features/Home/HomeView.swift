@@ -147,10 +147,11 @@ struct HomeView: View {
                     Button {
                         showRadiusSheet = true
                     } label: {
-                        Label("\(locationDisplayLabel) · \(radiusKm) km", systemImage: "mappin.and.ellipse")
+                        Label(searchScopeLabel, systemImage: "mappin.and.ellipse")
                             .font(.patchworkBodyStrong)
                             .foregroundStyle(PatchworkTheme.brand)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.82)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 14)
                             .frame(height: 50)
@@ -159,7 +160,7 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("Home.radiusButton")
                     .accessibilityLabel("Search radius")
-                    .accessibilityValue("\(locationDisplayLabel), \(radiusKm) kilometers")
+                    .accessibilityValue(searchScopeAccessibilityValue)
                     .accessibilityHint("Opens radius settings")
                 }
 
@@ -489,6 +490,7 @@ struct HomeView: View {
             .padding(18)
         }
         .background(PatchworkTheme.surface.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(PatchworkTheme.stroke, lineWidth: 1)
@@ -1180,6 +1182,30 @@ struct HomeView: View {
         appState.discoverSearchOrigin?.displayLabel ?? "Location unavailable"
     }
 
+    private var searchScopeLabel: String {
+        guard let origin = appState.discoverSearchOrigin else {
+            return "Location unavailable"
+        }
+
+        let destination: String
+        switch origin.mode {
+        case .currentLocation:
+            destination = "you"
+        case .selectedCity:
+            let city = origin.city?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            destination = city.isEmpty ? origin.displayLabel : city
+        }
+
+        return "Seeking within \(radiusKm) km of \(destination)"
+    }
+
+    private var searchScopeAccessibilityValue: String {
+        guard appState.discoverSearchOrigin != nil else {
+            return "Location unavailable"
+        }
+        return searchScopeLabel
+    }
+
     private var hasSearchCoordinates: Bool {
         appState.discoverSearchOrigin != nil
     }
@@ -1365,6 +1391,14 @@ struct HomeView: View {
         isResolvingSearchOrigin = true
         defer { isResolvingSearchOrigin = false }
 
+        if let coordinates = option.canonicalCoordinates {
+            appState.discoverSearchOrigin = DiscoverSearchOrigin.selectedCity(option, coordinates: coordinates)
+            if reloadAfterSelection {
+                await reload(resetDismissedTaskers: true)
+            }
+            return
+        }
+
         guard let coordinate = await locationManager.geocode(city: option.city, province: option.province) else {
             searchOriginErrorMessage = "We could not find that city. Choose another city."
             return
@@ -1429,6 +1463,7 @@ struct HomeView: View {
         selectedCategorySlug = slug
         selectedCategoryGroupSlug = nil
         selectedCategorySlugs.removeAll()
+        prepareForCategoryScopedReload()
         Task { await reload(resetDismissedTaskers: true) }
         if let slug {
             recordDiscoverCategorySelection(categorySlug: slug)
@@ -1439,6 +1474,7 @@ struct HomeView: View {
         selectedCategorySlug = nil
         selectedCategoryGroupSlug = group.slug
         selectedCategorySlugs = Set(group.categories.map(\.slug))
+        prepareForCategoryScopedReload()
         Task { await reload(resetDismissedTaskers: true) }
     }
 
@@ -1446,6 +1482,7 @@ struct HomeView: View {
         selectedCategorySlug = category.slug
         selectedCategoryGroupSlug = nil
         selectedCategorySlugs.removeAll()
+        prepareForCategoryScopedReload()
         Task { await reload(resetDismissedTaskers: true) }
         recordDiscoverCategorySelection(categorySlug: category.slug)
     }
@@ -1464,6 +1501,11 @@ struct HomeView: View {
         appState.activeCategorySlug = selectedCategorySlug
         appState.activeCategorySlugs = selectedSearchCategorySlugs ?? []
         appState.searchRadius = radiusKm
+        if resetDismissedTaskers {
+            currentCardIndex = 0
+            dismissedTaskerIDs.removeAll()
+            appState.taskers = []
+        }
         await appState.searchTaskers(
             client: sessionStore.client,
             categorySlug: selectedCategorySlug,
@@ -1482,6 +1524,18 @@ struct HomeView: View {
         } else if currentCardIndex >= visibleTaskers.count {
             currentCardIndex = visibleTaskers.count - 1
         }
+    }
+
+    private func prepareForCategoryScopedReload() {
+        currentCardIndex = 0
+        dismissedTaskerIDs.removeAll()
+        premiumPinResultTaskers = []
+        premiumPinErrorMessage = nil
+        lastSubmittedPremiumPin = nil
+        if !premiumPinText.isEmpty {
+            premiumPinText = ""
+        }
+        appState.taskers = []
     }
 
     private var selectedSearchCategorySlugs: [String]? {

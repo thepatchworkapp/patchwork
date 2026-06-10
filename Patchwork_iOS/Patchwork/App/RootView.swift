@@ -1577,6 +1577,13 @@ private struct ProfileSetupView: View {
 
     @discardableResult
     private func syncSavedProfileLocation() async -> Bool {
+        if let coordinates = selectedHomeBase?.canonicalCoordinates {
+            return await syncLocation(
+                CLLocationCoordinate2D(latitude: coordinates.lat, longitude: coordinates.lng),
+                source: "manual"
+            )
+        }
+
         if let coordinate = await locationManager.geocode(city: city, province: province) {
             return await syncLocation(coordinate, source: "manual")
         } else {

@@ -187,8 +187,8 @@ export const listConversations = query({
         .query("conversations")
         .withIndex("by_tasker_lastMessage", (q) => q.eq("taskerId", user._id))
         .order("desc")
-        .take(limit);
-      const visibleRows = await filterTaskerInboxRows(ctx, rows);
+        .take(MAX_TASKER_INBOX_LOOKUP);
+      const visibleRows = (await filterTaskerInboxRows(ctx, rows)).slice(0, limit);
 
       return await Promise.all(visibleRows.map((row) => enrichConversation(row, "tasker")));
     }
@@ -203,9 +203,9 @@ export const listConversations = query({
       .query("conversations")
       .withIndex("by_tasker_lastMessage", (q) => q.eq("taskerId", user._id))
       .order("desc")
-      .take(limit);
+      .take(MAX_TASKER_INBOX_LOOKUP);
 
-    const visibleAsTaskerConversations = await filterTaskerInboxRows(ctx, asTaskerConversations);
+    const visibleAsTaskerConversations = (await filterTaskerInboxRows(ctx, asTaskerConversations)).slice(0, limit);
 
     const allConversations = [...asSeekerConversations, ...visibleAsTaskerConversations];
 
@@ -365,3 +365,4 @@ async function hasTaskerVisibleActivity(
 }
 
 const MAX_PUSH_TOKEN_LOOKUP = 20;
+const MAX_TASKER_INBOX_LOOKUP = 100;

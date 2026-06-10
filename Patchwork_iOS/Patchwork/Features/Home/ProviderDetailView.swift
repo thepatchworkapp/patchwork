@@ -19,7 +19,7 @@ struct ProviderDetailView: View {
 
             if let tasker {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         heroSection(tasker)
                         categorySelector(tasker)
                         portfolioGallerySection
@@ -29,9 +29,11 @@ struct ProviderDetailView: View {
                         reviewsSection(tasker)
                         bottomCTA(tasker)
                     }
-                    .padding(16)
-                    .padding(.bottom, 28)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 32)
                 }
+                .scrollIndicators(.hidden)
             } else {
                 VStack(spacing: 14) {
                     ProgressView()

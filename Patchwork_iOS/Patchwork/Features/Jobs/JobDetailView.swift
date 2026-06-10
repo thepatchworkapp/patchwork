@@ -100,13 +100,13 @@ struct JobDetailView: View {
                     JobMetaGrid(detail: detail)
 
                     if canShowCompleteButton(detail: detail) {
-                        Button(isCompleting ? "Completing..." : "Complete Job") {
+                        Button(isCompleting ? "Completing..." : "Job completed?") {
                             Task { await completeJob() }
                         }
                         .buttonStyle(PatchworkPrimaryButtonStyle())
                         .disabled(isCompleting)
                         .accessibilityIdentifier("JobDetail.completeButton")
-                        .accessibilityLabel("Complete job")
+                        .accessibilityLabel("Job completed?")
                         .accessibilityHint("Marks this job as complete")
                     }
                 }
