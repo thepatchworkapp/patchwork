@@ -85,7 +85,6 @@ struct HomeView: View {
             PatchworkBackdrop(tint: PatchworkTheme.brand)
 
             VStack(spacing: 0) {
-                header
                 spotlightContent
             }
 
@@ -248,6 +247,8 @@ struct HomeView: View {
     private var spotlightContent: some View {
         ScrollView {
             VStack(spacing: 0) {
+                header
+
                 if visibleTaskers.isEmpty {
                     emptyState
                         .padding(.horizontal, MainLayout.horizontalGutter)
@@ -259,12 +260,22 @@ struct HomeView: View {
                         .offset(x: cardDragOffset)
                         .rotationEffect(.degrees(Double(cardDragOffset / 24)))
                         .opacity(Double(1 - min(CGFloat(0.25), abs(cardDragOffset) / CGFloat(420))))
-                        .gesture(
-                            DragGesture()
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 12)
                                 .onChanged { value in
+                                    guard abs(value.translation.width) > abs(value.translation.height) else {
+                                        cardDragOffset = 0
+                                        return
+                                    }
                                     cardDragOffset = max(-140, min(140, value.translation.width))
                                 }
                                 .onEnded { value in
+                                    guard abs(value.translation.width) > abs(value.translation.height) else {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            cardDragOffset = 0
+                                        }
+                                        return
+                                    }
                                     handleSpotlightSwipeEnd(value)
                                 }
                         )
@@ -275,8 +286,9 @@ struct HomeView: View {
             .frame(maxWidth: .infinity)
         }
         .refreshable {
-            await reload(resetDismissedTaskers: false)
+            await reload(resetDismissedTaskers: true)
         }
+        .scrollBounceBehavior(.always, axes: .vertical)
         .scrollIndicators(.hidden)
     }
 
