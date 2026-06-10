@@ -511,6 +511,108 @@ describe("conversations", () => {
     expect(conversation?.taskerLastReadAt).toBeDefined();
   });
 
+  test("markAsRead skips writes when participant already has no unread messages", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_read_noop",
+      email: "seeker_read_noop@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Read Noop",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_read_noop",
+      email: "tasker_read_noop@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Read Noop",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+    });
+
+    const before = await asSeeker.query(api.conversations.getConversation, {
+      conversationId,
+    });
+    expect(before?.seekerUnreadCount).toBe(0);
+
+    await asSeeker.mutation(api.conversations.markAsRead, {
+      conversationId,
+    });
+
+    const after = await asSeeker.query(api.conversations.getConversation, {
+      conversationId,
+    });
+
+    expect(after?.seekerUnreadCount).toBe(0);
+    expect(after?.seekerLastReadAt).toBeUndefined();
+    expect(after?.updatedAt).toBe(before?.updatedAt);
+  });
+
+  test("repeated markAsRead calls do not rewrite an already-read conversation", async () => {
+    const t = convexTest(schema, modules);
+
+    const asSeeker = t.withIdentity({
+      tokenIdentifier: "google|seeker_read_repeat",
+      email: "seeker_read_repeat@example.com",
+    });
+
+    await asSeeker.mutation(api.users.createProfile, {
+      name: "Seeker Read Repeat",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const asTasker = t.withIdentity({
+      tokenIdentifier: "google|tasker_read_repeat",
+      email: "tasker_read_repeat@example.com",
+    });
+
+    const taskerId = await asTasker.mutation(api.users.createProfile, {
+      name: "Tasker Read Repeat",
+      city: "Toronto",
+      province: "ON",
+    });
+
+    const conversationId = await asSeeker.mutation(api.conversations.startConversation, {
+      taskerId,
+      initialMessage: "Hello tasker",
+    });
+
+    await asTasker.mutation(api.conversations.markAsRead, {
+      conversationId,
+    });
+
+    const firstRead = await asTasker.query(api.conversations.getConversation, {
+      conversationId,
+    });
+    expect(firstRead?.taskerUnreadCount).toBe(0);
+    expect(firstRead?.taskerLastReadAt).toBeDefined();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await asTasker.mutation(api.conversations.markAsRead, {
+      conversationId,
+    });
+
+    const secondRead = await asTasker.query(api.conversations.getConversation, {
+      conversationId,
+    });
+
+    expect(secondRead?.taskerUnreadCount).toBe(0);
+    expect(secondRead?.taskerLastReadAt).toBe(firstRead?.taskerLastReadAt);
+    expect(secondRead?.updatedAt).toBe(firstRead?.updatedAt);
+  });
+
   test("tasker cannot initiate conversation (seeker only)", async () => {
     const t = convexTest(schema, modules);
     

@@ -295,12 +295,18 @@ export const markAsRead = mutation({
     const now = Date.now();
 
     if (conversation.seekerId === user._id) {
+      if ((conversation.seekerUnreadCount ?? 0) === 0) {
+        return { success: true };
+      }
       await ctx.db.patch(args.conversationId, {
         seekerUnreadCount: 0,
         seekerLastReadAt: now,
         updatedAt: now,
       });
     } else if (conversation.taskerId === user._id) {
+      if ((conversation.taskerUnreadCount ?? 0) === 0) {
+        return { success: true };
+      }
       await ctx.db.patch(args.conversationId, {
         taskerUnreadCount: 0,
         taskerLastReadAt: now,
